@@ -60,6 +60,7 @@ Minimum values to set:
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_ALLOWED_USER_IDS`
+- `TELEGRAM_BOT_ENABLED=true`
 - `AGENT_API_SHARED_KEY`
 - `N8N_BASIC_AUTH_PASSWORD`
 - `N8N_HOST`
@@ -76,12 +77,13 @@ TIMEZONE=Asia/Kuala_Lumpur
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 TELEGRAM_ALLOWED_USER_IDS=your-telegram-user-id
 DEFAULT_REPORT_CHAT_ID=
+TELEGRAM_BOT_ENABLED=true
 
 OLLAMA_MODEL=qwen2.5:3b
 OLLAMA_MODELS=qwen2.5:3b,qwen2.5-coder:7b,gemma2:2b
 
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-2.5-flash
 
 AGENT_BASIC_AUTH_USERNAME=agent
 AGENT_API_SHARED_KEY=replace-with-a-long-random-secret
@@ -223,6 +225,7 @@ Usually the cause is one of:
 - wrong `TELEGRAM_BOT_TOKEN`
 - your Telegram user id is missing from `TELEGRAM_ALLOWED_USER_IDS`
 - the stack was not rebuilt after editing `.env`
+- the same bot token is also polling from another machine, laptop, or VPS
 
 ### Ollama is slow on first boot
 

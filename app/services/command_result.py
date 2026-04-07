@@ -12,6 +12,7 @@ class MessageAttachment:
     caption: str | None = None
     filename: str | None = None
     explicit_public_url: str | None = None
+    asset_id: str | None = None
 
     def resolve_path(self) -> Path | None:
         raw = self.path.strip()
@@ -52,6 +53,8 @@ class MessageAttachment:
             "caption": self.caption or "",
             "filename": self.filename or "",
         }
+        if self.asset_id:
+            data["asset_id"] = self.asset_id
         public_url = self.public_url()
         if public_url:
             data["public_url"] = public_url

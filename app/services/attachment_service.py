@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import base64
+from collections import deque
 from io import BytesIO
 from pathlib import Path
 import re
 
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
@@ -49,6 +50,7 @@ class AttachmentService:
                     path=asset.stored_path,
                     filename=asset.original_filename,
                     explicit_public_url=UploadService.build_public_url(asset),
+                    asset_id=asset.asset_id,
                 )
             )
         return attachments
@@ -92,6 +94,18 @@ class AttachmentService:
             return AttachmentService._handle_image_analysis(
                 normalized_text=normalized_text,
                 image_assets=image_assets,
+                prompt_messages=prompt_messages,
+                active_provider=active_provider,
+                active_model=active_model,
+            )
+
+        if document_assets and AttachmentService._looks_like_document_edit_request(normalized_text):
+            return AttachmentService._handle_document_edit(
+                db=db,
+                user_id=user_id,
+                session_id=session_id,
+                normalized_text=normalized_text,
+                document_assets=document_assets,
                 prompt_messages=prompt_messages,
                 active_provider=active_provider,
                 active_model=active_model,
@@ -151,6 +165,66 @@ class AttachmentService:
         )
 
     @staticmethod
+    def _handle_document_edit(
+        db: Session,
+        user_id: str,
+        session_id: str,
+        normalized_text: str,
+        document_assets: list[UploadedAsset],
+        prompt_messages: list[dict[str, str]],
+        active_provider: str,
+        active_model: str,
+    ) -> CommandResult:
+        source_asset = document_assets[0]
+        source_text = AttachmentService.extract_text(source_asset)
+        instruction = normalized_text or "Rewrite this file for clarity and keep the meaning intact."
+        augmented_messages = list(prompt_messages)
+        augmented_messages[-1] = {
+            "role": "user",
+            "content": (
+                "Edit the uploaded file according to the instruction below.\n\n"
+                f"Instruction: {instruction}\n\n"
+                "Return only the fully edited file contents without commentary or markdown fencing.\n\n"
+                f"Source filename: {source_asset.original_filename}\n\n"
+                f"Source text:\n{source_text}"
+            ),
+        }
+
+        try:
+            reply, provider = LLMService.generate_reply(
+                augmented_messages,
+                active_provider=active_provider,
+                active_model=active_model,
+            )
+        except Exception as exc:
+            return CommandResult(
+                reply=f"I could not edit the uploaded file right now.\n\n{exc}",
+                provider="attachment-error",
+                attachments=AttachmentService.build_message_attachments(document_assets),
+            )
+
+        cleaned_reply = AttachmentService._strip_code_fences(reply).strip()
+        suffix = Path(source_asset.original_filename).suffix.lower()
+        output_suffix = suffix if suffix in AttachmentService.TEXT_EXTENSIONS else ".md"
+        output_filename = f"{Path(source_asset.original_filename).stem}-edited{output_suffix}"
+        mime_type = "text/markdown" if output_suffix == ".md" else "text/plain"
+        generated = UploadService.create_generated_text_asset(
+            db=db,
+            platform_user_id=user_id,
+            session_id=session_id,
+            original_filename=output_filename,
+            text=cleaned_reply,
+            mime_type=mime_type,
+            metadata_json={"source_asset_id": source_asset.asset_id, "instruction": instruction},
+        )
+
+        return CommandResult(
+            reply="Edited file ready.",
+            provider=provider,
+            attachments=AttachmentService.build_message_attachments([generated]),
+        )
+
+    @staticmethod
     def _handle_image_analysis(
         normalized_text: str,
         image_assets: list[UploadedAsset],
@@ -192,6 +266,13 @@ class AttachmentService:
         image = Image.open(BytesIO(UploadService.load_bytes(image_asset))).convert("RGBA")
         operations: list[str] = []
         text_lower = normalized_text.lower()
+        requested_background_removal = (
+            "remove background" in text_lower
+            or "background transparent" in text_lower
+            or "transparent background" in text_lower
+            or "cut out" in text_lower
+            or "isolate subject" in text_lower
+        )
 
         if "grayscale" in text_lower or "black and white" in text_lower:
             image = ImageOps.grayscale(image).convert("RGBA")
@@ -221,6 +302,10 @@ class AttachmentService:
         if "rotate 180" in text_lower:
             image = image.rotate(180, expand=True)
             operations.append("rotate 180")
+        if requested_background_removal:
+            image, removed = AttachmentService._remove_background(image)
+            if removed:
+                operations.append("remove background")
 
         size_match = re.search(r"(\d{2,5})\s*[xX]\s*(\d{2,5})", normalized_text)
         if size_match:
@@ -242,10 +327,19 @@ class AttachmentService:
             operations.append(f"contrast {contrast_match.group(1)}%")
 
         if not operations:
+            if requested_background_removal:
+                return CommandResult(
+                    reply=(
+                        "I couldn't confidently remove the background from that image. "
+                        "Try a photo with a clearer subject separation or a simpler background."
+                    ),
+                    provider="attachment-edit",
+                    attachments=AttachmentService.build_message_attachments([image_asset]),
+                )
             return CommandResult(
                 reply=(
-                    "I can edit images with operations like `grayscale`, `blur`, `sharpen`, "
-                    "`rotate left`, `flip horizontal`, or `resize 1024x1024`."
+                    "I can edit images with operations like `remove background`, `grayscale`, `blur`, "
+                    "`sharpen`, `rotate left`, `flip horizontal`, or `resize 1024x1024`."
                 ),
                 provider="attachment-edit",
                 attachments=AttachmentService.build_message_attachments([image_asset]),
@@ -297,6 +391,41 @@ class AttachmentService:
         return base64.b64encode(raw).decode("ascii"), asset.mime_type
 
     @staticmethod
+    def should_use_recent_assets(text: str) -> bool:
+        lowered = text.lower().strip()
+        if not lowered:
+            return False
+        direct_tokens = (
+            "this image",
+            "this photo",
+            "this picture",
+            "this screenshot",
+            "this file",
+            "this document",
+            "this pdf",
+            "attached image",
+            "attached file",
+            "uploaded image",
+            "uploaded file",
+            "last image",
+            "last file",
+            "previous image",
+            "previous file",
+            "the image",
+            "the file",
+        )
+        return (
+            any(token in lowered for token in direct_tokens)
+            or AttachmentService._looks_like_edit_request(lowered)
+            or AttachmentService._looks_like_document_edit_request(lowered)
+            or lowered.startswith("describe")
+            or lowered.startswith("summarize")
+            or lowered.startswith("analyze")
+            or lowered.startswith("read ")
+            or lowered.startswith("extract ")
+        )
+
+    @staticmethod
     def _looks_like_edit_request(text: str) -> bool:
         lowered = text.lower()
         return any(
@@ -314,5 +443,134 @@ class AttachmentService:
                 "brightness",
                 "invert",
                 "crop",
+                "background",
+                "transparent",
+                "cut out",
+                "isolate subject",
             )
         )
+
+    @staticmethod
+    def _looks_like_document_edit_request(text: str) -> bool:
+        lowered = text.lower()
+        return any(
+            token in lowered
+            for token in (
+                "rewrite",
+                "edit this file",
+                "edit this document",
+                "edit this text",
+                "make this shorter",
+                "make this clearer",
+                "fix grammar",
+                "improve writing",
+                "reformat",
+                "translate",
+                "convert this",
+                "clean up this file",
+                "refactor this text",
+            )
+        )
+
+    @staticmethod
+    def _strip_code_fences(text: str) -> str:
+        cleaned = text.strip()
+        if cleaned.startswith("```") and cleaned.endswith("```"):
+            lines = cleaned.splitlines()
+            if len(lines) >= 3:
+                return "\n".join(lines[1:-1])
+        return cleaned
+
+    @staticmethod
+    def _remove_background(image: Image.Image) -> tuple[Image.Image, bool]:
+        rgba = image.convert("RGBA")
+        width, height = rgba.size
+        if width < 2 or height < 2:
+            return rgba, False
+
+        pixels = rgba.load()
+        border_points: list[tuple[int, int]] = []
+        for x in range(width):
+            border_points.append((x, 0))
+            border_points.append((x, height - 1))
+        for y in range(1, height - 1):
+            border_points.append((0, y))
+            border_points.append((width - 1, y))
+
+        border_colors = [pixels[x, y][:3] for x, y in border_points if pixels[x, y][3] > 0]
+        if not border_colors:
+            return rgba, False
+
+        background_color = tuple(int(round(sum(color[index] for color in border_colors) / len(border_colors))) for index in range(3))
+
+        def color_distance(left: tuple[int, int, int], right: tuple[int, int, int]) -> int:
+            return abs(left[0] - right[0]) + abs(left[1] - right[1]) + abs(left[2] - right[2])
+
+        distances = sorted(color_distance(color, background_color) for color in border_colors)
+        base_threshold = distances[int(len(distances) * 0.85)] if distances else 48
+        threshold = max(30, min(120, base_threshold + 18))
+        soften_threshold = min(180, threshold + 42)
+
+        visited = bytearray(width * height)
+        queue: deque[tuple[int, int]] = deque()
+
+        def index_for(x: int, y: int) -> int:
+            return y * width + x
+
+        def qualifies(x: int, y: int, max_distance: int) -> bool:
+            red, green, blue, alpha = pixels[x, y]
+            if alpha == 0:
+                return True
+            return color_distance((red, green, blue), background_color) <= max_distance
+
+        for x, y in border_points:
+            idx = index_for(x, y)
+            if visited[idx]:
+                continue
+            if qualifies(x, y, threshold):
+                visited[idx] = 1
+                queue.append((x, y))
+
+        removed_pixels = 0
+        while queue:
+            x, y = queue.popleft()
+            removed_pixels += 1
+            for next_x, next_y in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                if next_x < 0 or next_y < 0 or next_x >= width or next_y >= height:
+                    continue
+                idx = index_for(next_x, next_y)
+                if visited[idx]:
+                    continue
+                if qualifies(next_x, next_y, threshold):
+                    visited[idx] = 1
+                    queue.append((next_x, next_y))
+
+        if removed_pixels == 0 or removed_pixels >= int(width * height * 0.98):
+            return rgba, False
+
+        mask = Image.new("L", (width, height), 255)
+        mask_pixels = mask.load()
+        for y in range(height):
+            for x in range(width):
+                idx = index_for(x, y)
+                if visited[idx]:
+                    mask_pixels[x, y] = 0
+                    continue
+                if qualifies(x, y, soften_threshold):
+                    red, green, blue, _ = pixels[x, y]
+                    distance = color_distance((red, green, blue), background_color)
+                    fade = int(
+                        max(
+                            0,
+                            min(
+                                255,
+                                255 * (distance - threshold) / max(1, soften_threshold - threshold),
+                            ),
+                        )
+                    )
+                    mask_pixels[x, y] = min(mask_pixels[x, y], fade)
+
+        softened_mask = mask.filter(ImageFilter.GaussianBlur(radius=max(1.2, min(width, height) / 320)))
+        result = rgba.copy()
+        result.putalpha(ImageChops.multiply(rgba.getchannel("A"), softened_mask))
+        return result, True

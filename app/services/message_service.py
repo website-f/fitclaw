@@ -38,7 +38,15 @@ class MessageService:
     ) -> ProcessedMessage:
         resolved_session_id = session_id or f"telegram:{user_id}"
         normalized_text = text.strip()
-        assets = UploadService.get_assets_for_user(db, attachment_asset_ids or [], user_id)
+        resolved_asset_ids = list(attachment_asset_ids or [])
+        if not resolved_asset_ids and AttachmentService.should_use_recent_assets(normalized_text):
+            resolved_asset_ids = MemoryService.get_recent_attachment_asset_ids(
+                db=db,
+                session_id=resolved_session_id,
+                platform_user_id=user_id,
+            )
+
+        assets = UploadService.get_assets_for_user(db, resolved_asset_ids, user_id)
         user_metadata = {}
         if assets:
             user_metadata["attachments"] = AttachmentService.build_metadata(assets)

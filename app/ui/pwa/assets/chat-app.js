@@ -516,7 +516,13 @@ function buildSuggestions() {
       {
         title: "Edit image",
         description: "Apply a quick deterministic image edit to the attached asset.",
-        prompt: "Make this grayscale and sharpen it slightly.",
+        prompt: "Remove background and keep the subject clean.",
+        useAttachments: true,
+      },
+      {
+        title: "Rewrite file",
+        description: "Create an edited version of the uploaded text document.",
+        prompt: "Rewrite this file to be clearer and more concise.",
         useAttachments: true,
       }
     );

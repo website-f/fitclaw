@@ -103,5 +103,38 @@ class MemoryService:
         return summaries
 
     @staticmethod
+    def get_recent_attachment_asset_ids(
+        db: Session,
+        session_id: str,
+        platform_user_id: str,
+        limit: int = 12,
+    ) -> list[str]:
+        stmt = (
+            select(ConversationMessage)
+            .where(ConversationMessage.session_id == session_id)
+            .where(ConversationMessage.platform_user_id == platform_user_id)
+            .order_by(ConversationMessage.created_at.desc())
+            .limit(limit)
+        )
+
+        seen: set[str] = set()
+        results: list[str] = []
+        for message in db.scalars(stmt).all():
+            attachments = list((message.metadata_json or {}).get("attachments", []))
+            current_ids = []
+            for item in attachments:
+                if not isinstance(item, dict):
+                    continue
+                asset_id = str(item.get("asset_id", "")).strip()
+                if asset_id and asset_id not in seen:
+                    current_ids.append(asset_id)
+                    seen.add(asset_id)
+            if current_ids:
+                results.extend(current_ids)
+                break
+
+        return results
+
+    @staticmethod
     def to_llm_messages(messages: list[ConversationMessage]) -> list[dict[str, str]]:
         return [{"role": item.role.value, "content": item.content} for item in messages]

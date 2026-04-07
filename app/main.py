@@ -13,7 +13,7 @@ settings = get_settings()
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.2.0",
+    version="0.2.1",
     description="Self-hosted personal AI ops platform with Telegram, agent APIs, and background workers.",
 )
 
@@ -58,5 +58,5 @@ def read_root() -> dict[str, str]:
         "health": "/health",
         "control": "/control",
         "app": "/app",
-        "version": "0.2.0",
+        "version": "0.2.1",
     }

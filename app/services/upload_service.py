@@ -109,6 +109,28 @@ class UploadService:
         )
 
     @staticmethod
+    def create_generated_text_asset(
+        db: Session,
+        platform_user_id: str,
+        session_id: str | None,
+        original_filename: str,
+        text: str,
+        mime_type: str = "text/plain",
+        metadata_json: dict | None = None,
+    ) -> UploadedAsset:
+        return UploadService.create_asset_from_bytes(
+            db=db,
+            platform_user_id=platform_user_id,
+            session_id=session_id,
+            source="generated",
+            original_filename=original_filename,
+            mime_type=mime_type,
+            raw_bytes=text.encode("utf-8"),
+            kind=UploadedAssetKind.document,
+            metadata_json=metadata_json,
+        )
+
+    @staticmethod
     def _detect_kind(filename: str, mime_type: str) -> UploadedAssetKind:
         if mime_type.startswith("image/"):
             return UploadedAssetKind.image

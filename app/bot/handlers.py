@@ -45,7 +45,9 @@ HELP_TEXT = (
     "Uploads:\n"
     "- send a photo with a caption like `describe this image`\n"
     "- send a photo with `make this grayscale`\n"
+    "- send a photo with `remove background`\n"
     "- send a document with `summarize this file`\n"
+    "- send a document with `rewrite this file to be more concise`\n"
 )
 
 

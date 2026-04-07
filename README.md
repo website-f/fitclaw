@@ -105,6 +105,7 @@ personal-ai-ops-platform/
 1. Edit `.env` and set at least:
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_ALLOWED_USER_IDS`
+   - `TELEGRAM_BOT_ENABLED=true` only on the one environment that should poll Telegram
    - `AGENT_API_SHARED_KEY`
    - `GEMINI_API_KEY` if you want cloud fallback
    - `OLLAMA_MODEL` to your preferred default model
@@ -172,7 +173,7 @@ Important note:
 - `/models`
 - `/usemodel ollama qwen2.5:3b`
 - `/usemodel ollama qwen2.5-coder:7b`
-- `/usemodel gemini gemini-1.5-flash`
+- `/usemodel gemini gemini-2.5-flash`
 
 ### From your app
 

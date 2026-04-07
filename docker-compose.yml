@@ -28,7 +28,10 @@ services:
 
   bot:
     <<: *app-common
-    command: python -m app.bot.runner
+    command: >
+      sh -c "if [ \"$${TELEGRAM_BOT_ENABLED:-true}\" = \"false\" ];
+      then echo 'Telegram bot disabled for this environment' && tail -f /dev/null;
+      else python -m app.bot.runner; fi"
     depends_on:
       api:
         condition: service_healthy
