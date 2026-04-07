@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     ollama_request_timeout: int = 180
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-1.5-flash"
-    gemini_vision_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_vision_model: str = "gemini-2.5-flash"
 
     llm_temperature: float = 0.2
     memory_window: int = 12
