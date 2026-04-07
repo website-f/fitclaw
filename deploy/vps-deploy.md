@@ -80,7 +80,7 @@ DEFAULT_REPORT_CHAT_ID=
 TELEGRAM_BOT_ENABLED=true
 
 OLLAMA_MODEL=qwen2.5:3b
-OLLAMA_MODELS=qwen2.5:3b,gemma2:2b,deepseek-r1:1.5b,qwen2.5-coder:7b
+OLLAMA_MODELS=qwen2.5:3b
 
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
@@ -105,7 +105,7 @@ docker compose up -d --build
 ```
 
 The first startup can take several minutes because Ollama pulls the models listed in `OLLAMA_MODELS`.
-The API and bot now wait for the default `OLLAMA_MODEL` to actually exist before they are considered ready.
+For the first VPS boot, keep `OLLAMA_MODELS` minimal, ideally just `qwen2.5:3b`, then add more models after the stack is stable.
 
 ## 6. Check status
 
@@ -237,6 +237,19 @@ docker compose logs -f ollama
 ```
 
 Wait until `ollama list` shows your default model, for example `qwen2.5:3b`.
+If the stack is still taking too long on a fresh server, temporarily reduce `.env` to:
+
+```env
+OLLAMA_MODEL=qwen2.5:3b
+OLLAMA_MODELS=qwen2.5:3b
+OLLAMA_VISION_MODELS=
+```
+
+Then rebuild with:
+
+```bash
+docker compose up -d --build
+```
 
 ### Agent says offline
 

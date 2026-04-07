@@ -128,6 +128,7 @@ docker compose up -d
    - n8n: `http://YOUR_VPS_IP:5678`
 
 The first Ollama startup can take several minutes because [`docker/ollama/entrypoint.sh`](docker/ollama/entrypoint.sh) automatically pulls every model in `OLLAMA_MODELS`.
+For the very first VPS boot, keep `OLLAMA_MODELS` small, ideally just your default chat model.
 
 ## VPS deployment
 
@@ -150,7 +151,7 @@ Recommended starter setup:
 
 ```env
 OLLAMA_MODEL=qwen2.5:3b
-OLLAMA_MODELS=qwen2.5:3b,gemma2:2b,deepseek-r1:1.5b,qwen2.5-coder:7b
+OLLAMA_MODELS=qwen2.5:3b
 ```
 
 Suggested usage:
@@ -159,6 +160,12 @@ Suggested usage:
 - `gemma2:2b` as a faster lightweight local fallback for snappy replies
 - `deepseek-r1:1.5b` as a compact local reasoning fallback
 - `qwen2.5-coder:7b` for code-focused work from Continue or other dev tools
+
+Recommended rollout:
+
+- first boot: `OLLAMA_MODELS=qwen2.5:3b`
+- after the stack is healthy, add optional models such as `gemma2:2b`, `deepseek-r1:1.5b`, or `qwen2.5-coder:7b`
+- pull them later by updating `.env` and running `docker compose up -d`
 
 Routing note:
 
