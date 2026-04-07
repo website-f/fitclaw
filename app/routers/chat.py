@@ -25,13 +25,14 @@ def send_message(payload: ChatMessageRequest, db: Session = Depends(get_db)):
         text=payload.text,
         username=payload.username,
         session_id=payload.session_id,
+        attachment_asset_ids=payload.attachment_asset_ids,
     )
     return ChatMessageResponse(
         reply=result.reply,
         provider=result.provider,
         handled_as_task_command=result.handled_as_task_command,
         handled_as_agent_command=result.handled_as_agent_command,
-        session_id=payload.session_id or f"telegram:{payload.user_id}",
+        session_id=result.session_id,
         attachments=_serialize_processed_attachments(result.attachments),
     )
 

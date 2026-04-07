@@ -4,6 +4,7 @@ from app.models.device_command import DeviceCommand, DeviceCommandStatus
 from app.models.report import Report
 from app.models.setting import AppSetting
 from app.models.task import Task, TaskStatus
+from app.models.uploaded_asset import UploadedAsset, UploadedAssetKind
 
 __all__ = [
     "Agent",
@@ -16,4 +17,6 @@ __all__ = [
     "Report",
     "Task",
     "TaskStatus",
+    "UploadedAsset",
+    "UploadedAssetKind",
 ]

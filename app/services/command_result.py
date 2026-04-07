@@ -11,6 +11,7 @@ class MessageAttachment:
     path: str
     caption: str | None = None
     filename: str | None = None
+    explicit_public_url: str | None = None
 
     def resolve_path(self) -> Path | None:
         raw = self.path.strip()
@@ -31,6 +32,9 @@ class MessageAttachment:
         return None
 
     def public_url(self) -> str | None:
+        if self.explicit_public_url:
+            return self.explicit_public_url
+
         filename = (self.filename or Path(self.path).name).strip()
         if not filename:
             return None

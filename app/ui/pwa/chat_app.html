@@ -122,11 +122,14 @@
 
       <footer class="composer-wrap">
         <div class="chip-row" id="quickChipRow"></div>
+        <div class="upload-tray" id="uploadTray"></div>
 
         <form class="composer glass-card" id="composerForm">
+          <input id="filePicker" type="file" multiple hidden />
           <label class="sr-only" for="messageInput">Message</label>
-          <textarea id="messageInput" rows="1" maxlength="8000" placeholder="Send a message to your AI ops platform..." required></textarea>
+          <textarea id="messageInput" rows="1" maxlength="8000" placeholder="Send a message to your AI ops platform..."></textarea>
           <div class="composer-actions">
+            <button class="ghost-button small-button" id="attachButton" type="button">Attach</button>
             <button class="ghost-button small-button" id="clearDraftButton" type="button">Clear</button>
             <button class="primary-button send-button" id="sendButton" type="submit">
               <span>Send</span>

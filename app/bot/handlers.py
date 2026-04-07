@@ -1,15 +1,17 @@
 import asyncio
 from pathlib import Path
 
-from telegram import BotCommand, Update
+from telegram import BotCommand, PhotoSize, Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.core.config import get_settings
 from app.core.database import session_scope
+from app.models.uploaded_asset import UploadedAsset
 from app.services.command_result import MessageAttachment
 from app.services.message_service import MessageService
 from app.services.runtime_config_service import RuntimeConfigService
+from app.services.upload_service import UploadService
 
 settings = get_settings()
 
@@ -39,6 +41,11 @@ HELP_TEXT = (
     "- check status\n"
     "- check status tsk_xxxxx\n"
     "- continue task tsk_xxxxx add more instructions\n"
+    "\n"
+    "Uploads:\n"
+    "- send a photo with a caption like `describe this image`\n"
+    "- send a photo with `make this grayscale`\n"
+    "- send a document with `summarize this file`\n"
 )
 
 
@@ -66,6 +73,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("models", models_command))
     application.add_handler(CommandHandler("usemodel", usemodel_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message))
+    application.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, media_message))
     return application
 
 
@@ -220,7 +228,43 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await deliver_processed_message(update, result)
 
 
-def process_message_sync(user_id: str, text: str, username: str | None, session_id: str):
+async def media_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.effective_chat or not update.message:
+        return
+
+    user = update.effective_user
+    if not is_authorized(user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+
+    attachment_asset_ids = await collect_telegram_attachments(update, context)
+    if not attachment_asset_ids:
+        await update.message.reply_text("I could not read that attachment.")
+        return
+
+    prompt = (update.message.caption or "").strip()
+    if not prompt:
+        prompt = "Describe this image." if update.message.photo else "Summarize this file."
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    result = await asyncio.to_thread(
+        process_message_sync,
+        str(user.id),
+        prompt,
+        user.username or user.full_name,
+        f"telegram:{user.id}",
+        attachment_asset_ids,
+    )
+    await deliver_processed_message(update, result)
+
+
+def process_message_sync(
+    user_id: str,
+    text: str,
+    username: str | None,
+    session_id: str,
+    attachment_asset_ids: list[str] | None = None,
+):
     with session_scope() as db:
         return MessageService.process_user_message(
             db=db,
@@ -228,6 +272,7 @@ def process_message_sync(user_id: str, text: str, username: str | None, session_
             text=text,
             username=username,
             session_id=session_id,
+            attachment_asset_ids=attachment_asset_ids,
         )
 
 
@@ -323,3 +368,52 @@ def set_model_sync(provider: str, model: str) -> str:
         active = RuntimeConfigService.set_active_llm(db, provider=validated_provider, model=validated_model)
 
     return f"Active model switched to {active['provider']} / {active['model']}"
+
+
+async def collect_telegram_attachments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> list[str]:
+    if not update.message or not update.effective_user:
+        return []
+
+    uploaded_assets: list[UploadedAsset] = []
+
+    if update.message.photo:
+        uploaded = await upload_telegram_photo(update.message.photo[-1], update.effective_user.id, context)
+        if uploaded is not None:
+            uploaded_assets.append(uploaded)
+
+    if update.message.document:
+        uploaded = await upload_telegram_document(update.message.document, update.effective_user.id, context)
+        if uploaded is not None:
+            uploaded_assets.append(uploaded)
+
+    return [asset.asset_id for asset in uploaded_assets]
+
+
+async def upload_telegram_photo(photo: PhotoSize, user_id: int, context: ContextTypes.DEFAULT_TYPE) -> UploadedAsset | None:
+    telegram_file = await context.bot.get_file(photo.file_id)
+    data = bytes(await telegram_file.download_as_bytearray())
+    with session_scope() as db:
+        return UploadService.create_asset_from_bytes(
+            db=db,
+            platform_user_id=str(user_id),
+            session_id=f"telegram:{user_id}",
+            source="telegram_photo",
+            original_filename=f"telegram-photo-{photo.file_unique_id}.jpg",
+            mime_type="image/jpeg",
+            raw_bytes=data,
+        )
+
+
+async def upload_telegram_document(document, user_id: int, context: ContextTypes.DEFAULT_TYPE) -> UploadedAsset | None:
+    telegram_file = await context.bot.get_file(document.file_id)
+    data = bytes(await telegram_file.download_as_bytearray())
+    with session_scope() as db:
+        return UploadService.create_asset_from_bytes(
+            db=db,
+            platform_user_id=str(user_id),
+            session_id=f"telegram:{user_id}",
+            source="telegram_document",
+            original_filename=document.file_name or f"telegram-document-{document.file_unique_id}",
+            mime_type=document.mime_type or "application/octet-stream",
+            raw_bytes=data,
+        )

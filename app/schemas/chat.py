@@ -1,15 +1,22 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.conversation import MessageRole
 
 
 class ChatMessageRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=120)
-    text: str = Field(min_length=1)
+    text: str = Field(default="")
     username: str | None = None
     session_id: str | None = None
+    attachment_asset_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_message_or_attachment(self):
+        if not self.text.strip() and not self.attachment_asset_ids:
+            raise ValueError("Provide either text or at least one attachment.")
+        return self
 
 
 class ChatAttachmentResponse(BaseModel):

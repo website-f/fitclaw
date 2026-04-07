@@ -11,6 +11,7 @@ const state = {
   sessions: [],
   messages: [],
   agents: [],
+  pendingUploads: [],
   modelInfo: null,
   sending: false,
   installPrompt: null,
@@ -29,12 +30,15 @@ const dom = {
   promptDeck: document.getElementById("promptDeck"),
   showcaseList: document.getElementById("showcaseList"),
   quickChipRow: document.getElementById("quickChipRow"),
+  uploadTray: document.getElementById("uploadTray"),
   historyList: document.getElementById("historyList"),
   messageScroll: document.getElementById("messageScroll"),
   messageList: document.getElementById("messageList"),
   welcomeState: document.getElementById("welcomeState"),
   composerForm: document.getElementById("composerForm"),
+  filePicker: document.getElementById("filePicker"),
   messageInput: document.getElementById("messageInput"),
+  attachButton: document.getElementById("attachButton"),
   sendButton: document.getElementById("sendButton"),
   clearDraftButton: document.getElementById("clearDraftButton"),
   newChatButton: document.getElementById("newChatButton"),
@@ -75,11 +79,9 @@ async function boot() {
 
 function bindEvents() {
   dom.composerForm.addEventListener("submit", onSubmitMessage);
-  dom.clearDraftButton.addEventListener("click", () => {
-    dom.messageInput.value = "";
-    autoResizeTextarea();
-    dom.messageInput.focus();
-  });
+  dom.clearDraftButton.addEventListener("click", clearComposerDraft);
+  dom.attachButton.addEventListener("click", () => dom.filePicker.click());
+  dom.filePicker.addEventListener("change", onFileSelection);
   dom.newChatButton.addEventListener("click", () => {
     startNewChat(true);
   });
@@ -87,6 +89,7 @@ function bindEvents() {
   dom.refreshAgentsButton.addEventListener("click", () => void refreshRuntimeData());
   dom.saveProfileButton.addEventListener("click", saveProfile);
   dom.messageInput.addEventListener("input", autoResizeTextarea);
+  dom.messageInput.addEventListener("keydown", onComposerKeyDown);
   dom.installButton.addEventListener("click", installApp);
   dom.openSidebarButton?.addEventListener("click", () => setDrawerState("sidebar", true));
   dom.closeSidebarButton?.addEventListener("click", () => setDrawerState("sidebar", false));
@@ -215,6 +218,7 @@ function persistSessionId() {
 function startNewChat(shouldFocus) {
   state.sessionId = createSessionId();
   state.messages = [];
+  resetPendingUploads();
   persistSessionId();
   renderAll();
   setDrawerState("sidebar", false);
@@ -224,6 +228,7 @@ function startNewChat(shouldFocus) {
 }
 
 async function openSession(sessionId) {
+  resetPendingUploads();
   state.sessionId = sessionId;
   persistSessionId();
   await loadCurrentSession();
@@ -231,27 +236,66 @@ async function openSession(sessionId) {
   setDrawerState("sidebar", false);
 }
 
-async function onSubmitMessage(event) {
-  event.preventDefault();
-  const text = dom.messageInput.value.trim();
-  if (!text || state.sending) {
-    return;
-  }
-  await sendMessage(text);
+function clearComposerDraft() {
+  dom.messageInput.value = "";
+  resetPendingUploads();
+  autoResizeTextarea();
+  renderAll();
+  dom.messageInput.focus();
 }
 
-async function sendMessage(text) {
+function onComposerKeyDown(event) {
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
+    return;
+  }
+  event.preventDefault();
+  void submitComposerMessage();
+}
+
+async function onFileSelection(event) {
+  const files = Array.from(event.target.files || []);
+  dom.filePicker.value = "";
+  if (!files.length) {
+    return;
+  }
+  await uploadSelectedFiles(files);
+}
+
+async function onSubmitMessage(event) {
+  event.preventDefault();
+  await submitComposerMessage();
+}
+
+async function submitComposerMessage() {
+  const text = dom.messageInput.value.trim();
+  const readyUploads = state.pendingUploads.filter((item) => item.status === "ready");
+  const hasUploadingFiles = state.pendingUploads.some((item) => item.status === "uploading");
+  if (state.sending || hasUploadingFiles) {
+    return;
+  }
+  if (!text && !readyUploads.length) {
+    return;
+  }
+  await sendMessage(text, readyUploads);
+}
+
+async function sendMessage(text, attachments = []) {
   state.sending = true;
   dom.sendButton.disabled = true;
 
   const now = new Date().toISOString();
+  const normalizedText = (text || "").trim();
+  const outboundAttachments = attachments.map((item) => ({ ...item }));
+  if (outboundAttachments.length) {
+    state.pendingUploads = state.pendingUploads.filter((item) => !outboundAttachments.some((upload) => upload.localId === item.localId));
+  }
   state.messages.push({
     id: `local-user-${createId()}`,
     session_id: state.sessionId,
     role: "user",
-    content: text,
+    content: normalizedText,
     created_at: now,
-    attachments: [],
+    attachments: outboundAttachments.map(toChatAttachment),
   });
   state.messages.push(createThinkingMessage());
 
@@ -265,7 +309,8 @@ async function sendMessage(text) {
       user_id: state.userId,
       username: state.displayName,
       session_id: state.sessionId,
-      text,
+      text: normalizedText,
+      attachment_asset_ids: outboundAttachments.map((item) => item.asset_id).filter(Boolean),
     };
     const response = await fetchJson("/api/v1/chat/messages", {
       method: "POST",
@@ -273,6 +318,8 @@ async function sendMessage(text) {
     });
 
     removeThinkingMessage();
+    state.sessionId = response.session_id || state.sessionId;
+    persistSessionId();
     state.messages.push({
       id: `local-assistant-${createId()}`,
       session_id: response.session_id || state.sessionId,
@@ -285,11 +332,13 @@ async function sendMessage(text) {
       handled_as_agent_command: response.handled_as_agent_command,
     });
 
+    releaseUploadPreviews(outboundAttachments);
     await loadSessions();
     updateSessionHeader();
   } catch (error) {
     console.error("Send message failed", error);
     removeThinkingMessage();
+    state.pendingUploads = [...outboundAttachments, ...state.pendingUploads];
     state.messages.push({
       id: `local-error-${createId()}`,
       session_id: state.sessionId,
@@ -328,6 +377,7 @@ function renderAll() {
   updateSessionHeader();
   renderHistory();
   renderSuggestions();
+  renderUploadTray();
   renderMessages();
   renderAgents();
 }
@@ -340,9 +390,9 @@ function renderProfile() {
 function updateConnectionLabel() {
   const onlineAgents = state.agents.filter((agent) => agent.status === "online").length;
   const networkLabel = navigator.onLine ? "Connected" : "Offline shell";
-  dom.connectionLabel.textContent = `${networkLabel} • ${onlineAgents} agent${onlineAgents === 1 ? "" : "s"} online`;
+  dom.connectionLabel.textContent = `${networkLabel} | ${onlineAgents} agent${onlineAgents === 1 ? "" : "s"} online`;
   if (state.modelInfo?.active) {
-    dom.modelPill.textContent = `${state.modelInfo.active.provider} · ${state.modelInfo.active.model}`;
+    dom.modelPill.textContent = `${state.modelInfo.active.provider} / ${state.modelInfo.active.model}`;
   } else {
     dom.modelPill.textContent = navigator.onLine ? "Model loading..." : "Waiting for server";
   }
@@ -404,7 +454,7 @@ function renderSuggestionCollection(container, suggestions, className) {
       <span>${escapeHtml(item.description)}</span>
       <em>${escapeHtml(item.prompt)}</em>
     `;
-    button.addEventListener("click", () => void sendMessage(item.prompt));
+    button.addEventListener("click", () => void runSuggestion(item));
     container.appendChild(button);
   });
 }
@@ -416,7 +466,7 @@ function renderChipRow(suggestions) {
     button.type = "button";
     button.className = "chip";
     button.textContent = item.title;
-    button.addEventListener("click", () => void sendMessage(item.prompt));
+    button.addEventListener("click", () => void runSuggestion(item));
     dom.quickChipRow.appendChild(button);
   });
 }
@@ -428,16 +478,51 @@ function renderActionStack(suggestions) {
     button.type = "button";
     button.className = "action-item";
     button.innerHTML = `<strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description)}</small>`;
-    button.addEventListener("click", () => void sendMessage(item.prompt));
+    button.addEventListener("click", () => void runSuggestion(item));
     dom.actionStack.appendChild(button);
   });
+}
+
+function runSuggestion(item) {
+  const attachments = item.useAttachments
+    ? state.pendingUploads.filter((upload) => upload.status === "ready")
+    : [];
+  if (item.useAttachments && !attachments.length) {
+    dom.messageInput.focus();
+    return Promise.resolve();
+  }
+  return sendMessage(item.prompt, attachments);
 }
 
 function buildSuggestions() {
   const firstOnline = state.agents.find((agent) => agent.status === "online");
   const firstAgentName = firstOnline?.name || "office-pc";
 
-  const suggestions = [
+  const suggestions = [];
+  if (state.pendingUploads.length) {
+    suggestions.push(
+      {
+        title: "Describe upload",
+        description: "Analyze the file or image currently attached in the composer.",
+        prompt: "Describe this clearly and call out the important details.",
+        useAttachments: true,
+      },
+      {
+        title: "Summarize file",
+        description: "Pull out the main points, actions, and risks from the uploaded file.",
+        prompt: "Summarize this file and highlight any risks or next actions.",
+        useAttachments: true,
+      },
+      {
+        title: "Edit image",
+        description: "Apply a quick deterministic image edit to the attached asset.",
+        prompt: "Make this grayscale and sharpen it slightly.",
+        useAttachments: true,
+      }
+    );
+  }
+
+  suggestions.push(
     {
       title: "List agents",
       description: "See every registered device and worker in one glance.",
@@ -477,8 +562,8 @@ function buildSuggestions() {
       title: "Model check",
       description: "See which active model is powering the system.",
       prompt: "what model are you using right now?",
-    },
-  ];
+    }
+  );
 
   return suggestions;
 }
@@ -505,6 +590,48 @@ function renderAgents() {
   });
 }
 
+function renderUploadTray() {
+  dom.uploadTray.innerHTML = "";
+  state.pendingUploads.forEach((upload) => {
+    const card = document.createElement("article");
+    card.className = `upload-pill${upload.status === "uploading" ? " uploading" : ""}${upload.status === "error" ? " error" : ""}`;
+
+    const thumb = document.createElement("div");
+    thumb.className = "upload-thumb";
+    if (upload.preview_url && upload.kind === "image") {
+      const image = document.createElement("img");
+      image.src = upload.preview_url;
+      image.alt = upload.original_filename || "Uploaded image";
+      image.loading = "lazy";
+      thumb.appendChild(image);
+    } else {
+      const label = document.createElement("span");
+      label.textContent = upload.kind === "image" ? "IMG" : "FILE";
+      thumb.appendChild(label);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "upload-meta";
+    meta.innerHTML = `
+      <strong>${escapeHtml(upload.original_filename || "Attachment")}</strong>
+      <span>${escapeHtml(describeUploadStatus(upload))}</span>
+    `;
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "upload-remove";
+    removeButton.textContent = "x";
+    removeButton.disabled = upload.status === "uploading";
+    removeButton.setAttribute("aria-label", `Remove ${upload.original_filename || "attachment"}`);
+    removeButton.addEventListener("click", () => removePendingUpload(upload.localId));
+
+    card.appendChild(thumb);
+    card.appendChild(meta);
+    card.appendChild(removeButton);
+    dom.uploadTray.appendChild(card);
+  });
+}
+
 function renderMessages() {
   dom.messageList.innerHTML = "";
   dom.welcomeState.classList.toggle("is-hidden", state.messages.length > 0);
@@ -521,18 +648,21 @@ function renderMessages() {
     node.querySelector(".message-time").textContent = formatTime(message.created_at);
 
     const bubble = node.querySelector(".bubble");
+    const attachments = message.attachments || [];
     if (message.pending) {
       bubble.innerHTML = `<div class="thinking-bubble"><span></span><span></span><span></span></div>`;
+    } else if (!message.content && attachments.length) {
+      bubble.classList.add("is-hidden");
     } else {
       bubble.textContent = message.content;
     }
 
     const attachmentStack = node.querySelector(".attachment-stack");
-    const attachments = message.attachments || [];
     attachments.forEach((attachment) => {
       const card = document.createElement("div");
       card.className = "attachment-card";
-      if (attachment.kind === "photo" && attachment.public_url) {
+      const attachmentKind = String(attachment.kind || "document").toLowerCase();
+      if ((attachmentKind === "photo" || attachmentKind === "image") && attachment.public_url) {
         card.innerHTML = `
           <img src="${attachment.public_url}" alt="${escapeHtml(attachment.caption || "Screenshot")}" loading="lazy" />
           <div class="bubble-meta">
@@ -546,6 +676,8 @@ function renderMessages() {
         link.rel = "noreferrer";
         link.textContent = attachment.filename || attachment.caption || "Open attachment";
         card.appendChild(link);
+      } else {
+        card.innerHTML = `<div class="attachment-label">${escapeHtml(attachment.filename || attachment.caption || "Attachment ready")}</div>`;
       }
       attachmentStack.appendChild(card);
     });
@@ -601,13 +733,122 @@ function registerPWA() {
   }
 }
 
+async function uploadSelectedFiles(files) {
+  const placeholders = files.map((file) => createUploadPlaceholder(file));
+  state.pendingUploads.push(...placeholders);
+  renderAll();
+
+  await Promise.all(
+    placeholders.map((placeholder, index) =>
+      uploadSingleFile(files[index], placeholder.localId)
+    )
+  );
+
+  renderAll();
+}
+
+async function uploadSingleFile(file, localId) {
+  const formData = new FormData();
+  formData.append("user_id", state.userId);
+  formData.append("session_id", state.sessionId);
+  formData.append("file", file, file.name);
+
+  try {
+    const response = await fetchJson("/api/v1/uploads", {
+      method: "POST",
+      body: formData,
+    });
+    replacePendingUpload(localId, {
+      ...response,
+      localId,
+      status: "ready",
+      preview_url: state.pendingUploads.find((item) => item.localId === localId)?.preview_url || null,
+    });
+  } catch (error) {
+    replacePendingUpload(localId, {
+      status: "error",
+      error: error.message || String(error),
+    });
+  }
+
+  renderAll();
+}
+
+function createUploadPlaceholder(file) {
+  return {
+    localId: `upload-${createId()}`,
+    asset_id: null,
+    kind: file.type.startsWith("image/") ? "image" : "document",
+    original_filename: file.name,
+    mime_type: file.type || "application/octet-stream",
+    size_bytes: file.size,
+    public_url: null,
+    preview_url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+    status: "uploading",
+    error: "",
+  };
+}
+
+function replacePendingUpload(localId, nextValues) {
+  state.pendingUploads = state.pendingUploads.map((item) => {
+    if (item.localId !== localId) {
+      return item;
+    }
+    return { ...item, ...nextValues };
+  });
+}
+
+function removePendingUpload(localId) {
+  const match = state.pendingUploads.find((item) => item.localId === localId);
+  if (match?.preview_url) {
+    URL.revokeObjectURL(match.preview_url);
+  }
+  state.pendingUploads = state.pendingUploads.filter((item) => item.localId !== localId);
+  renderAll();
+}
+
+function resetPendingUploads() {
+  releaseUploadPreviews(state.pendingUploads);
+  state.pendingUploads = [];
+  dom.filePicker.value = "";
+}
+
+function releaseUploadPreviews(uploads) {
+  uploads.forEach((item) => {
+    if (item.preview_url) {
+      URL.revokeObjectURL(item.preview_url);
+    }
+  });
+}
+
+function toChatAttachment(upload) {
+  return {
+    kind: upload.kind === "image" ? "image" : "document",
+    caption: upload.original_filename,
+    filename: upload.original_filename,
+    public_url: upload.public_url || upload.preview_url || null,
+  };
+}
+
+function describeUploadStatus(upload) {
+  if (upload.status === "uploading") {
+    return `Uploading ${formatBytes(upload.size_bytes || 0)}...`;
+  }
+  if (upload.status === "error") {
+    return upload.error || "Upload failed";
+  }
+  return `${upload.kind === "image" ? "Image" : "File"} | ${formatBytes(upload.size_bytes || 0)}`;
+}
+
 async function fetchJson(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
     ...options,
+    headers,
   });
   if (!response.ok) {
     const message = await response.text();
@@ -661,4 +902,19 @@ function formatDateTime(value) {
   } catch {
     return "recently";
   }
+}
+
+function formatBytes(bytes) {
+  if (!bytes) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const decimals = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(decimals)} ${units[unitIndex]}`;
 }

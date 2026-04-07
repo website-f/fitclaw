@@ -30,10 +30,13 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen2.5:3b"
     ollama_models: str = "qwen2.5:3b,qwen2.5-coder:7b,gemma2:2b"
+    ollama_vision_model: str = "gemma3:4b"
+    ollama_vision_models: str = "gemma3:4b,qwen2.5vl:7b"
     ollama_request_timeout: int = 180
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-1.5-flash"
+    gemini_vision_model: str = "gemini-1.5-flash"
 
     llm_temperature: float = 0.2
     memory_window: int = 12
@@ -61,6 +64,8 @@ class Settings(BaseSettings):
     n8n_basic_auth_active: bool = True
     n8n_basic_auth_user: str = "admin"
     n8n_basic_auth_password: str = "change-this-n8n-password"
+    upload_max_bytes: int = 15728640
+    upload_extract_text_chars: int = 24000
 
     @property
     def telegram_allowed_user_id_set(self) -> set[int]:
@@ -78,6 +83,11 @@ class Settings(BaseSettings):
     @property
     def ollama_model_list(self) -> list[str]:
         values = [item.strip() for item in self.ollama_models.split(",")]
+        return [item for item in values if item]
+
+    @property
+    def ollama_vision_model_list(self) -> list[str]:
+        values = [item.strip() for item in self.ollama_vision_models.split(",")]
         return [item for item in values if item]
 
 
