@@ -19,7 +19,10 @@ class AgentCommandService:
         re.IGNORECASE,
     )
     VERIFY_PATTERN = re.compile(
-        r"\bverify\b.*\b(agent|device|pc)\b|\b(?:is|check|show)\b.*\b(agent|device|pc)\b.*\b(online|installed|connected|alive)\b",
+        r"\bverify\b.*\b(agent|device|pc|computer|status|heartbeat)\b|"
+        r"\b(?:is|check|show|confirm|verify)\b.*\b(agent|device|pc|computer)\b.*\b(status|online|installed|connected|alive|active|working|heartbeat)\b|"
+        r"\bmy\s+(?:current\s+)?(?:agent|device|pc)\b.*\b(status|online|installed|connected|alive|heartbeat)\b|"
+        r"\bstatus\s+(?:for|of)\s+(?:my\s+)?(?:agent|device|pc)\b",
         re.IGNORECASE,
     )
     SCREENSHOT_PATTERN = re.compile(

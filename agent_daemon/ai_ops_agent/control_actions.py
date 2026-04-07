@@ -21,11 +21,44 @@ def _utcnow_iso() -> str:
 
 
 def _pyautogui():
-    import pyautogui
+    try:
+        import pyautogui
+    except Exception as exc:
+        raise RuntimeError(
+            "Mouse and keyboard automation is unavailable because PyAutoGUI could not be loaded. "
+            "Reinstall the latest agent build on this device."
+        ) from exc
 
     pyautogui.FAILSAFE = False
     pyautogui.PAUSE = 0
     return pyautogui
+
+
+def _has_pyautogui() -> bool:
+    try:
+        _pyautogui()
+    except Exception:
+        return False
+    return True
+
+
+def _image_grab():
+    try:
+        from PIL import ImageGrab
+    except Exception as exc:
+        raise RuntimeError(
+            "Screenshot capture is unavailable because Pillow ImageGrab could not be loaded. "
+            "Reinstall the latest agent build on this device."
+        ) from exc
+    return ImageGrab
+
+
+def _has_screenshot_backend() -> bool:
+    try:
+        _image_grab()
+    except Exception:
+        return False
+    return True
 
 
 def _load_windows_module():
@@ -61,7 +94,11 @@ def _find_codex_cli() -> str | None:
 
 def available_capabilities(config: AgentConfig) -> list[str]:
     capabilities = set(config.capabilities or [])
-    capabilities.update({"shell", "screenshot", "mouse_keyboard", "file_system", "processes"})
+    capabilities.update({"shell", "file_system", "processes"})
+    if _has_screenshot_backend():
+        capabilities.add("screenshot")
+    if _has_pyautogui():
+        capabilities.add("mouse_keyboard")
     if _load_windows_module() is not None:
         capabilities.add("windows")
     if _find_vscode_cli():
@@ -72,9 +109,14 @@ def available_capabilities(config: AgentConfig) -> list[str]:
 
 
 def _screenshot(payload: dict[str, Any]) -> dict[str, Any]:
-    pyautogui = _pyautogui()
-    image = pyautogui.screenshot()
-    screen_width, screen_height = pyautogui.size()
+    image_grab = _image_grab()
+    try:
+        image = image_grab.grab(all_screens=True)
+    except TypeError:
+        image = image_grab.grab()
+    if image.mode not in {"RGB", "RGBA"}:
+        image = image.convert("RGB")
+    screen_width, screen_height = image.size
 
     max_width = int(payload.get("max_width", 1440))
     if max_width > 0 and image.width > max_width:
@@ -86,6 +128,8 @@ def _screenshot(payload: dict[str, Any]) -> dict[str, Any]:
     content_type = "image/png" if image_format == "png" else "image/jpeg"
     extension = "png" if image_format == "png" else "jpg"
     buffer = BytesIO()
+    if extension != "png" and image.mode != "RGB":
+        image = image.convert("RGB")
     save_kwargs = {"format": "PNG"} if extension == "png" else {"format": "JPEG", "quality": quality, "optimize": True}
     image.save(buffer, **save_kwargs)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")

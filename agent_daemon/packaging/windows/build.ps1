@@ -23,6 +23,15 @@ Push-Location $agentRoot
   --onefile `
   --windowed `
   --name PersonalAIOpsAgent `
+  --hidden-import pyscreeze `
+  --hidden-import pymsgbox `
+  --hidden-import pyrect `
+  --hidden-import mouseinfo `
+  --hidden-import pygetwindow `
+  --collect-data pyautogui `
+  --collect-data pyscreeze `
+  --collect-data mouseinfo `
+  --collect-data PIL `
   --distpath dist `
   --workpath build-output\\pyinstaller `
   --specpath build-output\\spec `
@@ -36,4 +45,3 @@ if ($iscc) {
 }
 
 Pop-Location
-

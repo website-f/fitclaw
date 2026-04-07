@@ -80,7 +80,7 @@ DEFAULT_REPORT_CHAT_ID=
 TELEGRAM_BOT_ENABLED=true
 
 OLLAMA_MODEL=qwen2.5:3b
-OLLAMA_MODELS=qwen2.5:3b,qwen2.5-coder:7b,gemma2:2b
+OLLAMA_MODELS=qwen2.5:3b,gemma2:2b,deepseek-r1:1.5b,qwen2.5-coder:7b
 
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash

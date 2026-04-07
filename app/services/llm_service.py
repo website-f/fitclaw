@@ -14,23 +14,21 @@ COMPLEXITY_KEYWORDS = (
     "comparison",
     "reason step by step",
     "architecture",
-    "design",
     "refactor",
     "debug",
     "root cause",
     "research",
     "strategy",
     "proposal",
-    "plan",
     "comprehensive",
     "thorough",
     "synthesize",
     "brainstorm",
     "tradeoff",
-    "report",
-    "summarize these",
     "multiple files",
     "large file",
+    "deep analysis",
+    "deep dive",
 )
 
 
@@ -62,14 +60,14 @@ class LLMService:
                 errors.append(f"Gemini escalation failed: {exc}")
 
             try:
-                reply = LLMService._call_ollama(messages, model)
-                return reply, f"ollama:{model}"
+                reply, resolved_model = LLMService._call_ollama_with_fallbacks(messages, model)
+                return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama fallback failed: {exc}")
         elif provider == "ollama":
             try:
-                reply = LLMService._call_ollama(messages, model)
-                return reply, f"ollama:{model}"
+                reply, resolved_model = LLMService._call_ollama_with_fallbacks(messages, model)
+                return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama failed: {exc}")
         elif provider == "gemini":
@@ -80,8 +78,8 @@ class LLMService:
                 errors.append(f"Gemini failed: {exc}")
 
             try:
-                reply = LLMService._call_ollama(messages, settings.ollama_model)
-                return reply, f"ollama:{settings.ollama_model}"
+                reply, resolved_model = LLMService._call_ollama_with_fallbacks(messages, settings.ollama_model)
+                return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama fallback failed: {exc}")
 
@@ -129,14 +127,24 @@ class LLMService:
                 errors.append(f"Gemini vision failed: {exc}")
 
             try:
-                reply = LLMService._call_ollama_vision(prompt_messages, prompt_text, encoded_images, preferred_ollama_model)
-                return reply, f"ollama:{preferred_ollama_model}"
+                reply, resolved_model = LLMService._call_ollama_vision_with_fallbacks(
+                    prompt_messages,
+                    prompt_text,
+                    encoded_images,
+                    preferred_ollama_model,
+                )
+                return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama vision failed: {exc}")
         else:
             try:
-                reply = LLMService._call_ollama_vision(prompt_messages, prompt_text, encoded_images, preferred_ollama_model)
-                return reply, f"ollama:{preferred_ollama_model}"
+                reply, resolved_model = LLMService._call_ollama_vision_with_fallbacks(
+                    prompt_messages,
+                    prompt_text,
+                    encoded_images,
+                    preferred_ollama_model,
+                )
+                return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama vision failed: {exc}")
 
@@ -197,6 +205,17 @@ class LLMService:
         raise LLMServiceError(" ; ".join(errors))
 
     @staticmethod
+    def _call_ollama_with_fallbacks(messages: list[dict[str, str]], preferred_model: str) -> tuple[str, str]:
+        errors: list[str] = []
+        for candidate_model in LLMService._candidate_ollama_models(preferred_model, vision=False):
+            try:
+                reply = LLMService._call_ollama(messages, candidate_model)
+                return reply, candidate_model
+            except Exception as exc:
+                errors.append(f"{candidate_model}: {exc}")
+        raise LLMServiceError(" ; ".join(errors) or "No Ollama text models are configured.")
+
+    @staticmethod
     def _call_ollama_vision(
         prompt_messages: list[dict[str, str]],
         prompt_text: str,
@@ -241,6 +260,27 @@ class LLMService:
         if not content:
             raise LLMServiceError("Ollama vision returned an empty response.")
         return content
+
+    @staticmethod
+    def _call_ollama_vision_with_fallbacks(
+        prompt_messages: list[dict[str, str]],
+        prompt_text: str,
+        encoded_images: list[dict[str, str]],
+        preferred_model: str,
+    ) -> tuple[str, str]:
+        errors: list[str] = []
+        for candidate_model in LLMService._candidate_ollama_models(preferred_model, vision=True):
+            try:
+                reply = LLMService._call_ollama_vision(
+                    prompt_messages,
+                    prompt_text,
+                    encoded_images,
+                    candidate_model,
+                )
+                return reply, candidate_model
+            except Exception as exc:
+                errors.append(f"{candidate_model}: {exc}")
+        raise LLMServiceError(" ; ".join(errors) or "No Ollama vision models are configured.")
 
     @staticmethod
     def _call_ollama_generate(
@@ -382,6 +422,24 @@ class LLMService:
         return candidates
 
     @staticmethod
+    def _candidate_ollama_models(preferred_model: str, vision: bool) -> list[str]:
+        configured = [preferred_model.strip()]
+        if vision:
+            configured.extend([settings.ollama_vision_model, *settings.ollama_vision_model_list])
+        else:
+            configured.extend([settings.ollama_model, *settings.ollama_model_list])
+
+        seen: set[str] = set()
+        candidates: list[str] = []
+        for item in configured:
+            model_name = item.strip()
+            if not model_name or model_name in seen:
+                continue
+            seen.add(model_name)
+            candidates.append(model_name)
+        return candidates
+
+    @staticmethod
     def _extract_gemini_text(data: dict) -> str:
         candidates = data.get("candidates", [])
         if not candidates:
@@ -409,9 +467,9 @@ class LLMService:
         if not latest_user_message:
             return False
 
-        if len(latest_user_message) >= 900:
+        if len(latest_user_message) >= 1600:
             return True
-        if latest_user_message.count("\n") >= 8:
+        if latest_user_message.count("\n") >= 14:
             return True
         return any(keyword in latest_user_message for keyword in COMPLEXITY_KEYWORDS)
 

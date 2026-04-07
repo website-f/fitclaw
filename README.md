@@ -66,7 +66,7 @@ Self-hosted foundation for an always-on AI brain that lives on your VPS, talks t
 - Telegram bot built with `python-telegram-bot`
 - Responsive web chat app at `/app` with a ChatGPT-style interface
 - PWA support so the web app can be installed across desktop and mobile devices
-- Ollama-first LLM routing with Gemini Flash fallback
+- Ollama-first LLM routing with fast local fallback models before Gemini escalation
 - SQLite persistence through SQLAlchemy for tasks, agents, memory, and reports
 - Redis-backed Celery workers, beat scheduling, and Flower monitoring
 - Basic-auth-protected agent API for registration, heartbeats, task claiming, and result callbacks
@@ -150,14 +150,22 @@ Recommended starter setup:
 
 ```env
 OLLAMA_MODEL=qwen2.5:3b
-OLLAMA_MODELS=qwen2.5:3b,qwen2.5-coder:7b,gemma2:2b
+OLLAMA_MODELS=qwen2.5:3b,gemma2:2b,deepseek-r1:1.5b,qwen2.5-coder:7b
 ```
 
 Suggested usage:
 
-- `qwen2.5:3b` or `qwen2.5:7b` for Telegram chat, task coordination, and daily reports
+- `qwen2.5:3b` or `qwen2.5:7b` for daily chat, task coordination, and reports
+- `gemma2:2b` as a faster lightweight local fallback for snappy replies
+- `deepseek-r1:1.5b` as a compact local reasoning fallback
 - `qwen2.5-coder:7b` for code-focused work from Continue or other dev tools
-- `gemma2:2b` as a smaller backup local model
+
+Routing note:
+
+- normal chat stays on local Ollama first
+- if the active Ollama model is unavailable, the app automatically tries the next local model in `OLLAMA_MODELS`
+- Gemini is only attempted for clearly heavier prompts when a key is configured
+- if Gemini fails, the app falls back to local Ollama again
 
 Important note:
 

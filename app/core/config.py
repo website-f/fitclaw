@@ -29,16 +29,16 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen2.5:3b"
-    ollama_models: str = "qwen2.5:3b,qwen2.5-coder:7b,gemma2:2b"
+    ollama_models: str = "qwen2.5:3b,gemma2:2b,deepseek-r1:1.5b,qwen2.5-coder:7b"
     ollama_vision_model: str = "gemma3:4b"
     ollama_vision_models: str = "gemma3:4b,qwen2.5vl:7b"
-    ollama_request_timeout: int = 180
+    ollama_request_timeout: int = 120
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
     gemini_vision_model: str = "gemini-2.5-flash"
 
-    llm_temperature: float = 0.2
+    llm_temperature: float = 0.1
     memory_window: int = 12
     system_prompt: str = Field(
         default=(
