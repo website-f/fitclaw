@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Ops Control Panel</title>
+  <style>
+    :root {
+      --bg: #f3efe3;
+      --card: #fffaf0;
+      --line: #d8ccb4;
+      --ink: #1c1b18;
+      --muted: #6c6657;
+      --accent: #006d77;
+      --accent-2: #d97706;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(circle at top left, #fff9e8, var(--bg));
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .sub { color: var(--muted); margin-bottom: 20px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 18px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .row.tight { margin-bottom: 8px; }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    input, select, textarea, button {
+      font: inherit;
+      border-radius: 12px;
+    }
+    input, select, textarea {
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 10px 12px;
+      min-width: 0;
+      width: 100%;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    button {
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.alt { background: var(--accent-2); }
+    button.ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .stack { display: grid; gap: 12px; }
+    .half { flex: 1 1 180px; }
+    .image-wrap {
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      background: #111;
+      position: relative;
+      min-height: 340px;
+    }
+    .image-wrap img {
+      width: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+    .image-note {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      background: rgba(0,0,0,0.65);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .output {
+      white-space: pre-wrap;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 120px;
+      max-height: 360px;
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .small { font-size: 12px; color: var(--muted); }
+    @media (max-width: 1080px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Device Control Panel</h1>
+    <div class="sub">Live view, mouse and keyboard automation, file browser, process control, and safe app actions for installed agents.</div>
+
+    <div class="row card">
+      <div class="half">
+        <label for="agentSelect">Agent</label>
+        <select id="agentSelect"></select>
+      </div>
+      <div>
+        <button onclick="refreshAgents()">Refresh Agents</button>
+      </div>
+      <div>
+        <button onclick="captureScreenshot()">Capture Screenshot</button>
+      </div>
+      <div>
+        <button id="liveToggle" class="alt" onclick="toggleLiveView()">Start Live View</button>
+      </div>
+      <div class="small" id="agentStatus">Loading agents...</div>
+    </div>
+
+    <div class="grid">
+      <div class="stack">
+        <div class="card">
+          <div class="row tight">
+            <div class="small">Click the screenshot to send a left-click to that point on the device. Use the controls below for right-click, dragging, typing, hotkeys, files, and app actions.</div>
+          </div>
+          <div class="image-wrap">
+            <img id="screenImage" alt="Live device screenshot" onclick="clickScreenshot(event)" />
+            <div class="image-note" id="screenMeta">No screenshot yet</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Mouse and Keyboard</h3>
+          <div class="row">
+            <div class="half"><label>X</label><input id="mouseX" type="number" value="200" /></div>
+            <div class="half"><label>Y</label><input id="mouseY" type="number" value="200" /></div>
+            <div class="half"><label>Button</label><select id="mouseButton"><option>left</option><option>right</option><option>middle</option></select></div>
+          </div>
+          <div class="row">
+            <button onclick="sendMouseMove()">Move</button>
+            <button onclick="sendMouseClick()">Click</button>
+            <button class="ghost" onclick="sendMouseDoubleClick()">Double Click</button>
+          </div>
+          <div class="row">
+            <div class="half"><label>Drag To X</label><input id="dragX" type="number" value="500" /></div>
+            <div class="half"><label>Drag To Y</label><input id="dragY" type="number" value="500" /></div>
+            <div class="half"><label>Duration (s)</label><input id="dragDuration" type="number" step="0.1" value="0.3" /></div>
+          </div>
+          <div class="row">
+            <button class="ghost" onclick="sendMouseDrag()">Drag</button>
+          </div>
+          <div class="row">
+            <div class="half"><label>Text</label><textarea id="typeText" placeholder="Type this on the remote device"></textarea></div>
+          </div>
+          <div class="row">
+            <button onclick="sendKeyboardType()">Type Text</button>
+          </div>
+          <div class="row">
+            <div class="half"><label>Hotkey</label><input id="hotkeyText" placeholder="ctrl,shift,esc" /></div>
+            <div class="half"><label>Key Press</label><input id="keypressText" placeholder="enter" /></div>
+          </div>
+          <div class="row">
+            <button onclick="sendHotkey()">Send Hotkey</button>
+            <button class="ghost" onclick="sendKeyPress()">Press Key</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <h3>Files</h3>
+          <div class="row">
+            <div class="half"><label>Path</label><input id="filePath" value="C:\\" /></div>
+          </div>
+          <div class="row">
+            <button onclick="listFiles()">List Directory</button>
+            <button class="ghost" onclick="readFile()">Read File</button>
+          </div>
+          <div class="output" id="fileOutput"></div>
+        </div>
+
+        <div class="card">
+          <h3>Processes and Windows</h3>
+          <div class="row">
+            <button onclick="listProcesses()">List Processes</button>
+            <button class="ghost" onclick="listWindows()">List Windows</button>
+          </div>
+          <div class="row">
+            <div class="half"><label>Kill PID</label><input id="killPid" placeholder="1234" /></div>
+            <div class="half"><label>Focus Window Title Contains</label><input id="focusTitle" placeholder="Visual Studio Code" /></div>
+          </div>
+          <div class="row">
+            <button class="ghost" onclick="killProcess()">Kill Process</button>
+            <button class="ghost" onclick="focusWindow()">Focus Window</button>
+          </div>
+          <div class="output" id="processOutput"></div>
+        </div>
+
+        <div class="card">
+          <h3>App Actions</h3>
+          <div class="row">
+            <div class="half"><label>Open Application</label><input id="appCommand" placeholder="notepad.exe or /Applications/Notes.app" /></div>
+            <div class="half"><label>Arguments</label><input id="appArgs" placeholder="comma,separated,args" /></div>
+          </div>
+          <div class="row">
+            <button onclick="openApplication()">Launch App</button>
+          </div>
+          <div class="row">
+            <div class="half"><label>Open URL</label><input id="appUrl" placeholder="https://example.com" /></div>
+          </div>
+          <div class="row">
+            <button class="ghost" onclick="openUrl()">Open URL in Browser</button>
+          </div>
+          <div class="row">
+            <div class="half"><label>Reveal Path</label><input id="revealPath" placeholder="C:\\Users\\admin\\Desktop" /></div>
+            <div class="half"><label>VS Code Path</label><input id="vscodePath" placeholder="C:\\projects\\myrepo" /></div>
+          </div>
+          <div class="row">
+            <button class="ghost" onclick="revealPath()">Reveal in File Manager</button>
+            <button class="ghost" onclick="openVSCodePath()">Open in VS Code</button>
+          </div>
+          <div class="output" id="appOutput"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let liveTimer = null;
+    let lastScreen = { screen_size: { width: 1, height: 1 }, image_size: { width: 1, height: 1 } };
+    let agentStateByName = new Map();
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        ...options,
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(body || `Request failed with ${response.status}`);
+      }
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        return await response.json();
+      }
+      return await response.text();
+    }
+
+    function currentAgent() {
+      return document.getElementById("agentSelect").value;
+    }
+
+    function selectedAgentState() {
+      const name = currentAgent();
+      return name ? agentStateByName.get(name) || null : null;
+    }
+
+    function updateAgentStatusText() {
+      const status = document.getElementById("agentStatus");
+      const agent = selectedAgentState();
+      if (!agentStateByName.size) {
+        status.textContent = "No agents are registered yet";
+        return;
+      }
+      if (!agent) {
+        status.textContent = `Loaded ${agentStateByName.size} agent${agentStateByName.size === 1 ? "" : "s"}`;
+        return;
+      }
+      status.textContent = `${agent.name} is ${agent.status} | Loaded ${agentStateByName.size} agent${agentStateByName.size === 1 ? "" : "s"}`;
+    }
+
+    async function refreshAgents() {
+      const agents = await api("/api/v1/control/agents");
+      const select = document.getElementById("agentSelect");
+      const current = select.value;
+      agentStateByName = new Map(agents.map((agent) => [agent.name, agent]));
+      select.innerHTML = "";
+      agents.forEach((agent) => {
+        const option = document.createElement("option");
+        option.value = agent.name;
+        option.textContent = `${agent.name} (${agent.status})`;
+        select.appendChild(option);
+      });
+      if (current && agentStateByName.has(current)) {
+        select.value = current;
+      } else if (agents.length) {
+        select.value = agents[0].name;
+      }
+      updateAgentStatusText();
+    }
+
+    async function createCommand(commandType, payloadJson = {}) {
+      return await api("/api/v1/control/commands", {
+        method: "POST",
+        body: JSON.stringify({
+          agent_name: currentAgent(),
+          command_type: commandType,
+          payload_json: payloadJson,
+          source: "control_panel",
+        }),
+      });
+    }
+
+    async function waitForCommand(commandId, timeoutMs = 30000) {
+      const started = Date.now();
+      while (Date.now() - started < timeoutMs) {
+        const command = await api(`/api/v1/control/commands/${commandId}`);
+        if (command.status === "completed" || command.status === "failed") {
+          return command;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+      throw new Error("Timed out waiting for device command");
+    }
+
+    async function runCommand(commandType, payloadJson = {}, timeoutMs = 30000) {
+      await refreshAgents();
+      if (!currentAgent()) {
+        throw new Error("Select an agent first.");
+      }
+      const agent = selectedAgentState();
+      if (agent && agent.status !== "online") {
+        throw new Error(`${agent.name} is currently ${agent.status}. Open the agent app on that device and wait for the next heartbeat.`);
+      }
+      const created = await createCommand(commandType, payloadJson);
+      return await waitForCommand(created.command_id, timeoutMs);
+    }
+
+    function renderObject(targetId, value) {
+      document.getElementById(targetId).textContent =
+        typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    }
+
+    async function captureScreenshot() {
+      const command = await runCommand("screenshot", { format: "jpeg", quality: 70 }, 40000);
+      if (command.status !== "completed") {
+        throw new Error(command.error_text || "Screenshot failed");
+      }
+      lastScreen = command.result_json || lastScreen;
+      const img = document.getElementById("screenImage");
+      img.src = `/api/v1/control/commands/${command.command_id}/artifact?ts=${Date.now()}`;
+      const screen = command.result_json.screen_size || {};
+      const image = command.result_json.image_size || {};
+      document.getElementById("screenMeta").textContent =
+        `Screen ${screen.width || "?"}x${screen.height || "?"} | Image ${image.width || "?"}x${image.height || "?"}`;
+    }
+
+    async function toggleLiveView() {
+      const button = document.getElementById("liveToggle");
+      if (liveTimer) {
+        clearInterval(liveTimer);
+        liveTimer = null;
+        button.textContent = "Start Live View";
+        return;
+      }
+      button.textContent = "Stop Live View";
+      try {
+        await captureScreenshot();
+      } catch (error) {
+        button.textContent = "Start Live View";
+        showError(error);
+        return;
+      }
+      liveTimer = setInterval(() => {
+        captureScreenshot().catch(showError);
+      }, 2200);
+    }
+
+    async function clickScreenshot(event) {
+      if (!lastScreen.screen_size) {
+        return;
+      }
+      const rect = event.target.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+      const x = Math.round((clickX / rect.width) * lastScreen.screen_size.width);
+      const y = Math.round((clickY / rect.height) * lastScreen.screen_size.height);
+      document.getElementById("mouseX").value = x;
+      document.getElementById("mouseY").value = y;
+      await sendMouseClick();
+    }
+
+    async function sendMouseMove() {
+      const x = Number(document.getElementById("mouseX").value);
+      const y = Number(document.getElementById("mouseY").value);
+      const result = await runCommand("mouse_move", { x, y });
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function sendMouseClick(count = 1) {
+      const x = Number(document.getElementById("mouseX").value);
+      const y = Number(document.getElementById("mouseY").value);
+      const button = document.getElementById("mouseButton").value;
+      const result = await runCommand("mouse_click", { x, y, button, clicks: count });
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function sendMouseDoubleClick() {
+      await sendMouseClick(2);
+    }
+
+    async function sendMouseDrag() {
+      const fromX = Number(document.getElementById("mouseX").value);
+      const fromY = Number(document.getElementById("mouseY").value);
+      const toX = Number(document.getElementById("dragX").value);
+      const toY = Number(document.getElementById("dragY").value);
+      const duration = Number(document.getElementById("dragDuration").value || "0.3");
+      const button = document.getElementById("mouseButton").value;
+      const result = await runCommand("mouse_drag", { from_x: fromX, from_y: fromY, to_x: toX, to_y: toY, duration, button });
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function sendKeyboardType() {
+      const text = document.getElementById("typeText").value;
+      const result = await runCommand("keyboard_type", { text });
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function sendHotkey() {
+      const keys = document.getElementById("hotkeyText").value.split(",").map((item) => item.trim()).filter(Boolean);
+      const result = await runCommand("keyboard_hotkey", { keys });
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function sendKeyPress() {
+      const key = document.getElementById("keypressText").value.trim();
+      const result = await runCommand("keyboard_press", { key });
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function listFiles() {
+      const path = document.getElementById("filePath").value;
+      const result = await runCommand("file_list", { path });
+      renderObject("fileOutput", result.result_json);
+    }
+
+    async function readFile() {
+      const path = document.getElementById("filePath").value;
+      const result = await runCommand("file_read", { path, max_bytes: 50000 }, 40000);
+      renderObject("fileOutput", result.result_json);
+    }
+
+    async function listProcesses() {
+      const result = await runCommand("process_list", {}, 40000);
+      renderObject("processOutput", result.result_json);
+    }
+
+    async function listWindows() {
+      const result = await runCommand("window_list", {}, 40000);
+      renderObject("processOutput", result.result_json);
+    }
+
+    async function killProcess() {
+      const pid = Number(document.getElementById("killPid").value);
+      const result = await runCommand("process_kill", { pid });
+      renderObject("processOutput", result.result_json);
+    }
+
+    async function focusWindow() {
+      const title = document.getElementById("focusTitle").value.trim();
+      const result = await runCommand("window_focus", { title_contains: title }, 40000);
+      renderObject("processOutput", result.result_json);
+    }
+
+    async function openApplication() {
+      const command = document.getElementById("appCommand").value.trim();
+      const args = document.getElementById("appArgs").value.split(",").map((item) => item.trim()).filter(Boolean);
+      const result = await runCommand("app_launch", { command, args }, 40000);
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function openUrl() {
+      const url = document.getElementById("appUrl").value.trim();
+      const result = await runCommand("app_action", { action: "browser_open_url", url }, 40000);
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function revealPath() {
+      const path = document.getElementById("revealPath").value.trim();
+      const result = await runCommand("app_action", { action: "file_manager_reveal", path }, 40000);
+      renderObject("appOutput", result.result_json);
+    }
+
+    async function openVSCodePath() {
+      const path = document.getElementById("vscodePath").value.trim();
+      const result = await runCommand("app_action", { action: "vscode_open_path", path }, 40000);
+      renderObject("appOutput", result.result_json);
+    }
+
+    function showError(error) {
+      document.getElementById("appOutput").textContent = error.message || String(error);
+    }
+
+    window.addEventListener("load", () => {
+      document.getElementById("agentSelect").addEventListener("change", updateAgentStatusText);
+      refreshAgents().catch(showError);
+      setInterval(() => {
+        refreshAgents().catch(() => {});
+      }, 5000);
+    });
+  </script>
+</body>
+</html>

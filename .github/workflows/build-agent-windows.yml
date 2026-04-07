@@ -1,0 +1,45 @@
+name: Build Agent Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "agent_daemon/**"
+      - ".github/workflows/build-agent-windows.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup -y
+
+      - name: Build Windows Agent
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          powershell -ExecutionPolicy Bypass -File agent_daemon\packaging\windows\build.ps1
+
+      - name: Upload EXE Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-windows-exe
+          path: agent_daemon/dist/PersonalAIOpsAgent.exe
+
+      - name: Upload Installer Artifact
+        if: hashFiles('agent_daemon/dist/PersonalAIOpsAgentSetup.exe') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-windows-setup
+          path: agent_daemon/dist/PersonalAIOpsAgentSetup.exe
+

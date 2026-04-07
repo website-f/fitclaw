@@ -1,0 +1,43 @@
+name: Build Agent macOS
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "agent_daemon/**"
+      - ".github/workflows/build-agent-macos.yml"
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build macOS App and PKG
+        run: |
+          chmod +x agent_daemon/packaging/macos/build.sh
+          bash agent_daemon/packaging/macos/build.sh
+
+      - name: Build DMG
+        run: |
+          chmod +x agent_daemon/packaging/macos/create-dmg.sh
+          bash agent_daemon/packaging/macos/create-dmg.sh
+
+      - name: Upload PKG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-macos-pkg
+          path: agent_daemon/dist/PersonalAIOpsAgent.pkg
+
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-macos-dmg
+          path: agent_daemon/dist/PersonalAIOpsAgent.dmg

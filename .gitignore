@@ -1,0 +1,14 @@
+.env
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+data/*
+!data/.gitkeep
+agent_daemon/dist/
+agent_daemon/build-output/
