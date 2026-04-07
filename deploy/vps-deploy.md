@@ -105,6 +105,7 @@ docker compose up -d --build
 ```
 
 The first startup can take several minutes because Ollama pulls the models listed in `OLLAMA_MODELS`.
+The API and bot now wait for the default `OLLAMA_MODEL` to actually exist before they are considered ready.
 
 ## 6. Check status
 
@@ -234,6 +235,8 @@ That is normal during the first model pull. Check:
 ```bash
 docker compose logs -f ollama
 ```
+
+Wait until `ollama list` shows your default model, for example `qwen2.5:3b`.
 
 ### Agent says offline
 

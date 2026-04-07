@@ -41,16 +41,26 @@ class RuntimeConfigService:
 
     @staticmethod
     def list_ollama_models() -> list[str]:
+        api_base = settings.ollama_base_url.rstrip("/")
         try:
-            response = httpx.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags", timeout=15)
+            response = httpx.get(f"{api_base}/api/tags", timeout=15)
             response.raise_for_status()
             data = response.json()
+            models = data.get("models", [])
+            names = [item.get("name", "").strip() for item in models if item.get("name")]
+            return sorted(set(names))
+        except Exception:
+            pass
+
+        try:
+            response = httpx.get(f"{api_base}/v1/models", timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            models = data.get("data", [])
+            names = [item.get("id", "").strip() for item in models if item.get("id")]
+            return sorted(set(names))
         except Exception:
             return []
-
-        models = data.get("models", [])
-        names = [item.get("name", "").strip() for item in models if item.get("name")]
-        return sorted(set(names))
 
     @staticmethod
     def pull_ollama_model(model: str) -> None:
@@ -72,4 +82,3 @@ class RuntimeConfigService:
         if provider_name == "gemini" and not settings.gemini_enabled:
             raise ValueError("Gemini is not enabled. Set GEMINI_API_KEY first.")
         return provider_name, model_name
-

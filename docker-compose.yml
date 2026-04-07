@@ -89,11 +89,11 @@ services:
       - ollama_data:/root/.ollama
       - ./docker/ollama/entrypoint.sh:/entrypoint.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "ollama list | awk 'NR > 1 {print $1}' | grep -Fxq \"$${OLLAMA_MODEL:-qwen2.5:3b}\""]
       interval: 20s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 30
+      start_period: 45s
 
   n8n:
     image: n8nio/n8n:latest
