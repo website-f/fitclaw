@@ -1,10 +1,13 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.database import init_db
 from app.middleware.agent_auth import AgentBasicAuthMiddleware
-from app.routers import agent_control, agent_tasks, agents, chat, device_control, health, models, tasks
+from app.routers import agent_control, agent_tasks, agents, chat, device_control, health, models, tasks, web_app
 
 settings = get_settings()
 
@@ -23,6 +26,12 @@ app.add_middleware(
 )
 app.add_middleware(AgentBasicAuthMiddleware)
 
+app.mount(
+    "/app-assets",
+    StaticFiles(directory=str(Path(__file__).resolve().parent / "ui" / "pwa" / "assets")),
+    name="app-assets",
+)
+
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(models.router)
@@ -31,6 +40,7 @@ app.include_router(agents.router)
 app.include_router(agent_tasks.router)
 app.include_router(agent_control.router)
 app.include_router(device_control.router)
+app.include_router(web_app.router)
 
 
 @app.on_event("startup")
@@ -46,5 +56,6 @@ def read_root() -> dict[str, str]:
         "docs": "/docs",
         "health": "/health",
         "control": "/control",
+        "app": "/app",
         "version": "0.2.0",
     }

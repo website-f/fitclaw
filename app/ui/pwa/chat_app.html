@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#120910" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FitClaw AI Ops" />
+  <title>FitClaw AI Ops</title>
+  <link rel="manifest" href="/app-manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/app-assets/icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/app-assets/icons/icon-192.png" />
+  <link rel="stylesheet" href="/app-assets/chat-app.css" />
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <div class="ambient ambient-c"></div>
+
+  <div class="app-shell" id="appShell">
+    <aside class="drawer sidebar" id="sidebar">
+      <div class="brand-row">
+        <button class="icon-button mobile-only" id="closeSidebarButton" type="button" aria-label="Close menu">
+          <span></span>
+          <span></span>
+        </button>
+        <div class="brand-mark">FC</div>
+        <div>
+          <p class="eyebrow">Personal AI Ops</p>
+          <h1>FitClaw Brain</h1>
+        </div>
+      </div>
+
+      <div class="glass-card hero-card">
+        <div class="hero-copy">
+          <p class="eyebrow">Portable command center</p>
+          <h2>Create, explore, orchestrate.</h2>
+          <p>Talk to your stack, your models, and your devices from one adaptive workspace.</p>
+        </div>
+        <div class="hero-actions">
+          <button class="primary-button" id="newChatButton" type="button">New chat</button>
+          <button class="ghost-button" id="installButton" type="button" hidden>Install app</button>
+        </div>
+      </div>
+
+      <section class="panel-section">
+        <div class="section-heading">
+          <h3>Prompt deck</h3>
+          <span id="suggestionCount">0 ideas</span>
+        </div>
+        <div class="prompt-grid" id="promptDeck"></div>
+      </section>
+
+      <section class="panel-section history-section">
+        <div class="section-heading">
+          <h3>Recent chats</h3>
+          <button class="text-button" id="refreshHistoryButton" type="button">Refresh</button>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </section>
+
+      <section class="panel-section profile-section">
+        <div class="section-heading">
+          <h3>Profile</h3>
+          <span>Sync manually across devices</span>
+        </div>
+        <label class="field">
+          <span>Display name</span>
+          <input id="displayNameInput" type="text" maxlength="40" placeholder="Fitri" />
+        </label>
+        <label class="field">
+          <span>Profile key</span>
+          <input id="profileKeyInput" type="text" maxlength="80" />
+        </label>
+        <button class="ghost-button full-width" id="saveProfileButton" type="button">Save profile</button>
+      </section>
+    </aside>
+
+    <main class="chat-stage">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="icon-button mobile-only" id="openSidebarButton" type="button" aria-label="Open menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <div>
+            <p class="eyebrow" id="connectionLabel">Self-hosted PWA</p>
+            <h2 id="sessionTitle">New conversation</h2>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="status-pill" id="modelPill">Model loading...</div>
+          <button class="icon-button mobile-only" id="openInspectorButton" type="button" aria-label="Open panel">
+            <span class="dot"></span>
+          </button>
+        </div>
+      </header>
+
+      <section class="welcome-state" id="welcomeState">
+        <div class="welcome-card glass-card">
+          <div class="welcome-copy">
+            <p class="eyebrow">AI operations cockpit</p>
+            <h3>Ask like ChatGPT, act like your operator console.</h3>
+            <p>Use natural language for chat, reports, screenshots, agent checks, and Codex tasks without leaving the same thread.</p>
+          </div>
+          <div class="orb-cluster" aria-hidden="true">
+            <div class="orb-shell">
+              <div class="orb-core"></div>
+              <div class="orb-ring"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="suggestion-showcase" id="showcaseList"></div>
+      </section>
+
+      <section class="message-scroll" id="messageScroll">
+        <div class="message-list" id="messageList"></div>
+      </section>
+
+      <footer class="composer-wrap">
+        <div class="chip-row" id="quickChipRow"></div>
+
+        <form class="composer glass-card" id="composerForm">
+          <label class="sr-only" for="messageInput">Message</label>
+          <textarea id="messageInput" rows="1" maxlength="8000" placeholder="Send a message to your AI ops platform..." required></textarea>
+          <div class="composer-actions">
+            <button class="ghost-button small-button" id="clearDraftButton" type="button">Clear</button>
+            <button class="primary-button send-button" id="sendButton" type="submit">
+              <span>Send</span>
+            </button>
+          </div>
+        </form>
+      </footer>
+    </main>
+
+    <aside class="drawer inspector" id="inspector">
+      <div class="inspector-head">
+        <div>
+          <p class="eyebrow">Live system pulse</p>
+          <h3>Agents and ideas</h3>
+        </div>
+        <button class="icon-button mobile-only" id="closeInspectorButton" type="button" aria-label="Close panel">
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+
+      <section class="glass-card inspector-card">
+        <div class="section-heading">
+          <h4>Online agents</h4>
+          <button class="text-button" id="refreshAgentsButton" type="button">Refresh</button>
+        </div>
+        <div class="agent-list" id="agentList"></div>
+      </section>
+
+      <section class="glass-card inspector-card">
+        <div class="section-heading">
+          <h4>Suggested actions</h4>
+          <span>Tap to run</span>
+        </div>
+        <div class="action-stack" id="actionStack"></div>
+      </section>
+
+      <section class="glass-card inspector-card">
+        <div class="section-heading">
+          <h4>Workspace notes</h4>
+          <span>Persistent on this device</span>
+        </div>
+        <ul class="note-list">
+          <li>Use the same profile key on multiple devices if you want shared web-chat history.</li>
+          <li>Screenshot and device-command replies can render directly inside the chat thread.</li>
+          <li>The PWA works offline for the shell, but live chat still needs the server connection.</li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <div class="backdrop" id="drawerBackdrop" hidden></div>
+
+  <template id="messageTemplate">
+    <article class="message">
+      <div class="avatar"></div>
+      <div class="bubble-stack">
+        <div class="bubble-meta">
+          <span class="message-role"></span>
+          <span class="message-time"></span>
+        </div>
+        <div class="bubble"></div>
+        <div class="attachment-stack"></div>
+      </div>
+    </article>
+  </template>
+
+  <script src="/app-assets/chat-app.js" defer></script>
+</body>
+</html>

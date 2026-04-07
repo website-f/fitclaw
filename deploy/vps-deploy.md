@@ -148,6 +148,7 @@ From your local machine:
 
 - `http://YOUR_VPS_IP:8000/docs`
 - `http://YOUR_VPS_IP:8000/health`
+- `http://YOUR_VPS_IP:8000/app`
 - `http://YOUR_VPS_IP:8000/control`
 - `http://YOUR_VPS_IP:5678`
 - `http://YOUR_VPS_IP:5555`
@@ -155,6 +156,7 @@ From your local machine:
 Expected result:
 
 - `/health` returns healthy JSON
+- `/app` opens the installable web chat app
 - `/docs` opens Swagger UI
 - `/control` loads the device control panel
 - Telegram bot starts replying once `bot` is healthy

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.conversation import ConversationMessage, MessageRole
@@ -41,6 +41,67 @@ class MemoryService:
         return list(reversed(list(db.scalars(stmt).all())))
 
     @staticmethod
+    def list_session_messages(
+        db: Session,
+        session_id: str,
+        platform_user_id: str | None = None,
+        limit: int = 200,
+    ) -> list[ConversationMessage]:
+        stmt = select(ConversationMessage).where(ConversationMessage.session_id == session_id)
+        if platform_user_id is not None:
+            stmt = stmt.where(ConversationMessage.platform_user_id == platform_user_id)
+        stmt = stmt.order_by(ConversationMessage.created_at.asc()).limit(limit)
+        return list(db.scalars(stmt).all())
+
+    @staticmethod
+    def list_sessions(db: Session, platform_user_id: str, limit: int = 24) -> list[dict]:
+        session_rows = db.execute(
+            select(
+                ConversationMessage.session_id,
+                func.max(ConversationMessage.created_at).label("last_message_at"),
+                func.count(ConversationMessage.id).label("message_count"),
+            )
+            .where(ConversationMessage.platform_user_id == platform_user_id)
+            .group_by(ConversationMessage.session_id)
+            .order_by(func.max(ConversationMessage.created_at).desc())
+            .limit(limit)
+        ).all()
+
+        summaries: list[dict] = []
+        for row in session_rows:
+            session_id = str(row.session_id)
+            latest = db.scalar(
+                select(ConversationMessage)
+                .where(ConversationMessage.session_id == session_id)
+                .where(ConversationMessage.platform_user_id == platform_user_id)
+                .order_by(ConversationMessage.created_at.desc())
+                .limit(1)
+            )
+            first_user = db.scalar(
+                select(ConversationMessage)
+                .where(ConversationMessage.session_id == session_id)
+                .where(ConversationMessage.platform_user_id == platform_user_id)
+                .where(ConversationMessage.role == MessageRole.user)
+                .order_by(ConversationMessage.created_at.asc())
+                .limit(1)
+            )
+
+            title_source = (first_user.content if first_user else latest.content if latest else session_id).strip()
+            title = title_source.replace("\n", " ")
+            preview_source = (latest.content if latest else "").strip().replace("\n", " ")
+            summaries.append(
+                {
+                    "session_id": session_id,
+                    "title": title[:80] or "New chat",
+                    "preview": preview_source[:140],
+                    "last_message_at": row.last_message_at,
+                    "message_count": int(row.message_count),
+                    "last_role": latest.role.value if latest else MessageRole.assistant.value,
+                }
+            )
+
+        return summaries
+
+    @staticmethod
     def to_llm_messages(messages: list[ConversationMessage]) -> list[dict[str, str]]:
         return [{"role": item.role.value, "content": item.content} for item in messages]
-

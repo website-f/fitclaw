@@ -64,6 +64,8 @@ Self-hosted foundation for an always-on AI brain that lives on your VPS, talks t
 
 - FastAPI backend with health checks and interactive OpenAPI docs
 - Telegram bot built with `python-telegram-bot`
+- Responsive web chat app at `/app` with a ChatGPT-style interface
+- PWA support so the web app can be installed across desktop and mobile devices
 - Ollama-first LLM routing with Gemini Flash fallback
 - SQLite persistence through SQLAlchemy for tasks, agents, memory, and reports
 - Redis-backed Celery workers, beat scheduling, and Flower monitoring
@@ -119,6 +121,7 @@ docker compose up -d
 3. Open the main services:
    - API docs: `http://YOUR_VPS_IP:8000/docs`
    - Health: `http://YOUR_VPS_IP:8000/health`
+   - Web app: `http://YOUR_VPS_IP:8000/app`
    - Control panel: `http://YOUR_VPS_IP:8000/control`
    - Flower: `http://YOUR_VPS_IP:5555`
    - n8n: `http://YOUR_VPS_IP:5678`
@@ -209,6 +212,31 @@ Send plain messages for normal chat with memory, or use task commands:
 - `/usemodel ollama qwen2.5:3b`
 
 Conversation history is stored in SQLite and reused per Telegram user session.
+
+## Web app
+
+Open the browser app here:
+
+```text
+http://YOUR_VPS_IP:8000/app
+```
+
+What it includes:
+
+- ChatGPT-style conversation layout with history sidebar and live suggestions
+- dynamic prompt cards for agent checks, screenshots, processes, and Codex tasks
+- responsive mobile-first layout inspired by modern AI mobile apps
+- thinking/loading states while replies are being generated
+- session history loaded from SQLite
+- PWA install support for desktop and mobile home screens
+
+Web chat API endpoints used by the app:
+
+- `POST /api/v1/chat/messages`
+- `GET /api/v1/chat/sessions`
+- `GET /api/v1/chat/sessions/{session_id}/messages`
+
+If you ask for a screenshot or Codex output from the web app, attachments can render directly inside the conversation thread.
 
 ## Agent API
 
@@ -378,6 +406,18 @@ python agent_daemon/agent_daemon.py
 ```
 
 That opens the same setup UI.
+
+## Mobile wrapper
+
+A Capacitor wrapper is scaffolded in [`mobile_wrapper/`](mobile_wrapper/) so you can later open Android and iOS native projects for store publishing.
+
+Key files:
+
+- [`mobile_wrapper/capacitor.config.ts`](mobile_wrapper/capacitor.config.ts)
+- [`mobile_wrapper/package.json`](mobile_wrapper/package.json)
+- [`mobile_wrapper/README.md`](mobile_wrapper/README.md)
+
+The wrapper is set up to point at your hosted PWA endpoint, which keeps the web app as the main UI while still giving you a native shell later.
 
 ## Helpful commands
 

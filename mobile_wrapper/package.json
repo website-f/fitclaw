@@ -1,0 +1,23 @@
+{
+  "name": "fitclaw-aiops-mobile-wrapper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capacitor wrapper for the FitClaw AI Ops PWA.",
+  "scripts": {
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.2"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/cli": "^7.4.2",
+    "@capacitor/ios": "^7.4.2",
+    "typescript": "^5.9.3"
+  }
+}

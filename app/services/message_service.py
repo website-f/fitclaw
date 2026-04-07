@@ -57,6 +57,9 @@ class MessageService:
                 text=normalized_text,
             )
         if command_result is not None:
+            metadata_json = {}
+            if command_result.attachments:
+                metadata_json["attachments"] = [attachment.to_metadata() for attachment in command_result.attachments]
             MemoryService.add_message(
                 db=db,
                 session_id=resolved_session_id,
@@ -65,6 +68,7 @@ class MessageService:
                 content=command_result.reply,
                 username=username,
                 provider=command_result.provider,
+                metadata_json=metadata_json,
             )
             return ProcessedMessage(
                 reply=command_result.reply,
