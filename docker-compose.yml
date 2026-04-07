@@ -89,7 +89,7 @@ services:
       - ollama_data:/root/.ollama
       - ./docker/ollama/entrypoint.sh:/entrypoint.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "ollama list | awk 'NR > 1 {print $1}' | grep -Fxq \"$${OLLAMA_MODEL:-qwen2.5:3b}\""]
+      test: ["CMD-SHELL", "ollama list | grep -Eq \"^$${OLLAMA_MODEL:-qwen2.5:3b}[[:space:]]\""]
       interval: 20s
       timeout: 5s
       retries: 30
