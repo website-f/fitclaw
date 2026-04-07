@@ -108,6 +108,29 @@ function bindEvents() {
   });
   window.addEventListener("online", updateConnectionLabel);
   window.addEventListener("offline", updateConnectionLabel);
+
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 1080) {
+      state.sidebarOpen = false;
+      state.inspectorOpen = false;
+      dom.sidebar.classList.remove("open");
+      dom.inspector.classList.remove("open");
+      dom.backdrop.hidden = true;
+    }
+  });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      document.documentElement.style.setProperty(
+        "--vvh",
+        `${window.visualViewport.height}px`
+      );
+    });
+    document.documentElement.style.setProperty(
+      "--vvh",
+      `${window.visualViewport.height}px`
+    );
+  }
 }
 
 function initializeProfile() {
@@ -194,6 +217,7 @@ function startNewChat(shouldFocus) {
   state.messages = [];
   persistSessionId();
   renderAll();
+  setDrawerState("sidebar", false);
   if (shouldFocus) {
     dom.messageInput.focus();
   }
