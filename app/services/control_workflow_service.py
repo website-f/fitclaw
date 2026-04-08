@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from sqlalchemy.orm import Session
@@ -106,7 +107,7 @@ class ControlWorkflowService:
             user_id=user_id,
             title="Storage inspection",
             description=f"powershell:\n{script}",
-            metadata_json={"execution_mode": "powershell"},
+            metadata_json={"execution_mode": "powershell", "command": script, "hidden_window": True},
             timeout_seconds=900,
         )
         try:
@@ -129,7 +130,7 @@ class ControlWorkflowService:
             user_id=user_id,
             title="Delete path",
             description=f"powershell:\n{script}",
-            metadata_json={"execution_mode": "powershell"},
+            metadata_json={"execution_mode": "powershell", "command": script, "hidden_window": True},
             timeout_seconds=240,
         )
         try:
@@ -214,6 +215,9 @@ class ControlWorkflowService:
 
     @staticmethod
     def _build_windows_storage_json_script(path: str | None, top_n: int) -> str:
+        raw_path = (path or "").strip()
+        if not raw_path or re.fullmatch(r"[A-Za-z]:\\?", raw_path):
+            return ControlWorkflowService._build_windows_drive_overview_script(path, top_n)
         target_line = (
             f"$TargetPath = '{ControlWorkflowService._escape_ps(path)}'"
             if path
@@ -258,48 +262,81 @@ if ($DriveRoot) {{
     $Usage = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$DeviceId'" -ErrorAction SilentlyContinue
 }}
 
-$AllFiles = @(Get-ChildItem -LiteralPath $ResolvedPath -Recurse -Force -File -ErrorAction SilentlyContinue)
-$AllDirs = @(Get-ChildItem -LiteralPath $ResolvedPath -Recurse -Force -Directory -ErrorAction SilentlyContinue)
-$DirSizes = @{{}}
+$IsDriveRoot = $DriveRoot -and [string]::Equals($RootTrimmed, $DriveRoot.TrimEnd('\\'), [System.StringComparison]::OrdinalIgnoreCase)
 $SkippedEntries = 0
 $ScannedFiles = 0
+$ScannedDirs = 0
+$EstimatedTotalBytes = 0L
+$TopFolders = @()
+$TopFiles = @()
 
-foreach ($File in $AllFiles) {{
-    try {{
-        $Size = [Int64]$File.Length
-        $ScannedFiles += 1
-        $Current = $File.DirectoryName
-        while ($Current) {{
-            if (-not $Current.StartsWith($RootTrimmed, [System.StringComparison]::OrdinalIgnoreCase)) {{ break }}
-            if ($DirSizes.ContainsKey($Current)) {{ $DirSizes[$Current] += $Size }} else {{ $DirSizes[$Current] = $Size }}
-            if ([string]::Equals($Current.TrimEnd('\\'), $RootTrimmed, [System.StringComparison]::OrdinalIgnoreCase)) {{ break }}
-            $Parent = Split-Path -LiteralPath $Current -Parent
-            if (-not $Parent -or [string]::Equals($Parent, $Current, [System.StringComparison]::OrdinalIgnoreCase)) {{ break }}
-            $Current = $Parent
+if ($IsDriveRoot) {{
+    $FolderRows = @()
+    $FileRows = @()
+    Get-ChildItem -LiteralPath $ResolvedPath -Force -ErrorAction SilentlyContinue | ForEach-Object {{
+        try {{
+            if ($_.PSIsContainer) {{
+                $ScannedDirs += 1
+                $Info = Get-DirectorySize $_.FullName
+                $ScannedFiles += [Int64]$Info.files
+                $EstimatedTotalBytes += [Int64]$Info.size
+                $FolderRows += @{{ path = $_.FullName; size_bytes = [Int64]$Info.size; size_human = Format-Bytes([Int64]$Info.size) }}
+            }} else {{
+                $Size = [Int64]$_.Length
+                $ScannedFiles += 1
+                $EstimatedTotalBytes += $Size
+                $FileRows += @{{ path = $_.FullName; size_bytes = $Size; size_human = Format-Bytes($Size) }}
+            }}
+        }} catch {{
+            $SkippedEntries += 1
         }}
-    }} catch {{
-        $SkippedEntries += 1
     }}
+    $TopFolders = @($FolderRows | Sort-Object size_bytes -Descending | Select-Object -First $TopN)
+    $TopFiles = @($FileRows | Sort-Object size_bytes -Descending | Select-Object -First $TopN)
+}} else {{
+    $AllFiles = @(Get-ChildItem -LiteralPath $ResolvedPath -Recurse -Force -File -ErrorAction SilentlyContinue)
+    $AllDirs = @(Get-ChildItem -LiteralPath $ResolvedPath -Recurse -Force -Directory -ErrorAction SilentlyContinue)
+    $DirSizes = @{{}}
+    $ScannedDirs = $AllDirs.Count
+
+    foreach ($File in $AllFiles) {{
+        try {{
+            $Size = [Int64]$File.Length
+            $ScannedFiles += 1
+            $EstimatedTotalBytes += $Size
+            $Current = $File.DirectoryName
+            while ($Current) {{
+                if (-not $Current.StartsWith($RootTrimmed, [System.StringComparison]::OrdinalIgnoreCase)) {{ break }}
+                if ($DirSizes.ContainsKey($Current)) {{ $DirSizes[$Current] += $Size }} else {{ $DirSizes[$Current] = $Size }}
+                if ([string]::Equals($Current.TrimEnd('\\'), $RootTrimmed, [System.StringComparison]::OrdinalIgnoreCase)) {{ break }}
+                $Parent = Split-Path -LiteralPath $Current -Parent
+                if (-not $Parent -or [string]::Equals($Parent, $Current, [System.StringComparison]::OrdinalIgnoreCase)) {{ break }}
+                $Current = $Parent
+            }}
+        }} catch {{
+            $SkippedEntries += 1
+        }}
+    }}
+
+    $TopFolders = @(
+        $DirSizes.GetEnumerator() |
+        Where-Object {{ -not [string]::Equals($_.Key.TrimEnd('\\'), $RootTrimmed, [System.StringComparison]::OrdinalIgnoreCase) }} |
+        Sort-Object Value -Descending |
+        Select-Object -First $TopN |
+        ForEach-Object {{
+            @{{ path = $_.Key; size_bytes = [Int64]$_.Value; size_human = Format-Bytes([Int64]$_.Value) }}
+        }}
+    )
+
+    $TopFiles = @(
+        $AllFiles |
+        Sort-Object Length -Descending |
+        Select-Object -First $TopN |
+        ForEach-Object {{
+            @{{ path = $_.FullName; size_bytes = [Int64]$_.Length; size_human = Format-Bytes([Int64]$_.Length) }}
+        }}
+    )
 }}
-
-$TopFolders = @(
-    $DirSizes.GetEnumerator() |
-    Where-Object {{ -not [string]::Equals($_.Key.TrimEnd('\\'), $RootTrimmed, [System.StringComparison]::OrdinalIgnoreCase) }} |
-    Sort-Object Value -Descending |
-    Select-Object -First $TopN |
-    ForEach-Object {{
-        @{{ path = $_.Key; size_bytes = [Int64]$_.Value; size_human = Format-Bytes([Int64]$_.Value) }}
-    }}
-)
-
-$TopFiles = @(
-    $AllFiles |
-    Sort-Object Length -Descending |
-    Select-Object -First $TopN |
-    ForEach-Object {{
-        @{{ path = $_.FullName; size_bytes = [Int64]$_.Length; size_human = Format-Bytes([Int64]$_.Length) }}
-    }}
-)
 
 $TopApps = @()
 foreach ($Root in @("$($env:SystemDrive)\\Program Files", "$($env:SystemDrive)\\Program Files (x86)", "$($env:LOCALAPPDATA)\\Programs")) {{
@@ -310,7 +347,6 @@ foreach ($Root in @("$($env:SystemDrive)\\Program Files", "$($env:SystemDrive)\\
     }}
 }}
 $TopApps = @($TopApps | Sort-Object size_bytes -Descending | Select-Object -First $TopN)
-$EstimatedTotalBytes = if ($AllFiles.Count -gt 0) {{ [Int64](($AllFiles | Measure-Object -Property Length -Sum).Sum) }} else {{ 0L }}
 
 $Output = @{{
     path = $ResolvedPath
@@ -327,10 +363,106 @@ $Output = @{{
     top_folders = $TopFolders
     top_apps = $TopApps
     scanned_files = $ScannedFiles
-    scanned_dirs = $AllDirs.Count
+    scanned_dirs = $ScannedDirs
     skipped_entries = $SkippedEntries
     estimated_total_bytes = $EstimatedTotalBytes
     estimated_total_human = Format-Bytes($EstimatedTotalBytes)
+    scan_mode = if ($IsDriveRoot) {{ 'shallow_root' }} else {{ 'deep' }}
+    captured_at = [DateTime]::UtcNow.ToString('o')
+}}
+
+$Output | ConvertTo-Json -Depth 6 -Compress
+""".strip()
+
+    @staticmethod
+    def _build_windows_drive_overview_script(path: str | None, top_n: int) -> str:
+        target_line = (
+            f"$TargetPath = '{ControlWorkflowService._escape_ps(path)}'"
+            if path
+            else '$TargetPath = if ($env:SystemDrive) { "$($env:SystemDrive)\\" } else { "C:\\" }'
+        )
+        return f"""
+$ErrorActionPreference = 'Stop'
+
+function Format-Bytes([Int64]$Bytes) {{
+    if ($Bytes -lt 1KB) {{ return "$Bytes B" }}
+    if ($Bytes -lt 1MB) {{ return ('{{0:N1}} KB' -f ($Bytes / 1KB)) }}
+    if ($Bytes -lt 1GB) {{ return ('{{0:N1}} MB' -f ($Bytes / 1MB)) }}
+    if ($Bytes -lt 1TB) {{ return ('{{0:N1}} GB' -f ($Bytes / 1GB)) }}
+    return ('{{0:N1}} TB' -f ($Bytes / 1TB))
+}}
+
+function Get-InstalledApps([int]$Limit) {{
+    $RegistryPaths = @(
+        'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+        'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+        'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
+    )
+    $Rows = foreach ($RegistryPath in $RegistryPaths) {{
+        Get-ItemProperty -Path $RegistryPath -ErrorAction SilentlyContinue | ForEach-Object {{
+            $DisplayName = $_.DisplayName
+            $EstimatedSizeKb = $_.EstimatedSize
+            if ($DisplayName -and $EstimatedSizeKb) {{
+                [PSCustomObject]@{{
+                    name = $DisplayName
+                    path = $_.InstallLocation
+                    size_bytes = [Int64]$EstimatedSizeKb * 1KB
+                    size_human = Format-Bytes(([Int64]$EstimatedSizeKb * 1KB))
+                }}
+            }}
+        }}
+    }}
+    @($Rows | Sort-Object size_bytes -Descending | Select-Object -First $Limit)
+}}
+
+{target_line}
+$TopN = {top_n}
+if (-not (Test-Path -LiteralPath $TargetPath)) {{
+    throw "Path not found: $TargetPath"
+}}
+
+$ResolvedPath = (Resolve-Path -LiteralPath $TargetPath).Path
+$DriveRoot = [System.IO.Path]::GetPathRoot($ResolvedPath)
+$Usage = $null
+if ($DriveRoot) {{
+    $DeviceId = $DriveRoot.TrimEnd('\\')
+    $Usage = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$DeviceId'" -ErrorAction SilentlyContinue
+}}
+
+$TopFiles = @(
+    Get-ChildItem -LiteralPath $ResolvedPath -Force -File -ErrorAction SilentlyContinue |
+    Sort-Object Length -Descending |
+    Select-Object -First $TopN |
+    ForEach-Object {{
+        @{{ path = $_.FullName; size_bytes = [Int64]$_.Length; size_human = Format-Bytes([Int64]$_.Length) }}
+    }}
+)
+
+$TopApps = Get-InstalledApps -Limit $TopN
+$DirectDirs = @(Get-ChildItem -LiteralPath $ResolvedPath -Force -Directory -ErrorAction SilentlyContinue)
+$DirectFiles = @(Get-ChildItem -LiteralPath $ResolvedPath -Force -File -ErrorAction SilentlyContinue)
+
+$Output = @{{
+    path = $ResolvedPath
+    top_n = $TopN
+    target_usage = if ($Usage -and $Usage.Size) {{
+        @{{
+            total_bytes = [Int64]$Usage.Size
+            used_bytes = [Int64]$Usage.Size - [Int64]$Usage.FreeSpace
+            free_bytes = [Int64]$Usage.FreeSpace
+            percent = if ([Int64]$Usage.Size -gt 0) {{ [Math]::Round((([Int64]$Usage.Size - [Int64]$Usage.FreeSpace) / [Int64]$Usage.Size) * 100, 1) }} else {{ 0 }}
+        }}
+    }} else {{ @{{}} }}
+    top_files = $TopFiles
+    top_folders = @()
+    top_apps = $TopApps
+    scanned_files = $DirectFiles.Count
+    scanned_dirs = $DirectDirs.Count
+    skipped_entries = 0
+    estimated_total_bytes = if ($Usage) {{ [Int64]$Usage.Size - [Int64]$Usage.FreeSpace }} else {{ 0L }}
+    estimated_total_human = if ($Usage) {{ Format-Bytes(([Int64]$Usage.Size - [Int64]$Usage.FreeSpace)) }} else {{ '0 B' }}
+    scan_mode = 'drive_overview'
+    scan_note = 'Drive-root overview mode is faster. Inspect a narrower path like C:\\Users or Downloads for folder-level hotspots.'
     captured_at = [DateTime]::UtcNow.ToString('o')
 }}
 

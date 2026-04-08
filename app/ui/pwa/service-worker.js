@@ -1,9 +1,10 @@
-const CACHE_NAME = "fitclaw-aiops-shell-v7";
+const CACHE_NAME = "fitclaw-aiops-shell-v12";
 const APP_SHELL = [
-  "/app",
   "/app-manifest.webmanifest",
   "/app-assets/chat-app.css",
   "/app-assets/chat-app.js",
+  "/app-assets/transit-live.css",
+  "/app-assets/transit-live.js",
   "/app-assets/icons/icon-192.png",
   "/app-assets/icons/icon-512.png",
   "/app-assets/icons/apple-touch-icon.png",
@@ -36,6 +37,29 @@ self.addEventListener("fetch", (event) => {
   }
 
   const url = new URL(request.url);
+  const isNavigation = request.mode === "navigate" || request.destination === "document";
+
+  if (isNavigation && (url.pathname === "/app" || url.pathname === "/transit-live")) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type !== "opaque") {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(request);
+          if (cached) {
+            return cached;
+          }
+          return caches.match("/app");
+        })
+    );
+    return;
+  }
+
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(
       fetch(request).catch(() => caches.match("/app"))

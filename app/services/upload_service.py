@@ -135,7 +135,31 @@ class UploadService:
         if mime_type.startswith("image/"):
             return UploadedAssetKind.image
         extension = Path(filename).suffix.lower()
-        if extension in {".txt", ".md", ".py", ".json", ".csv", ".log", ".yaml", ".yml", ".xml", ".html", ".js", ".ts", ".tsx", ".jsx", ".pdf"}:
+        if extension in {
+            ".txt",
+            ".md",
+            ".py",
+            ".json",
+            ".csv",
+            ".tsv",
+            ".log",
+            ".yaml",
+            ".yml",
+            ".xml",
+            ".html",
+            ".htm",
+            ".js",
+            ".ts",
+            ".tsx",
+            ".jsx",
+            ".pdf",
+            ".docx",
+            ".docm",
+            ".doc",
+            ".xlsx",
+            ".xls",
+            ".xlsm",
+        }:
             return UploadedAssetKind.document
         return UploadedAssetKind.binary
 

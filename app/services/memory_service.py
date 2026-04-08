@@ -1,7 +1,13 @@
+from datetime import timedelta
+
 from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.conversation import ConversationMessage, MessageRole
+from app.models.base import utcnow
+
+settings = get_settings()
 
 
 class MemoryService:
@@ -146,6 +152,7 @@ class MemoryService:
         session_id: str,
         platform_user_id: str,
         limit: int = 12,
+        max_age_minutes: int | None = None,
     ) -> list[str]:
         stmt = (
             select(ConversationMessage)
@@ -155,9 +162,13 @@ class MemoryService:
             .limit(limit)
         )
 
+        max_age = max_age_minutes if max_age_minutes is not None else settings.attachment_context_max_minutes
+        cutoff = utcnow() - timedelta(minutes=max(max_age, 1))
         seen: set[str] = set()
         results: list[str] = []
         for message in db.scalars(stmt).all():
+            if message.created_at and message.created_at < cutoff:
+                break
             attachments = list((message.metadata_json or {}).get("attachments", []))
             current_ids = []
             for item in attachments:

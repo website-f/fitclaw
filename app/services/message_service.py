@@ -6,12 +6,16 @@ from app.core.config import get_settings
 from app.models.conversation import MessageRole
 from app.services.agent_command_service import AgentCommandService
 from app.services.attachment_service import AttachmentService
+from app.services.calendar_service import CalendarService
 from app.services.command_service import TaskCommandService
 from app.services.command_result import MessageAttachment
 from app.services.llm_service import LLMService, LLMServiceError
 from app.services.memory_service import MemoryService
 from app.services.runtime_config_service import RuntimeConfigService
+from app.services.transit_service import TransitService
 from app.services.upload_service import UploadService
+from app.services.weather_service import WeatherService
+from app.services.web_content_service import WebContentService
 
 settings = get_settings()
 
@@ -88,6 +92,27 @@ class MessageService:
                 db=db,
                 user_id=user_id,
                 text=normalized_text,
+            )
+        if command_result is None:
+            command_result = CalendarService.try_handle(
+                db=db,
+                user_id=user_id,
+                session_id=resolved_session_id,
+                text=normalized_text,
+            )
+        if command_result is None:
+            command_result = WeatherService.try_handle(normalized_text)
+        if command_result is None:
+            command_result = TransitService.try_handle(normalized_text)
+        if command_result is None:
+            history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
+            prompt_messages = [{"role": "system", "content": settings.system_prompt}] + MemoryService.to_llm_messages(history)
+            active_llm = RuntimeConfigService.get_active_llm(db)
+            command_result = WebContentService.try_handle(
+                text=normalized_text,
+                prompt_messages=prompt_messages,
+                active_provider=active_llm["provider"],
+                active_model=active_llm["model"],
             )
         if command_result is not None:
             metadata_json = {}

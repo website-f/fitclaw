@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import base64
 from collections import deque
+import csv
 from io import BytesIO
+from io import StringIO
 from pathlib import Path
 import re
 
+from bs4 import BeautifulSoup
+from docx import Document as DocxDocument
+from openpyxl import load_workbook
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
+import xlrd
 
 from app.core.config import get_settings
 from app.models.uploaded_asset import UploadedAsset, UploadedAssetKind
@@ -26,11 +32,13 @@ class AttachmentService:
         ".py",
         ".json",
         ".csv",
+        ".tsv",
         ".log",
         ".yaml",
         ".yml",
         ".xml",
         ".html",
+        ".htm",
         ".js",
         ".ts",
         ".tsx",
@@ -38,6 +46,11 @@ class AttachmentService:
         ".ini",
         ".toml",
         ".sql",
+        ".docx",
+        ".docm",
+        ".xlsx",
+        ".xls",
+        ".xlsm",
     }
 
     @staticmethod
@@ -369,20 +382,42 @@ class AttachmentService:
 
     @staticmethod
     def extract_text(asset: UploadedAsset) -> str:
-        suffix = Path(asset.original_filename).suffix.lower()
         raw = UploadService.load_bytes(asset)
+        return AttachmentService.extract_text_from_bytes(
+            original_filename=asset.original_filename,
+            mime_type=asset.mime_type,
+            raw=raw,
+        )
 
-        if suffix == ".pdf":
-            reader = PdfReader(BytesIO(raw))
-            parts = []
-            for page in reader.pages[:20]:
-                parts.append(page.extract_text() or "")
-            text = "\n".join(parts)
+    @staticmethod
+    def extract_text_from_bytes(original_filename: str, mime_type: str | None, raw: bytes) -> str:
+        suffix = Path(original_filename).suffix.lower()
+        normalized_mime = (mime_type or "").lower()
+
+        if suffix == ".pdf" or normalized_mime == "application/pdf":
+            text = AttachmentService._extract_pdf_text(raw)
+        elif suffix in {".docx", ".docm"} or normalized_mime in {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }:
+            text = AttachmentService._extract_docx_text(raw)
+        elif suffix == ".doc":
+            text = (
+                "Legacy `.doc` files are not fully supported by the built-in parser yet. "
+                "Please re-save the document as `.docx` for best extraction quality."
+            )
+        elif suffix in {".xlsx", ".xlsm"} or normalized_mime in {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel.sheet.macroenabled.12",
+        }:
+            text = AttachmentService._extract_xlsx_text(raw)
+        elif suffix == ".xls" or normalized_mime == "application/vnd.ms-excel":
+            text = AttachmentService._extract_xls_text(raw)
+        elif suffix in {".csv", ".tsv"}:
+            text = AttachmentService._extract_delimited_text(raw, delimiter="\t" if suffix == ".tsv" else ",")
+        elif suffix in {".html", ".htm"} or "html" in normalized_mime:
+            text = AttachmentService._extract_html_text(raw)
         else:
-            try:
-                text = raw.decode("utf-8")
-            except UnicodeDecodeError:
-                text = raw.decode("utf-8", errors="replace")
+            text = AttachmentService._decode_text_bytes(raw)
 
         text = text.strip()
         if not text:
@@ -434,11 +469,24 @@ class AttachmentService:
             "recognise this",
             "verify this",
             "check this image",
+            "check this file",
+            "check it",
             "check this photo",
             "check this picture",
+            "describe this",
             "describe it",
+            "summarize this",
+            "summarise this",
+            "summarize it",
+            "summarise it",
+            "analyze this",
+            "analyse this",
+            "analyze it",
+            "analyse it",
             "read this image",
             "read the image",
+            "read this file",
+            "read that file",
             "extract text",
             "ocr this",
             "edit it",
@@ -452,16 +500,6 @@ class AttachmentService:
             or any(token in lowered for token in attachment_intents)
             or AttachmentService._looks_like_edit_request(lowered)
             or AttachmentService._looks_like_document_edit_request(lowered)
-            or lowered.startswith("describe")
-            or lowered.startswith("summarize")
-            or lowered.startswith("analyze")
-            or lowered.startswith("identify")
-            or lowered.startswith("verify")
-            or lowered.startswith("what is")
-            or lowered.startswith("what's")
-            or lowered.startswith("check ")
-            or lowered.startswith("read ")
-            or lowered.startswith("extract ")
         )
 
     @staticmethod
@@ -520,6 +558,98 @@ class AttachmentService:
             if len(lines) >= 3:
                 return "\n".join(lines[1:-1])
         return cleaned
+
+    @staticmethod
+    def _decode_text_bytes(raw: bytes) -> str:
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return raw.decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _extract_pdf_text(raw: bytes) -> str:
+        reader = PdfReader(BytesIO(raw))
+        parts = []
+        for page in reader.pages[:20]:
+            parts.append(page.extract_text() or "")
+        return "\n".join(parts)
+
+    @staticmethod
+    def _extract_docx_text(raw: bytes) -> str:
+        document = DocxDocument(BytesIO(raw))
+        parts: list[str] = []
+        for paragraph in document.paragraphs:
+            text = paragraph.text.strip()
+            if text:
+                parts.append(text)
+        for table in document.tables[:8]:
+            for row in table.rows[:30]:
+                values = [cell.text.strip() for cell in row.cells]
+                if any(values):
+                    parts.append(" | ".join(value for value in values if value))
+        return "\n".join(parts)
+
+    @staticmethod
+    def _extract_xlsx_text(raw: bytes) -> str:
+        workbook = load_workbook(filename=BytesIO(raw), read_only=True, data_only=True)
+        parts: list[str] = []
+        try:
+            for sheet in workbook.worksheets[:6]:
+                rows: list[str] = []
+                for row in sheet.iter_rows(min_row=1, max_row=40, values_only=True):
+                    values = ["" if value is None else str(value) for value in row[:20]]
+                    if any(value.strip() for value in values):
+                        rows.append("\t".join(values).rstrip())
+                if rows:
+                    parts.append(f"Sheet: {sheet.title}\n" + "\n".join(rows))
+        finally:
+            workbook.close()
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _extract_xls_text(raw: bytes) -> str:
+        workbook = xlrd.open_workbook(file_contents=raw)
+        parts: list[str] = []
+        for sheet in workbook.sheets()[:6]:
+            rows: list[str] = []
+            for row_idx in range(min(sheet.nrows, 40)):
+                values = [str(sheet.cell_value(row_idx, col_idx)).strip() for col_idx in range(min(sheet.ncols, 20))]
+                if any(values):
+                    rows.append("\t".join(values).rstrip())
+            if rows:
+                parts.append(f"Sheet: {sheet.name}\n" + "\n".join(rows))
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _extract_delimited_text(raw: bytes, delimiter: str) -> str:
+        text = AttachmentService._decode_text_bytes(raw)
+        reader = csv.reader(StringIO(text), delimiter=delimiter)
+        rows: list[str] = []
+        for index, row in enumerate(reader):
+            if index >= 60:
+                break
+            rows.append("\t".join(str(cell).strip() for cell in row))
+        return "\n".join(rows)
+
+    @staticmethod
+    def _extract_html_text(raw: bytes) -> str:
+        decoded = AttachmentService._decode_text_bytes(raw)
+        soup = BeautifulSoup(decoded, "html.parser")
+        for tag_name in ("script", "style", "noscript", "svg", "canvas"):
+            for tag in soup.find_all(tag_name):
+                tag.decompose()
+
+        parts: list[str] = []
+        if soup.title and soup.title.string:
+            parts.append(f"Title: {soup.title.string.strip()}")
+        description = soup.find("meta", attrs={"name": re.compile("^description$", re.IGNORECASE)})
+        if description and description.get("content"):
+            parts.append(f"Description: {description.get('content', '').strip()}")
+
+        body_text = "\n".join(line.strip() for line in soup.get_text("\n").splitlines() if line.strip())
+        if body_text:
+            parts.append(body_text)
+        return "\n\n".join(parts)
 
     @staticmethod
     def _remove_background(image: Image.Image) -> tuple[Image.Image, bool]:

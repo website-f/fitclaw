@@ -29,6 +29,7 @@ The installed agent can now:
 
 - Windows standalone app + Inno Setup installer
 - macOS `.app` + `.pkg`
+- Windows and macOS release artifacts now use versioned filenames from `agent_daemon/VERSION`
 
 ## GitHub Actions
 
@@ -44,11 +45,25 @@ cd agent_daemon
 powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1
 ```
 
+Example output:
+
+```text
+agent_daemon/dist/PersonalAIOpsAgent-0.3.6-windows-x64.exe
+```
+
 ## Build macOS
 
 ```bash
 cd agent_daemon
 bash packaging/macos/build.sh
+```
+
+Example outputs:
+
+```text
+agent_daemon/dist/PersonalAIOpsAgent-0.3.6-macos.app
+agent_daemon/dist/PersonalAIOpsAgent-0.3.6-macos.pkg
+agent_daemon/dist/PersonalAIOpsAgent-0.3.6-macos.dmg
 ```
 
 ## Control panel

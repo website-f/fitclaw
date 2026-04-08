@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import platform
 import shutil
 import subprocess
@@ -20,22 +21,55 @@ def _detect_execution_mode(description: str, metadata_json: dict[str, Any]) -> t
 
 
 def _run_shell(command: str, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout_seconds)
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if platform.system() == "Windows" else 0
+    return subprocess.run(
+        command,
+        shell=True,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        creationflags=creationflags,
+    )
 
 
 def _run_powershell(command: str, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
     if platform.system() == "Windows":
         executable = shutil.which("powershell") or "powershell"
+        encoded_command = base64.b64encode(command.encode("utf-16le")).decode("ascii")
+        args = [
+            executable,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-EncodedCommand",
+            encoded_command,
+        ]
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     else:
         executable = shutil.which("pwsh")
         if executable is None:
             raise RuntimeError("PowerShell execution requested, but `pwsh` is not installed on this machine.")
+        encoded_command = base64.b64encode(command.encode("utf-16le")).decode("ascii")
+        args = [
+            executable,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            encoded_command,
+        ]
+        creationflags = 0
 
     return subprocess.run(
-        [executable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        args,
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
+        creationflags=creationflags,
     )
 
 
@@ -79,4 +113,3 @@ def execute_task(task: dict[str, Any], config: AgentConfig) -> tuple[str, str | 
         "command": command,
         "returncode": completed.returncode,
     }
-

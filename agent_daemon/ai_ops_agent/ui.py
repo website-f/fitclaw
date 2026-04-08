@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ai_ops_agent.config import AgentConfig
-from ai_ops_agent.installer import install_agent, save_config, test_connection, uninstall_autostart
+from ai_ops_agent.installer import install_agent, remove_agent, save_config, test_connection, uninstall_autostart
 from ai_ops_agent.paths import config_path, log_path
 
 
@@ -78,6 +78,7 @@ class InstallerWindow:
             ("Test Connection", self.on_test_connection),
             ("Save Config", self.on_save_only),
             ("Install and Start", self.on_install),
+            ("Remove Agent", self.on_remove_agent),
             ("Remove Auto-Start", self.on_remove_autostart),
             ("Exit", self.root.destroy),
         ]:
@@ -142,7 +143,7 @@ class InstallerWindow:
                 raise ValueError("\n".join(errors))
             test_connection(config)
 
-        self._run_async(work, "Connection succeeded and agent credentials are valid.")
+        self._run_async(work, "Connection succeeded. The server is reachable, the credentials are valid, and registration + heartbeat were accepted.")
 
     def on_save_only(self) -> None:
         def work() -> None:
@@ -161,6 +162,24 @@ class InstallerWindow:
     def on_remove_autostart(self) -> None:
         self._run_async(uninstall_autostart, "Auto-start entry removed.")
 
+    def on_remove_agent(self) -> None:
+        confirmed = messagebox.askyesno(
+            "Remove Personal AI Ops Agent",
+            (
+                "This will unregister the agent from the server, stop its background process, remove auto-start, "
+                "and delete the saved local config.\n\nContinue?"
+            ),
+            icon=messagebox.WARNING,
+        )
+        if not confirmed:
+            return
+
+        def work() -> None:
+            config = self._config_from_form()
+            message = remove_agent(config, remove_remote=True, purge_related=True)
+            self.root.after(0, lambda: self.status_var.set(message))
+
+        self._run_async(work, "Agent removal finished.")
+
     def run(self) -> None:
         self.root.mainloop()
-

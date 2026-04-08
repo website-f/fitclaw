@@ -15,6 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read version
+        id: version
+        shell: powershell
+        run: |
+          $value = (Get-Content agent_daemon\VERSION -Raw).Trim()
+          "value=$value" >> $env:GITHUB_OUTPUT
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -28,18 +35,17 @@ jobs:
         shell: powershell
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
-          powershell -ExecutionPolicy Bypass -File agent_daemon\packaging\windows\build.ps1
+          powershell -ExecutionPolicy Bypass -File agent_daemon\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}"
 
       - name: Upload EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PersonalAIOpsAgent-windows-exe
-          path: agent_daemon/dist/PersonalAIOpsAgent.exe
+          name: PersonalAIOpsAgent-windows-x64
+          path: agent_daemon/dist/PersonalAIOpsAgent-*-windows-x64.exe
 
       - name: Upload Installer Artifact
-        if: hashFiles('agent_daemon/dist/PersonalAIOpsAgentSetup.exe') != ''
+        if: hashFiles('agent_daemon/dist/PersonalAIOpsAgent-*-windows-x64-setup.exe') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: PersonalAIOpsAgent-windows-setup
-          path: agent_daemon/dist/PersonalAIOpsAgentSetup.exe
-
+          name: PersonalAIOpsAgent-windows-x64-setup
+          path: agent_daemon/dist/PersonalAIOpsAgent-*-windows-x64-setup.exe

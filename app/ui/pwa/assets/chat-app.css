@@ -722,12 +722,21 @@ select option {
   word-break: break-word;
 }
 
+.bubble a {
+  color: var(--muted-strong);
+  text-decoration: underline;
+}
+
 .message.user .bubble {
   background: linear-gradient(135deg, rgba(56, 189, 248, 0.82), rgba(52, 211, 153, 0.92));
   color: #0b1424;
   border-color: rgba(255, 255, 255, 0.08);
   font-weight: 600;
   max-width: min(85%, 36rem);
+}
+
+.message.user .bubble a {
+  color: #0b1424;
 }
 
 /* ─── Attachments ─── */

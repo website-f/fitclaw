@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     agent_heartbeat_ttl_seconds: int = 120
     health_report_interval_seconds: int = 600
     daily_report_cron: str = "0 8 * * *"
+    chat_high_risk_confirmation_ttl_seconds: int = 600
+    calendar_default_event_duration_minutes: int = 60
+    calendar_default_reminder_minutes: int = 30
+    calendar_reminder_interval_seconds: int = 60
 
     flower_port: int = 5555
     ollama_port: int = 11434
@@ -79,6 +83,14 @@ class Settings(BaseSettings):
     n8n_basic_auth_password: str = "change-this-n8n-password"
     upload_max_bytes: int = 15728640
     upload_extract_text_chars: int = 24000
+    attachment_context_max_minutes: int = 45
+    web_crawl_timeout_seconds: int = 20
+    web_crawl_max_links: int = 3
+    weather_default_location: str = "Kuala Lumpur"
+    weather_cache_ttl_seconds: int = 1800
+    transit_static_cache_hours: int = 6
+    transit_realtime_cache_seconds: int = 20
+    transit_live_refresh_seconds: int = 35
 
     @property
     def telegram_allowed_user_id_set(self) -> set[int]:

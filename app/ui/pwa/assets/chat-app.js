@@ -398,23 +398,12 @@ async function sendMessage(text, attachments = []) {
       body: JSON.stringify(payload),
     });
 
-    removeThinkingMessage();
     state.sessionId = response.session_id || state.sessionId;
     persistSessionId();
-    state.messages.push({
-      id: `local-assistant-${createId()}`,
-      session_id: response.session_id || state.sessionId,
-      role: "assistant",
-      content: response.reply,
-      created_at: new Date().toISOString(),
-      provider: response.provider,
-      attachments: response.attachments || [],
-      handled_as_task_command: response.handled_as_task_command,
-      handled_as_agent_command: response.handled_as_agent_command,
-    });
-
+    removeThinkingMessage();
     releaseUploadPreviews(outboundAttachments);
     await loadSessions();
+    await loadCurrentSession();
     updateSessionHeader();
   } catch (error) {
     console.error("Send message failed", error);
@@ -700,6 +689,36 @@ function buildSuggestions() {
       title: "Daily report",
       description: "Generate a compact operational summary for today.",
       prompt: "give me a daily health and task summary",
+    },
+    {
+      title: "Summarize link",
+      description: "Crawl a pasted URL and explain what the page actually contains.",
+      prompt: "https://example.com summarize what this page says and the key takeaways",
+    },
+    {
+      title: "Schedule meeting",
+      description: "Create a calendar event directly from chat.",
+      prompt: "schedule a meeting with the design team tomorrow at 3pm for 45 minutes",
+    },
+    {
+      title: "Show calendar",
+      description: "List your upcoming meetings and reminders.",
+      prompt: "show my upcoming calendar events",
+    },
+    {
+      title: "Weather tomorrow",
+      description: "Ask for tomorrow's forecast with a concrete date.",
+      prompt: "weather in Kuala Lumpur tomorrow",
+    },
+    {
+      title: "Transit route",
+      description: "Plan a Klang Valley rail trip using the official schedule feed.",
+      prompt: "how do I go from Taman Bahagia to KLCC by LRT?",
+    },
+    {
+      title: "Live buses",
+      description: "Summarize the current official Rapid Bus KL live feed.",
+      prompt: "show live buses in KL",
     },
     {
       title: "Model check",
@@ -1129,7 +1148,7 @@ function renderMessages() {
     } else if (!message.content && attachments.length) {
       bubble.classList.add("is-hidden");
     } else {
-      bubble.textContent = message.content;
+      bubble.innerHTML = linkifyText(message.content || "");
     }
 
     const attachmentStack = node.querySelector(".attachment-stack");
@@ -1317,6 +1336,13 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function linkifyText(value) {
+  const escaped = escapeHtml(value).replace(/\n/g, "<br>");
+  return escaped
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/(^|[\s>])(\/transit-live(?:[^\s<]*)?)/g, '$1<a href="$2">$2</a>');
 }
 
 function formatTime(value) {

@@ -9,6 +9,8 @@ import subprocess
 import sys
 from typing import Sequence
 
+import psutil
+
 from ai_ops_agent.config import AgentConfig
 from ai_ops_agent.constants import APP_BUNDLE_ID, APP_NAME, RUN_KEY_NAME
 from ai_ops_agent.logging_utils import configure_logging
@@ -28,6 +30,37 @@ def test_connection(config: AgentConfig) -> None:
     logger = configure_logging(background=False)
     runner = AgentRunner(config, logger=logger)
     runner.test_connectivity()
+
+
+def remove_agent(config: AgentConfig, remove_remote: bool = True, purge_related: bool = True) -> str:
+    notes: list[str] = []
+
+    if remove_remote:
+        try:
+            logger = configure_logging(background=False)
+            runner = AgentRunner(config, logger=logger)
+            with runner.build_client() as client:
+                runner.unregister_agent(client, purge_related=purge_related)
+            notes.append("Removed the agent from the server registry.")
+        except Exception as exc:
+            notes.append(f"Server unregister was skipped: {exc}")
+
+    stopped = stop_background_processes()
+    if stopped:
+        notes.append(f"Stopped {stopped} running background agent process{'es' if stopped != 1 else ''}.")
+    else:
+        notes.append("No separate background agent process was running.")
+
+    uninstall_autostart()
+    notes.append("Removed the auto-start entry.")
+
+    try:
+        config_path().unlink(missing_ok=True)
+        notes.append("Deleted the saved local agent config.")
+    except Exception as exc:
+        notes.append(f"Could not delete the saved local config: {exc}")
+
+    return "\n".join(notes)
 
 
 def save_config(config: AgentConfig) -> None:
@@ -99,6 +132,37 @@ def start_background_process(command: Sequence[str]) -> None:
             start_new_session=True,
             **kwargs,
         )
+
+
+def stop_background_processes() -> int:
+    current_pid = os.getpid()
+    stopped = 0
+    for process in psutil.process_iter(["pid", "name", "cmdline", "exe"]):
+        try:
+            pid = int(process.info.get("pid") or 0)
+            if pid <= 0 or pid == current_pid:
+                continue
+            cmdline = [str(item) for item in (process.info.get("cmdline") or [])]
+            name = str(process.info.get("name") or "").lower()
+            exe = str(process.info.get("exe") or "").lower()
+            has_run_agent = any(part == "run-agent" for part in cmdline)
+            looks_like_agent = (
+                "personalaiopsagent" in name
+                or "personalaiopsagent" in exe
+                or any("agent_daemon.py" in part.lower() for part in cmdline)
+            )
+            if not (has_run_agent and looks_like_agent):
+                continue
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except psutil.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            stopped += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return stopped
 
 
 def _install_windows_run_key(command: Sequence[str]) -> None:

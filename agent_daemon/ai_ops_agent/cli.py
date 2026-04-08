@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from ai_ops_agent.config import AgentConfig
-from ai_ops_agent.installer import launcher_command, test_connection, uninstall_autostart
+from ai_ops_agent.installer import launcher_command, remove_agent, test_connection, uninstall_autostart
 from ai_ops_agent.logging_utils import configure_logging
 from ai_ops_agent.runtime import AgentRunner
 
@@ -19,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("test-connection", help="Validate the saved config against the VPS")
     subparsers.add_parser("show-launch-command", help="Print the auto-start launch command")
     subparsers.add_parser("remove-autostart", help="Remove the auto-start entry")
+    subparsers.add_parser("remove-agent", help="Unregister the saved agent and remove local auto-start/config")
     return parser
 
 
@@ -48,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
     if command == "test-connection":
         test_connection(config)
         print("Connection succeeded.")
+        return 0
+
+    if command == "remove-agent":
+        print(remove_agent(config))
         return 0
 
     if command == "run-agent":

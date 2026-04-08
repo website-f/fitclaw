@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import tempfile
 from typing import Any
+from urllib.parse import urlencode
 import webbrowser
 
 import psutil
@@ -97,7 +98,7 @@ def _find_codex_cli() -> str | None:
 
 def available_capabilities(config: AgentConfig) -> list[str]:
     capabilities = set(config.capabilities or [])
-    capabilities.update({"shell", "file_system", "processes", "storage"})
+    capabilities.update({"shell", "file_system", "processes", "storage", "calendar"})
     if _has_screenshot_backend():
         capabilities.add("screenshot")
     if _has_pyautogui():
@@ -133,6 +134,15 @@ def _default_storage_scan_path() -> Path:
         system_drive = os.environ.get("SystemDrive", "C:")
         return Path(f"{system_drive}\\")
     return Path.home()
+
+
+def _is_root_path(path: Path) -> bool:
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    anchor = resolved.anchor or str(resolved)
+    return str(resolved).rstrip("\\/") == str(Path(anchor)).rstrip("\\/")
 
 
 def _program_root_candidates(target: Path) -> list[Path]:
@@ -333,6 +343,7 @@ def _disk_usage_scan(payload: dict[str, Any]) -> dict[str, Any]:
 
     top_n = min(max(int(payload.get("top_n", 10)), 1), 50)
     include_hidden = _bool_value(payload.get("include_hidden"), default=False)
+    shallow_root_scan = _bool_value(payload.get("shallow_root_scan"), default=_is_root_path(target))
     file_heap: list[tuple[int, str]] = []
     folder_heap: list[tuple[int, str]] = []
     scanned_files = 0
@@ -380,7 +391,37 @@ def _disk_usage_scan(payload: dict[str, Any]) -> dict[str, Any]:
             return total_size
         return total_size
 
-    total_scanned_size = walk_directory(target, is_root=True)
+    if shallow_root_scan:
+        total_scanned_size = 0
+        try:
+            entries = list(target.iterdir())
+        except (FileNotFoundError, PermissionError, OSError):
+            entries = []
+            skipped_entries += 1
+
+        for entry in entries:
+            if not include_hidden and entry.name.startswith("."):
+                continue
+            try:
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir():
+                    scanned_dirs += 1
+                    child_size, child_files = _directory_size(entry)
+                    scanned_files += child_files
+                    total_scanned_size += child_size
+                    push_top(folder_heap, child_size, str(entry))
+                elif entry.is_file():
+                    stat = entry.stat()
+                    size = int(stat.st_size)
+                    scanned_files += 1
+                    total_scanned_size += size
+                    push_top(file_heap, size, str(entry))
+            except (FileNotFoundError, PermissionError, OSError):
+                skipped_entries += 1
+    else:
+        total_scanned_size = walk_directory(target, is_root=True)
+
     top_files = [
         {"path": path_value, "size_bytes": size, "size_human": _format_bytes(size)}
         for size, path_value in sorted(file_heap, reverse=True)
@@ -397,6 +438,7 @@ def _disk_usage_scan(payload: dict[str, Any]) -> dict[str, Any]:
         "skipped_entries": skipped_entries,
         "estimated_total_bytes": total_scanned_size,
         "estimated_total_human": _format_bytes(total_scanned_size),
+        "scan_mode": "shallow_root" if shallow_root_scan else "deep",
         "top_files": top_files,
         "top_folders": top_folders,
         "scanned_at": _utcnow_iso(),
@@ -592,6 +634,312 @@ def _app_launch(payload: dict[str, Any]) -> dict[str, Any]:
     return {"pid": process.pid, "command": command, "args": args}
 
 
+def _running_browser_processes() -> list[str]:
+    browser_names = {
+        "chrome.exe": "Google Chrome",
+        "msedge.exe": "Microsoft Edge",
+        "brave.exe": "Brave",
+        "firefox.exe": "Firefox",
+        "arc.exe": "Arc",
+        "opera.exe": "Opera",
+        "vivaldi.exe": "Vivaldi",
+        "safari": "Safari",
+        "google chrome": "Google Chrome",
+        "microsoft edge": "Microsoft Edge",
+        "firefox": "Firefox",
+    }
+    results: list[str] = []
+    seen: set[str] = set()
+    for process in psutil.process_iter(["name"]):
+        name = str(process.info.get("name") or "").strip().lower()
+        if not name:
+            continue
+        label = browser_names.get(name)
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        results.append(label)
+    return sorted(results)
+
+
+def _find_outlook_executable() -> str | None:
+    candidate = shutil.which("outlook")
+    if candidate:
+        return candidate
+
+    if platform.system() != "Windows":
+        return None
+
+    drive = Path.home().drive or os.environ.get("SystemDrive", "C:")
+    search_roots = [
+        Path(f"{drive}\\Program Files\\Microsoft Office"),
+        Path(f"{drive}\\Program Files (x86)\\Microsoft Office"),
+        Path(f"{drive}\\Program Files\\Microsoft Office\\root"),
+        Path(f"{drive}\\Program Files (x86)\\Microsoft Office\\root"),
+    ]
+    for root in search_roots:
+        if not root.exists():
+            continue
+        for match in root.rglob("OUTLOOK.EXE"):
+            return str(match)
+    return None
+
+
+def _calendar_windows_snapshot() -> list[dict[str, Any]]:
+    gw = _load_windows_module()
+    if gw is None:
+        return []
+
+    results: list[dict[str, Any]] = []
+    for window in gw.getAllWindows():
+        title = str(getattr(window, "title", "") or "").strip()
+        if not title:
+            continue
+        lowered = title.lower()
+        if not any(token in lowered for token in ("calendar", "outlook", "gmail")):
+            continue
+        results.append(
+            {
+                "title": title,
+                "width": getattr(window, "width", None),
+                "height": getattr(window, "height", None),
+                "is_minimized": getattr(window, "isMinimized", False),
+            }
+        )
+    return results[:20]
+
+
+def _calendar_probe(_: dict[str, Any]) -> dict[str, Any]:
+    windows = _calendar_windows_snapshot()
+    titles = [str(item.get("title", "")).lower() for item in windows]
+    running_browsers = _running_browser_processes()
+    has_google_calendar_window = any("google calendar" in title or "calendar.google.com" in title for title in titles)
+    has_outlook_window = any("outlook" in title for title in titles)
+    outlook_executable = _find_outlook_executable()
+    outlook_running = any(
+        str(process.info.get("name") or "").strip().lower() == "outlook.exe"
+        for process in psutil.process_iter(["name"])
+    )
+    outlook_available = bool(outlook_executable or outlook_running or has_outlook_window)
+
+    recommended_provider = "ics"
+    reason = "No active calendar app was detected, so a local .ics invite is the safest fallback."
+    if has_google_calendar_window:
+        recommended_provider = "google"
+        reason = "Google Calendar already appears to be open on this device."
+    elif outlook_available:
+        recommended_provider = "outlook"
+        reason = "Outlook looks available on this device, so the event can usually be saved directly."
+    elif running_browsers:
+        recommended_provider = "google"
+        reason = "A browser is already running, so opening a prefilled Google Calendar event is the best next option."
+
+    return {
+        "calendar_windows": windows,
+        "has_google_calendar_window": has_google_calendar_window,
+        "has_outlook_window": has_outlook_window,
+        "outlook_available": outlook_available,
+        "outlook_executable": outlook_executable,
+        "running_browsers": running_browsers,
+        "recommended_provider": recommended_provider,
+        "reason": reason,
+        "probed_at": _utcnow_iso(),
+    }
+
+
+def _parse_event_datetime(raw: str | None) -> datetime | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    normalized = value.replace("Z", "+00:00")
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is not None:
+        return parsed.astimezone()
+    return parsed
+
+
+def _ics_escape(value: str | None) -> str:
+    return str(value or "").replace("\\", "\\\\").replace("\n", "\\n").replace(",", "\\,").replace(";", "\\;")
+
+
+def _build_google_calendar_url(payload: dict[str, Any]) -> str:
+    starts_at = _parse_event_datetime(payload.get("starts_at"))
+    ends_at = _parse_event_datetime(payload.get("ends_at"))
+    if starts_at is None:
+        raise ValueError("Calendar start time is required.")
+    if ends_at is None:
+        ends_at = starts_at
+
+    def format_utc(value: datetime) -> str:
+        return value.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    params = {
+        "action": "TEMPLATE",
+        "text": str(payload.get("title", "")).strip(),
+        "dates": f"{format_utc(starts_at)}/{format_utc(ends_at)}",
+        "details": str(payload.get("description") or "").strip(),
+        "location": str(payload.get("location") or "").strip(),
+    }
+    timezone_name = str(payload.get("timezone") or "").strip()
+    if timezone_name:
+        params["ctz"] = timezone_name
+    return "https://calendar.google.com/calendar/render?" + urlencode(params)
+
+
+def _open_with_default_app(target: Path) -> None:
+    system = platform.system()
+    if system == "Windows":
+        os.startfile(str(target))  # type: ignore[attr-defined]
+        return
+    if system == "Darwin":
+        subprocess.Popen(["open", str(target)])
+        return
+    subprocess.Popen(["xdg-open", str(target)])
+
+
+def _write_calendar_ics(payload: dict[str, Any]) -> Path:
+    starts_at = _parse_event_datetime(payload.get("starts_at"))
+    if starts_at is None:
+        raise ValueError("Calendar start time is required.")
+    ends_at = _parse_event_datetime(payload.get("ends_at")) or starts_at
+    event_id = str(payload.get("event_id") or f"aiops-{int(datetime.now(timezone.utc).timestamp())}")
+    temp_dir = Path(tempfile.mkdtemp(prefix="ai_ops_calendar_"))
+    output_path = temp_dir / f"{event_id}.ics"
+    description = str(payload.get("description") or "Created by Personal AI Ops Platform").strip()
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//FitClaw//Personal AI Ops Agent//EN",
+        "BEGIN:VEVENT",
+        f"UID:{event_id}@fitclaw.aiops",
+        f"DTSTAMP:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        f"DTSTART:{starts_at.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        f"DTEND:{ends_at.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        f"SUMMARY:{_ics_escape(payload.get('title'))}",
+        f"DESCRIPTION:{_ics_escape(description)}",
+        "STATUS:CONFIRMED",
+    ]
+    location = str(payload.get("location") or "").strip()
+    if location:
+        lines.append(f"LOCATION:{_ics_escape(location)}")
+    meeting_url = str(payload.get("meeting_url") or "").strip()
+    if meeting_url:
+        lines.append(f"URL:{meeting_url}")
+    lines.extend(["END:VEVENT", "END:VCALENDAR", ""])
+    output_path.write_text("\r\n".join(lines), encoding="utf-8")
+    return output_path
+
+
+def _create_outlook_event(payload: dict[str, Any]) -> dict[str, Any]:
+    if platform.system() != "Windows":
+        raise RuntimeError("Direct Outlook calendar creation is only available on Windows agents.")
+
+    starts_at = _parse_event_datetime(payload.get("starts_at"))
+    if starts_at is None:
+        raise ValueError("Calendar start time is required.")
+    ends_at = _parse_event_datetime(payload.get("ends_at")) or starts_at
+    reminder_minutes_before = int(payload.get("reminder_minutes_before") or 30)
+
+    script_payload = {
+        "title": str(payload.get("title") or "").strip(),
+        "description": str(payload.get("description") or "").strip(),
+        "location": str(payload.get("location") or "").strip(),
+        "meeting_url": str(payload.get("meeting_url") or "").strip(),
+        "starts_at": starts_at.isoformat(),
+        "ends_at": ends_at.isoformat(),
+        "reminder_minutes_before": reminder_minutes_before,
+    }
+    payload_b64 = base64.b64encode(json.dumps(script_payload).encode("utf-8")).decode("ascii")
+    powershell_script = f"""
+$ErrorActionPreference = 'Stop'
+$PayloadJson = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{payload_b64}'))
+$Payload = $PayloadJson | ConvertFrom-Json
+$Outlook = New-Object -ComObject Outlook.Application
+$Appointment = $Outlook.CreateItem(1)
+$Appointment.Subject = [string]$Payload.title
+$Appointment.Start = [DateTime]::Parse([string]$Payload.starts_at).ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss')
+$Appointment.End = [DateTime]::Parse([string]$Payload.ends_at).ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss')
+$Appointment.Location = [string]$Payload.location
+$Body = [string]$Payload.description
+if ([string]::IsNullOrWhiteSpace($Body)) {{
+  $Body = 'Created by Personal AI Ops Platform'
+}}
+if (-not [string]::IsNullOrWhiteSpace([string]$Payload.meeting_url)) {{
+  $Body = ($Body.TrimEnd() + [Environment]::NewLine + [Environment]::NewLine + 'Meeting URL: ' + [string]$Payload.meeting_url)
+}}
+$Appointment.Body = $Body
+$Appointment.ReminderSet = $true
+$Appointment.ReminderMinutesBeforeStart = [int]$Payload.reminder_minutes_before
+$Appointment.BusyStatus = 2
+$Appointment.Save()
+Write-Output 'saved'
+""".strip()
+
+    completed = subprocess.run(
+        ["powershell", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", powershell_script],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        check=True,
+    )
+
+    return {
+        "ok": True,
+        "provider_used": "outlook",
+        "saved": True,
+        "stdout": completed.stdout.strip(),
+    }
+
+
+def _calendar_create(payload: dict[str, Any]) -> dict[str, Any]:
+    probe = _calendar_probe({})
+    preferred_provider = str(payload.get("provider") or "").strip().lower()
+    provider = preferred_provider or str(probe.get("recommended_provider") or "google")
+    if provider == "google" and not probe.get("running_browsers"):
+        provider = "ics"
+
+    if provider == "outlook":
+        try:
+            result = _create_outlook_event(payload)
+            result["probe"] = probe
+            return result
+        except Exception as exc:
+            if preferred_provider == "outlook":
+                raise
+            payload = dict(payload)
+            payload["_outlook_error"] = str(exc)
+            provider = "google" if probe.get("running_browsers") else "ics"
+
+    if provider == "google":
+        url = _build_google_calendar_url(payload)
+        webbrowser.open(url, new=2)
+        return {
+            "ok": True,
+            "provider_used": "google",
+            "opened": True,
+            "saved": False,
+            "requires_user_confirmation": True,
+            "opened_url": url,
+            "probe": probe,
+            "outlook_error": payload.get("_outlook_error"),
+        }
+
+    ics_path = _write_calendar_ics(payload)
+    _open_with_default_app(ics_path)
+    return {
+        "ok": True,
+        "provider_used": "ics",
+        "opened": True,
+        "saved": False,
+        "requires_user_confirmation": True,
+        "ics_path": str(ics_path),
+        "probe": probe,
+        "outlook_error": payload.get("_outlook_error"),
+    }
+
+
 def _codex_exec(payload: dict[str, Any]) -> dict[str, Any]:
     prompt = str(payload.get("prompt", "")).strip()
     if not prompt:
@@ -673,6 +1021,16 @@ def _app_action(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("No URL was provided.")
         webbrowser.open(url, new=2)
         return {"ok": True, "action": action, "url": url}
+
+    if action == "calendar_probe":
+        result = _calendar_probe(payload)
+        result["action"] = action
+        return result
+
+    if action == "calendar_create":
+        result = _calendar_create(payload)
+        result["action"] = action
+        return result
 
     if action == "file_manager_reveal":
         target = Path(str(payload.get("path", ""))).expanduser()

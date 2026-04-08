@@ -2,12 +2,14 @@ import json
 from datetime import timedelta
 
 import redis
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.agent import Agent, AgentStatus
 from app.models.base import utcnow
+from app.models.device_command import DeviceCommand, DeviceCommandStatus
+from app.models.task import Task, TaskStatus
 from app.schemas.agent import AgentResponse
 from app.schemas.model import ActiveModelConfig
 from app.services.runtime_config_service import RuntimeConfigService
@@ -85,6 +87,52 @@ class AgentService:
     @staticmethod
     def get_agent(db: Session, name: str) -> Agent | None:
         return db.scalar(select(Agent).where(Agent.name == name))
+
+    @staticmethod
+    def delete_agent(db: Session, name: str, purge_related: bool = False) -> dict | None:
+        agent = db.scalar(select(Agent).where(Agent.name == name))
+        if agent is None:
+            return None
+
+        pending_tasks_updated = 0
+        pending_commands_deleted = 0
+        if purge_related:
+            pending_tasks = list(
+                db.scalars(
+                    select(Task)
+                    .where(Task.assigned_agent_name == name)
+                    .where(Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]))
+                ).all()
+            )
+            for task in pending_tasks:
+                task.assigned_agent_name = None
+                task.metadata_json = {
+                    **(task.metadata_json or {}),
+                    "agent_removed": True,
+                    "previous_agent_name": name,
+                }
+                if task.status == TaskStatus.in_progress:
+                    task.status = TaskStatus.failed
+                    task.error_text = "Agent was removed before the task could finish."
+                    task.completed_at = utcnow()
+                pending_tasks_updated += 1
+
+            delete_result = db.execute(
+                delete(DeviceCommand)
+                .where(DeviceCommand.agent_name == name)
+                .where(DeviceCommand.status.in_([DeviceCommandStatus.pending, DeviceCommandStatus.running]))
+            )
+            pending_commands_deleted = int(delete_result.rowcount or 0)
+
+        db.delete(agent)
+        db.commit()
+        redis_client.delete(AgentService._heartbeat_key(name))
+        return {
+            "name": name,
+            "purge_related": purge_related,
+            "pending_tasks_updated": pending_tasks_updated,
+            "pending_commands_deleted": pending_commands_deleted,
+        }
 
     @staticmethod
     def mark_task_state(db: Session, name: str, status: AgentStatus, current_task_id: str | None = None) -> Agent | None:

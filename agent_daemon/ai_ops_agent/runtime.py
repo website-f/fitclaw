@@ -5,6 +5,7 @@ import platform
 import socket
 import time
 from typing import Any
+from urllib.parse import quote
 
 import certifi
 import httpx
@@ -44,10 +45,27 @@ class AgentRunner:
         }
 
     def test_connectivity(self) -> None:
-        with self.build_client() as client:
-            live = client.get("/health/live")
-            live.raise_for_status()
-            self.register_agent(client)
+        try:
+            with self.build_client() as client:
+                live = client.get("/health/live")
+                live.raise_for_status()
+                self.register_agent(client)
+                self.send_heartbeat(client)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                raise RuntimeError(
+                    "The server is reachable, but the agent credentials were rejected. "
+                    "Update the Auth Username and Shared Key so they exactly match the server `.env` values."
+                ) from exc
+            raise RuntimeError(
+                f"The server responded with {exc.response.status_code} while validating the agent connection."
+            ) from exc
+        except httpx.ConnectError as exc:
+            raise RuntimeError(
+                "The agent could not reach the server URL. Check that the API is running and that the Server URL is correct."
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Connection test failed: {exc}") from exc
 
     def register_agent(self, client: httpx.Client) -> None:
         capabilities = available_capabilities(self.config)
@@ -61,6 +79,12 @@ class AgentRunner:
         )
         response.raise_for_status()
         self.logger.info("Registered agent %s", self.config.agent_name)
+
+    def unregister_agent(self, client: httpx.Client, purge_related: bool = True) -> None:
+        encoded_name = quote(self.config.agent_name, safe="")
+        response = client.delete(f"/api/v1/agents/{encoded_name}", params={"purge_related": str(purge_related).lower()})
+        response.raise_for_status()
+        self.logger.info("Unregistered agent %s", self.config.agent_name)
 
     def send_heartbeat(self, client: httpx.Client, status: str = "online", current_task_id: str | None = None) -> None:
         response = client.post(

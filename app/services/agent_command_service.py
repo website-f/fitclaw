@@ -560,7 +560,7 @@ class AgentCommandService:
             description=description,
             timeout_seconds=timeout_seconds,
             title="Compatibility storage inspection",
-            metadata_json={"execution_mode": execution_mode},
+            metadata_json={"execution_mode": execution_mode, "command": script, "hidden_window": True},
         )
         if timeout_error:
             return cls._simple_reply(timeout_error)

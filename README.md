@@ -65,8 +65,11 @@ Self-hosted foundation for an always-on AI brain that lives on your VPS, talks t
 - FastAPI backend with health checks and interactive OpenAPI docs
 - Telegram bot built with `python-telegram-bot`
 - Responsive web chat app at `/app` with a ChatGPT-style interface
+- Dedicated transit operations page at `/transit-live`
 - PWA support so the web app can be installed across desktop and mobile devices
 - Ollama-first LLM routing with fast local fallback models before Gemini escalation
+- Malaysia weather support via the official `data.gov.my` forecast and warning feeds, with Open-Meteo fallback for broader geocoding
+- Malaysia transit support with official GTFS route planning for Rapid Rail KL and live GTFS-realtime vehicle feeds for supported bus and KTMB operators
 - SQLite persistence through SQLAlchemy for tasks, agents, memory, and reports
 - Redis-backed Celery workers, beat scheduling, and Flower monitoring
 - Basic-auth-protected agent API for registration, heartbeats, task claiming, and result callbacks
@@ -123,6 +126,7 @@ docker compose up -d
    - API docs: `http://YOUR_VPS_IP:8000/docs`
    - Health: `http://YOUR_VPS_IP:8000/health`
    - Web app: `http://YOUR_VPS_IP:8000/app`
+   - Transit live: `http://YOUR_VPS_IP:8000/transit-live`
    - Control panel: `http://YOUR_VPS_IP:8000/control`
    - Flower: `http://YOUR_VPS_IP:5555`
    - n8n: `http://YOUR_VPS_IP:5678`
@@ -297,6 +301,7 @@ http://YOUR_VPS_IP:8000/app
 What it includes:
 
 - ChatGPT-style conversation layout with history sidebar and live suggestions
+- weather and public-transport prompts that work in the same chat flow as tasks and agent automation
 - dynamic prompt cards for agent checks, screenshots, processes, and Codex tasks
 - responsive mobile-first layout inspired by modern AI mobile apps
 - thinking/loading states while replies are being generated
@@ -313,6 +318,39 @@ Web chat API endpoints used by the app:
 - `GET /api/v1/chat/sessions/{session_id}/messages`
 
 If you ask for a screenshot or Codex output from the web app, attachments can render directly inside the conversation thread.
+
+Weather and transit examples:
+
+- `weather in Kuala Lumpur tomorrow`
+- `show active weather warnings in Penang`
+- `how do I go from Taman Bahagia to KLCC by LRT?`
+- `show live buses in KL`
+
+## Transit live page
+
+Open the live transit page here:
+
+```text
+http://YOUR_VPS_IP:8000/transit-live
+```
+
+What it includes:
+
+- a route-planning form powered by the official Rapid Rail KL and KTMB GTFS static feeds
+- a live vehicle map for supported official GTFS-realtime providers
+- provider switching for Rapid Bus KL, MRT feeder buses, Penang, Kuantan, KTMB, and BAS.MY feeds
+- a searchable live vehicle table with timestamps and route labels
+
+Transit API endpoints:
+
+- `GET /api/v1/transit/providers`
+- `GET /api/v1/transit/route`
+- `GET /api/v1/transit/live`
+
+Weather API endpoints:
+
+- `GET /api/v1/weather/forecast`
+- `GET /api/v1/weather/warnings`
 
 ## Agent API
 

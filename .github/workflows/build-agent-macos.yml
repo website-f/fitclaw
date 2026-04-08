@@ -15,6 +15,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < agent_daemon/VERSION)" >> "$GITHUB_OUTPUT"
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -34,10 +38,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PersonalAIOpsAgent-macos-pkg
-          path: agent_daemon/dist/PersonalAIOpsAgent.pkg
+          path: agent_daemon/dist/PersonalAIOpsAgent-*-macos.pkg
 
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
         with:
           name: PersonalAIOpsAgent-macos-dmg
-          path: agent_daemon/dist/PersonalAIOpsAgent.dmg
+          path: agent_daemon/dist/PersonalAIOpsAgent-*-macos.dmg

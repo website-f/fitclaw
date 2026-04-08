@@ -50,6 +50,22 @@ HELP_TEXT = (
     "- send a photo with `remove background`\n"
     "- send a document with `summarize this file`\n"
     "- send a document with `rewrite this file to be more concise`\n"
+    "- upload PDFs, DOCX, XLSX/XLS, CSV/TSV, code files, or text files and ask for a summary\n"
+    "\n"
+    "Links:\n"
+    "- paste one or more URLs and ask `summarize this` or `what does this page say?`\n"
+    "- the bot will crawl the provided links, extract readable content, and summarize what it found\n"
+    "\n"
+    "Weather:\n"
+    "- `weather in Shah Alam tomorrow`\n"
+    "- `will it rain in Kuala Lumpur today?`\n"
+    "- `show active weather warnings in Penang`\n"
+    "\n"
+    "Transit:\n"
+    "- `how do I go from Taman Bahagia to KLCC by LRT?`\n"
+    "- `route from Pasar Seni to Bukit Bintang via MRT`\n"
+    "- `show live buses in KL`\n"
+    "- for a live map and provider selector, open `/transit-live` in the web UI\n"
 )
 
 

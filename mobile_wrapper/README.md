@@ -37,6 +37,13 @@ npm run cap:add:android
 npm run cap:add:ios
 ```
 
+Or let the helper ensure and sync the platform in one step:
+
+```bash
+npm run cap:ensure:android
+npm run cap:ensure:ios
+```
+
 ## Sync and open native projects
 
 ```bash
@@ -49,3 +56,7 @@ npm run cap:open:ios
 
 - For App Store and Play Store release, HTTPS plus a domain is strongly recommended.
 - If you want the wrapper to bundle local web assets instead of loading the remote server URL, you can switch the Capacitor config later to a compiled local build.
+- The repository now includes GitHub Actions for:
+  - Android debug APK: `.github/workflows/build-mobile-android.yml`
+  - iOS unsigned simulator app: `.github/workflows/build-mobile-ios.yml`
+- The iOS workflow builds a simulator `.app` without signing. For a real App Store `.ipa`, add Apple signing secrets later and extend that workflow.

@@ -64,3 +64,11 @@ def update_agent_model_preferences(name: str, payload: AgentModelPreferencesUpda
     if agent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
     return AgentService.serialize_agent(agent)
+
+
+@router.delete("/{name}")
+def delete_agent(name: str, purge_related: bool = True, db: Session = Depends(get_db)):
+    result = AgentService.delete_agent(db, name=name, purge_related=purge_related)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
+    return {"removed": True, **result}
