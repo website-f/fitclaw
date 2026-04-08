@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import base64
 from datetime import datetime, timezone
+import heapq
 from io import BytesIO
+import json
+import os
 from pathlib import Path
 import platform
 import shutil
@@ -94,7 +97,7 @@ def _find_codex_cli() -> str | None:
 
 def available_capabilities(config: AgentConfig) -> list[str]:
     capabilities = set(config.capabilities or [])
-    capabilities.update({"shell", "file_system", "processes"})
+    capabilities.update({"shell", "file_system", "processes", "storage"})
     if _has_screenshot_backend():
         capabilities.add("screenshot")
     if _has_pyautogui():
@@ -106,6 +109,84 @@ def available_capabilities(config: AgentConfig) -> list[str]:
     if _find_codex_cli():
         capabilities.add("codex")
     return sorted(capabilities)
+
+
+def _format_bytes(value: int | float | None) -> str:
+    if not value:
+        return "0 B"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(value)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{value} B"
+
+
+def _default_storage_scan_path() -> Path:
+    if platform.system() == "Windows":
+        home_drive = Path.home().drive
+        if home_drive:
+            return Path(f"{home_drive}\\")
+        system_drive = os.environ.get("SystemDrive", "C:")
+        return Path(f"{system_drive}\\")
+    return Path.home()
+
+
+def _program_root_candidates(target: Path) -> list[Path]:
+    candidates: list[Path] = []
+    if platform.system() == "Windows":
+        drive = target.drive or Path.home().drive or os.environ.get("SystemDrive", "C:")
+        for raw in (
+            f"{drive}\\Program Files",
+            f"{drive}\\Program Files (x86)",
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs"),
+        ):
+            if raw:
+                path = Path(raw)
+                if path.exists() and path.is_dir():
+                    candidates.append(path)
+    return candidates
+
+
+def _directory_size(path: Path) -> tuple[int, int]:
+    total_size = 0
+    scanned_files = 0
+    for root, _, files in os.walk(path, topdown=True):
+        for filename in files:
+            file_path = Path(root) / filename
+            try:
+                total_size += file_path.stat().st_size
+                scanned_files += 1
+            except (FileNotFoundError, PermissionError, OSError):
+                continue
+    return total_size, scanned_files
+
+
+def _top_app_like_folders(target: Path, top_n: int) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for root in _program_root_candidates(target):
+        try:
+            children = [item for item in root.iterdir() if item.is_dir()]
+        except (FileNotFoundError, PermissionError, OSError):
+            continue
+
+        for child in children:
+            size_bytes, scanned_files = _directory_size(child)
+            results.append(
+                {
+                    "name": child.name,
+                    "path": str(child),
+                    "root": str(root),
+                    "size_bytes": size_bytes,
+                    "size_human": _format_bytes(size_bytes),
+                    "scanned_files": scanned_files,
+                }
+            )
+    results.sort(key=lambda item: item["size_bytes"], reverse=True)
+    return results[:top_n]
 
 
 def _screenshot(payload: dict[str, Any]) -> dict[str, Any]:
@@ -197,6 +278,161 @@ def _keyboard_press(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "key": key}
 
 
+def _storage_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    requested_path = str(payload.get("path", "")).strip()
+    target = Path(requested_path).expanduser() if requested_path else _default_storage_scan_path()
+    if not target.exists():
+        raise FileNotFoundError(f"{target} does not exist.")
+
+    target_usage = psutil.disk_usage(str(target))
+    partitions = []
+    seen_mounts: set[str] = set()
+    for partition in psutil.disk_partitions(all=False):
+        mountpoint = str(partition.mountpoint)
+        if not mountpoint or mountpoint in seen_mounts:
+            continue
+        seen_mounts.add(mountpoint)
+        try:
+            usage = psutil.disk_usage(mountpoint)
+        except Exception:
+            continue
+        partitions.append(
+            {
+                "device": partition.device,
+                "mountpoint": mountpoint,
+                "fstype": partition.fstype,
+                "opts": partition.opts,
+                "total_bytes": int(usage.total),
+                "used_bytes": int(usage.used),
+                "free_bytes": int(usage.free),
+                "percent": float(usage.percent),
+            }
+        )
+
+    partitions.sort(key=lambda item: item["total_bytes"], reverse=True)
+    return {
+        "path": str(target),
+        "target_usage": {
+            "total_bytes": int(target_usage.total),
+            "used_bytes": int(target_usage.used),
+            "free_bytes": int(target_usage.free),
+            "percent": float(target_usage.percent),
+        },
+        "partitions": partitions,
+        "captured_at": _utcnow_iso(),
+    }
+
+
+def _disk_usage_scan(payload: dict[str, Any]) -> dict[str, Any]:
+    requested_path = str(payload.get("path", "")).strip()
+    target = Path(requested_path).expanduser() if requested_path else _default_storage_scan_path()
+    if not target.exists():
+        raise FileNotFoundError(f"{target} does not exist.")
+    if not target.is_dir():
+        raise NotADirectoryError(f"{target} is not a directory.")
+
+    top_n = min(max(int(payload.get("top_n", 10)), 1), 50)
+    include_hidden = _bool_value(payload.get("include_hidden"), default=False)
+    file_heap: list[tuple[int, str]] = []
+    folder_heap: list[tuple[int, str]] = []
+    scanned_files = 0
+    scanned_dirs = 0
+    skipped_entries = 0
+
+    def push_top(heap: list[tuple[int, str]], size: int, path_value: str) -> None:
+        item = (int(size), path_value)
+        if len(heap) < top_n:
+            heapq.heappush(heap, item)
+            return
+        if size > heap[0][0]:
+            heapq.heapreplace(heap, item)
+
+    def walk_directory(path: Path, is_root: bool = False) -> int:
+        nonlocal scanned_files, scanned_dirs, skipped_entries
+        total_size = 0
+        try:
+            with os.scandir(path) as iterator:
+                for entry in iterator:
+                    name = entry.name
+                    if not include_hidden and name.startswith("."):
+                        continue
+                    try:
+                        if entry.is_symlink():
+                            continue
+                        if entry.is_dir(follow_symlinks=False):
+                            scanned_dirs += 1
+                            child_size = walk_directory(Path(entry.path), is_root=False)
+                            total_size += child_size
+                            push_top(folder_heap, child_size, entry.path)
+                        elif entry.is_file(follow_symlinks=False):
+                            stat = entry.stat(follow_symlinks=False)
+                            size = int(stat.st_size)
+                            scanned_files += 1
+                            total_size += size
+                            push_top(file_heap, size, entry.path)
+                    except (FileNotFoundError, PermissionError, OSError):
+                        skipped_entries += 1
+        except (FileNotFoundError, PermissionError, OSError):
+            skipped_entries += 1
+            return 0
+
+        if not is_root:
+            return total_size
+        return total_size
+
+    total_scanned_size = walk_directory(target, is_root=True)
+    top_files = [
+        {"path": path_value, "size_bytes": size, "size_human": _format_bytes(size)}
+        for size, path_value in sorted(file_heap, reverse=True)
+    ]
+    top_folders = [
+        {"path": path_value, "size_bytes": size, "size_human": _format_bytes(size)}
+        for size, path_value in sorted(folder_heap, reverse=True)
+    ]
+    return {
+        "path": str(target),
+        "top_n": top_n,
+        "scanned_files": scanned_files,
+        "scanned_dirs": scanned_dirs,
+        "skipped_entries": skipped_entries,
+        "estimated_total_bytes": total_scanned_size,
+        "estimated_total_human": _format_bytes(total_scanned_size),
+        "top_files": top_files,
+        "top_folders": top_folders,
+        "scanned_at": _utcnow_iso(),
+    }
+
+
+def _storage_breakdown(payload: dict[str, Any]) -> dict[str, Any]:
+    requested_path = str(payload.get("path", "")).strip()
+    target = Path(requested_path).expanduser() if requested_path else _default_storage_scan_path()
+    if not target.exists():
+        raise FileNotFoundError(f"{target} does not exist.")
+    if not target.is_dir():
+        raise NotADirectoryError(f"{target} is not a directory.")
+
+    top_n = min(max(int(payload.get("top_n", 10)), 1), 50)
+    summary = _storage_summary({"path": str(target)})
+    scan = _disk_usage_scan({"path": str(target), "top_n": top_n, "include_hidden": payload.get("include_hidden", False)})
+    top_apps = _top_app_like_folders(target, top_n)
+
+    return {
+        "path": str(target),
+        "top_n": top_n,
+        "target_usage": summary.get("target_usage", {}),
+        "partitions": summary.get("partitions", []),
+        "top_files": scan.get("top_files", []),
+        "top_folders": scan.get("top_folders", []),
+        "top_apps": top_apps,
+        "scanned_files": scan.get("scanned_files", 0),
+        "scanned_dirs": scan.get("scanned_dirs", 0),
+        "skipped_entries": scan.get("skipped_entries", 0),
+        "estimated_total_bytes": scan.get("estimated_total_bytes", 0),
+        "estimated_total_human": scan.get("estimated_total_human", "0 B"),
+        "captured_at": _utcnow_iso(),
+    }
+
+
 def _file_list(payload: dict[str, Any]) -> dict[str, Any]:
     target = Path(str(payload.get("path", "."))).expanduser()
     if not target.exists():
@@ -263,6 +499,57 @@ def _file_write(payload: dict[str, Any]) -> dict[str, Any]:
     with target.open("a" if append else "w", encoding="utf-8") as handle:
         handle.write(content)
     return {"path": str(target), "bytes_written": len(content.encode("utf-8")), "append": append}
+
+
+def _file_delete(payload: dict[str, Any]) -> dict[str, Any]:
+    target = Path(str(payload.get("path", ""))).expanduser()
+    use_trash = _bool_value(payload.get("use_trash"), default=True)
+    if not target.exists():
+        raise FileNotFoundError(f"{target} does not exist.")
+
+    deleted_type = "directory" if target.is_dir() else "file"
+    method = "permanent_delete"
+
+    if use_trash and platform.system() == "Windows":
+        quoted_path = str(target).replace("'", "''")
+        powershell_script = f"""
+Add-Type -AssemblyName Microsoft.VisualBasic
+$Target = '{quoted_path}'
+if (Test-Path -LiteralPath $Target -PathType Container) {{
+  [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
+    $Target,
+    [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+    [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+  )
+}} else {{
+  [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(
+    $Target,
+    [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+    [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+  )
+}}
+""".strip()
+        subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", powershell_script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=True,
+        )
+        method = "recycle_bin"
+    else:
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+
+    return {
+        "ok": True,
+        "path": str(target),
+        "deleted_type": deleted_type,
+        "method": method,
+        "deleted_at": _utcnow_iso(),
+    }
 
 
 def _process_list(_: dict[str, Any]) -> dict[str, Any]:
@@ -471,9 +758,13 @@ COMMAND_HANDLERS = {
     "keyboard_type": _keyboard_type,
     "keyboard_hotkey": _keyboard_hotkey,
     "keyboard_press": _keyboard_press,
+    "storage_summary": _storage_summary,
+    "disk_usage_scan": _disk_usage_scan,
+    "storage_breakdown": _storage_breakdown,
     "file_list": _file_list,
     "file_read": _file_read,
     "file_write": _file_write,
+    "file_delete": _file_delete,
     "process_list": _process_list,
     "process_kill": _process_kill,
     "app_launch": _app_launch,

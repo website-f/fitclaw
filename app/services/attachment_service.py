@@ -233,6 +233,10 @@ class AttachmentService:
         active_model: str,
     ) -> CommandResult:
         request_text = normalized_text or "Describe this image clearly and extract any important text or visual details."
+        if len(request_text.split()) <= 3 and any(token in request_text.lower() for token in ("verify", "identify", "what", "check")):
+            request_text = (
+                "Identify what this image shows, verify the important visual details, and answer the user's request clearly."
+            )
 
         try:
             reply, provider = LLMService.generate_vision_reply(
@@ -413,14 +417,49 @@ class AttachmentService:
             "previous file",
             "the image",
             "the file",
+            "this attachment",
+            "the attachment",
+            "the upload",
+            "that image",
+            "that photo",
+            "that picture",
+            "that file",
+        )
+        attachment_intents = (
+            "what is this",
+            "what's this",
+            "identify this",
+            "identify it",
+            "recognize this",
+            "recognise this",
+            "verify this",
+            "check this image",
+            "check this photo",
+            "check this picture",
+            "describe it",
+            "read this image",
+            "read the image",
+            "extract text",
+            "ocr this",
+            "edit it",
+            "edit this",
+            "remove bg",
+            "remove the background",
+            "remove background",
         )
         return (
             any(token in lowered for token in direct_tokens)
+            or any(token in lowered for token in attachment_intents)
             or AttachmentService._looks_like_edit_request(lowered)
             or AttachmentService._looks_like_document_edit_request(lowered)
             or lowered.startswith("describe")
             or lowered.startswith("summarize")
             or lowered.startswith("analyze")
+            or lowered.startswith("identify")
+            or lowered.startswith("verify")
+            or lowered.startswith("what is")
+            or lowered.startswith("what's")
+            or lowered.startswith("check ")
             or lowered.startswith("read ")
             or lowered.startswith("extract ")
         )
@@ -447,6 +486,7 @@ class AttachmentService:
                 "transparent",
                 "cut out",
                 "isolate subject",
+                "remove bg",
             )
         )
 

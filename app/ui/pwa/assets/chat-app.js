@@ -13,10 +13,16 @@ const state = {
   agents: [],
   pendingUploads: [],
   modelInfo: null,
+  selectedModelKey: "",
+  modelSwitching: false,
+  modelSwitchTarget: null,
+  agentSaveState: {},
   sending: false,
   installPrompt: null,
   sidebarOpen: false,
   inspectorOpen: false,
+  historyPage: 0,
+  historyPageSize: 8,
 };
 
 const dom = {
@@ -24,6 +30,10 @@ const dom = {
   sidebar: document.getElementById("sidebar"),
   inspector: document.getElementById("inspector"),
   backdrop: document.getElementById("drawerBackdrop"),
+  inspectorFab: document.getElementById("inspectorFab"),
+  modelSwitchModal: document.getElementById("modelSwitchModal"),
+  modelSwitchTitle: document.getElementById("modelSwitchTitle"),
+  modelSwitchDetail: document.getElementById("modelSwitchDetail"),
   sessionTitle: document.getElementById("sessionTitle"),
   connectionLabel: document.getElementById("connectionLabel"),
   modelPill: document.getElementById("modelPill"),
@@ -45,17 +55,27 @@ const dom = {
   installButton: document.getElementById("installButton"),
   refreshHistoryButton: document.getElementById("refreshHistoryButton"),
   refreshAgentsButton: document.getElementById("refreshAgentsButton"),
+  refreshModelsButton: document.getElementById("refreshModelsButton"),
   agentList: document.getElementById("agentList"),
+  modelSummary: document.getElementById("modelSummary"),
+  modelSelect: document.getElementById("modelSelect"),
+  applyModelButton: document.getElementById("applyModelButton"),
+  modelDetails: document.getElementById("modelDetails"),
+  modelList: document.getElementById("modelList"),
   actionStack: document.getElementById("actionStack"),
   displayNameInput: document.getElementById("displayNameInput"),
   profileKeyInput: document.getElementById("profileKeyInput"),
   saveProfileButton: document.getElementById("saveProfileButton"),
   openSidebarButton: document.getElementById("openSidebarButton"),
   closeSidebarButton: document.getElementById("closeSidebarButton"),
-  openInspectorButton: document.getElementById("openInspectorButton"),
   closeInspectorButton: document.getElementById("closeInspectorButton"),
   suggestionCount: document.getElementById("suggestionCount"),
   messageTemplate: document.getElementById("messageTemplate"),
+  historyFooter: document.getElementById("historyFooter"),
+  historyPrevButton: document.getElementById("historyPrevButton"),
+  historyNextButton: document.getElementById("historyNextButton"),
+  historyPageLabel: document.getElementById("historyPageLabel"),
+  clearAllHistoryButton: document.getElementById("clearAllHistoryButton"),
 };
 
 window.addEventListener("load", () => {
@@ -75,6 +95,7 @@ async function boot() {
   await Promise.all([loadModelInfo(), loadAgents(), loadSessions()]);
   await loadCurrentSession();
   renderAll();
+  scrollMessagesToBottom();
 }
 
 function bindEvents() {
@@ -82,24 +103,42 @@ function bindEvents() {
   dom.clearDraftButton.addEventListener("click", clearComposerDraft);
   dom.attachButton.addEventListener("click", () => dom.filePicker.click());
   dom.filePicker.addEventListener("change", onFileSelection);
-  dom.newChatButton.addEventListener("click", () => {
-    startNewChat(true);
+  dom.newChatButton.addEventListener("click", () => startNewChat(true));
+  dom.refreshHistoryButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void loadSessions().then(renderHistory);
   });
-  dom.refreshHistoryButton.addEventListener("click", () => void loadSessions().then(renderHistory));
   dom.refreshAgentsButton.addEventListener("click", () => void refreshRuntimeData());
+  dom.refreshModelsButton.addEventListener("click", () => void loadModelInfo().then(renderModelLibrary));
+  dom.modelSelect.addEventListener("change", onModelSelectChange);
+  dom.applyModelButton.addEventListener("click", () => void applySelectedModel());
   dom.saveProfileButton.addEventListener("click", saveProfile);
   dom.messageInput.addEventListener("input", autoResizeTextarea);
   dom.messageInput.addEventListener("keydown", onComposerKeyDown);
   dom.installButton.addEventListener("click", installApp);
-  dom.openSidebarButton?.addEventListener("click", () => setDrawerState("sidebar", true));
-  dom.closeSidebarButton?.addEventListener("click", () => setDrawerState("sidebar", false));
-  dom.openInspectorButton?.addEventListener("click", () => setDrawerState("inspector", true));
-  dom.closeInspectorButton?.addEventListener("click", () => setDrawerState("inspector", false));
-  dom.backdrop.addEventListener("click", () => {
-    setDrawerState("sidebar", false);
-    setDrawerState("inspector", false);
+
+  // History pagination & clear
+  dom.historyPrevButton.addEventListener("click", () => { state.historyPage = Math.max(0, state.historyPage - 1); renderHistory(); });
+  dom.historyNextButton.addEventListener("click", () => { state.historyPage += 1; renderHistory(); });
+  dom.clearAllHistoryButton.addEventListener("click", () => void clearAllHistory());
+
+  // Sidebar toggle (works at all screen sizes)
+  dom.openSidebarButton.addEventListener("click", () => toggleDrawer("sidebar"));
+  dom.closeSidebarButton.addEventListener("click", () => closeDrawer("sidebar"));
+
+  // Inspector via FAB
+  dom.inspectorFab.addEventListener("click", () => toggleDrawer("inspector"));
+  dom.closeInspectorButton.addEventListener("click", () => closeDrawer("inspector"));
+
+  // Backdrop
+  dom.backdrop.addEventListener("click", closeAllDrawers);
+
+  // Collapsible nav sections
+  document.querySelectorAll(".nav-section-toggle").forEach((toggle) => {
+    toggle.addEventListener("click", onNavSectionToggle);
   });
 
+  // PWA install
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     state.installPrompt = event;
@@ -109,33 +148,79 @@ function bindEvents() {
     state.installPrompt = null;
     dom.installButton.hidden = true;
   });
+
   window.addEventListener("online", updateConnectionLabel);
   window.addEventListener("offline", updateConnectionLabel);
 
-  window.addEventListener("resize", () => {
-    if (window.innerWidth > 1080) {
-      state.sidebarOpen = false;
-      state.inspectorOpen = false;
-      dom.sidebar.classList.remove("open");
-      dom.inspector.classList.remove("open");
-      dom.backdrop.hidden = true;
-    }
-  });
-
+  // Visual viewport for mobile keyboard
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", () => {
-      document.documentElement.style.setProperty(
-        "--vvh",
-        `${window.visualViewport.height}px`
-      );
+      document.documentElement.style.setProperty("--vvh", `${window.visualViewport.height}px`);
     });
-    document.documentElement.style.setProperty(
-      "--vvh",
-      `${window.visualViewport.height}px`
-    );
+    document.documentElement.style.setProperty("--vvh", `${window.visualViewport.height}px`);
   }
 }
 
+/* ─── Drawer management ─── */
+function toggleDrawer(target) {
+  if (target === "sidebar") {
+    state.sidebarOpen ? closeDrawer("sidebar") : openDrawer("sidebar");
+  } else {
+    state.inspectorOpen ? closeDrawer("inspector") : openDrawer("inspector");
+  }
+}
+
+function openDrawer(target) {
+  // Close the other drawer first
+  if (target === "sidebar" && state.inspectorOpen) closeDrawer("inspector");
+  if (target === "inspector" && state.sidebarOpen) closeDrawer("sidebar");
+
+  if (target === "sidebar") {
+    state.sidebarOpen = true;
+    dom.sidebar.classList.add("open");
+  } else {
+    state.inspectorOpen = true;
+    dom.inspector.classList.add("open");
+    dom.inspectorFab.classList.add("active");
+  }
+  dom.backdrop.hidden = false;
+}
+
+function closeDrawer(target) {
+  if (target === "sidebar") {
+    state.sidebarOpen = false;
+    dom.sidebar.classList.remove("open");
+  } else {
+    state.inspectorOpen = false;
+    dom.inspector.classList.remove("open");
+    dom.inspectorFab.classList.remove("active");
+  }
+  if (!state.sidebarOpen && !state.inspectorOpen) {
+    dom.backdrop.hidden = true;
+  }
+}
+
+function closeAllDrawers() {
+  closeDrawer("sidebar");
+  closeDrawer("inspector");
+}
+
+/* ─── Collapsible nav sections ─── */
+function onNavSectionToggle(event) {
+  // Don't collapse if click was on a nested button (like Refresh)
+  if (event.target.closest(".nav-action")) return;
+
+  const toggle = event.currentTarget;
+  const section = toggle.dataset.section;
+  const body = document.getElementById(`${section}Body`);
+  if (!body) return;
+
+  const isOpen = body.classList.contains("open");
+  body.classList.toggle("open", !isOpen);
+  toggle.setAttribute("aria-expanded", String(!isOpen));
+}
+
+/* ─── Profile ─── */
 function initializeProfile() {
   state.userId = localStorage.getItem(storageKeys.userId) || `web-${createId()}`;
   state.displayName = localStorage.getItem(storageKeys.displayName) || "FitClaw Operator";
@@ -146,6 +231,43 @@ function initializeProfile() {
   localStorage.setItem(storageKeys.sessionId, state.sessionId);
 }
 
+function saveProfile() {
+  const nextName = dom.displayNameInput.value.trim() || "FitClaw Operator";
+  const nextUserId = dom.profileKeyInput.value.trim() || state.userId;
+  state.displayName = nextName;
+  state.userId = nextUserId;
+  localStorage.setItem(storageKeys.displayName, state.displayName);
+  localStorage.setItem(storageKeys.userId, state.userId);
+  startNewChat(false);
+  void loadSessions().then(() => loadCurrentSession()).then(renderAll);
+}
+
+function persistSessionId() {
+  localStorage.setItem(storageKeys.sessionId, state.sessionId);
+}
+
+/* ─── Session management ─── */
+function startNewChat(shouldFocus) {
+  state.sessionId = createSessionId();
+  state.messages = [];
+  resetPendingUploads();
+  persistSessionId();
+  renderAll();
+  closeDrawer("sidebar");
+  if (shouldFocus) dom.messageInput.focus();
+}
+
+async function openSession(sessionId) {
+  resetPendingUploads();
+  state.sessionId = sessionId;
+  persistSessionId();
+  await loadCurrentSession();
+  renderAll();
+  scrollMessagesToBottom();
+  closeDrawer("sidebar");
+}
+
+/* ─── Data loading ─── */
 async function refreshRuntimeData() {
   await Promise.all([loadAgents(), loadModelInfo()]);
   renderAll();
@@ -155,6 +277,8 @@ async function loadModelInfo() {
   try {
     const response = await fetchJson("/api/v1/models");
     state.modelInfo = response;
+    const active = response?.active;
+    state.selectedModelKey = active ? `${active.provider}::${active.model}` : "";
   } catch (error) {
     console.error("Failed to load models", error);
   }
@@ -200,42 +324,7 @@ async function loadCurrentSession() {
   }
 }
 
-function saveProfile() {
-  const nextName = dom.displayNameInput.value.trim() || "FitClaw Operator";
-  const nextUserId = dom.profileKeyInput.value.trim() || state.userId;
-  state.displayName = nextName;
-  state.userId = nextUserId;
-  localStorage.setItem(storageKeys.displayName, state.displayName);
-  localStorage.setItem(storageKeys.userId, state.userId);
-  startNewChat(false);
-  void loadSessions().then(() => loadCurrentSession()).then(renderAll);
-}
-
-function persistSessionId() {
-  localStorage.setItem(storageKeys.sessionId, state.sessionId);
-}
-
-function startNewChat(shouldFocus) {
-  state.sessionId = createSessionId();
-  state.messages = [];
-  resetPendingUploads();
-  persistSessionId();
-  renderAll();
-  setDrawerState("sidebar", false);
-  if (shouldFocus) {
-    dom.messageInput.focus();
-  }
-}
-
-async function openSession(sessionId) {
-  resetPendingUploads();
-  state.sessionId = sessionId;
-  persistSessionId();
-  await loadCurrentSession();
-  renderAll();
-  setDrawerState("sidebar", false);
-}
-
+/* ─── Composer ─── */
 function clearComposerDraft() {
   dom.messageInput.value = "";
   resetPendingUploads();
@@ -245,9 +334,7 @@ function clearComposerDraft() {
 }
 
 function onComposerKeyDown(event) {
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
-    return;
-  }
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
   event.preventDefault();
   void submitComposerMessage();
 }
@@ -255,9 +342,7 @@ function onComposerKeyDown(event) {
 async function onFileSelection(event) {
   const files = Array.from(event.target.files || []);
   dom.filePicker.value = "";
-  if (!files.length) {
-    return;
-  }
+  if (!files.length) return;
   await uploadSelectedFiles(files);
 }
 
@@ -270,12 +355,8 @@ async function submitComposerMessage() {
   const text = dom.messageInput.value.trim();
   const readyUploads = state.pendingUploads.filter((item) => item.status === "ready");
   const hasUploadingFiles = state.pendingUploads.some((item) => item.status === "uploading");
-  if (state.sending || hasUploadingFiles) {
-    return;
-  }
-  if (!text && !readyUploads.length) {
-    return;
-  }
+  if (state.sending || hasUploadingFiles) return;
+  if (!text && !readyUploads.length) return;
   await sendMessage(text, readyUploads);
 }
 
@@ -371,8 +452,10 @@ function createThinkingMessage() {
   };
 }
 
+/* ─── Rendering ─── */
 function renderAll() {
   updateConnectionLabel();
+  renderModelSwitchModal();
   renderProfile();
   updateSessionHeader();
   renderHistory();
@@ -380,6 +463,7 @@ function renderAll() {
   renderUploadTray();
   renderMessages();
   renderAgents();
+  renderModelLibrary();
 }
 
 function renderProfile() {
@@ -406,36 +490,84 @@ function updateSessionHeader() {
 
 function deriveTitleFromMessages() {
   const firstUser = state.messages.find((message) => message.role === "user");
-  if (!firstUser) {
-    return "";
-  }
+  if (!firstUser) return "";
   return firstUser.content.replace(/\s+/g, " ").slice(0, 80);
 }
 
 function renderHistory() {
   dom.historyList.innerHTML = "";
+
   if (!state.sessions.length) {
-    dom.historyList.innerHTML = `<div class="empty-copy">No chat history yet. Start with a suggestion or type your first message.</div>`;
+    dom.historyList.innerHTML = `<div class="empty-copy">No chat history yet.</div>`;
+    dom.historyFooter.hidden = true;
     return;
   }
 
-  state.sessions.forEach((session) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `history-item${session.session_id === state.sessionId ? " active" : ""}`;
-    button.innerHTML = `
-      <strong>${escapeHtml(session.title)}</strong>
-      <small>${escapeHtml(session.preview || "No preview yet")}</small>
-      <small>${formatDateTime(session.last_message_at)}</small>
-    `;
-    button.addEventListener("click", () => void openSession(session.session_id));
-    dom.historyList.appendChild(button);
+  const total = state.sessions.length;
+  const pageSize = state.historyPageSize;
+  const totalPages = Math.ceil(total / pageSize);
+  state.historyPage = Math.min(state.historyPage, totalPages - 1);
+  const start = state.historyPage * pageSize;
+  const pageItems = state.sessions.slice(start, start + pageSize);
+
+  pageItems.forEach((session) => {
+    const row = document.createElement("div");
+    row.className = `history-item${session.session_id === state.sessionId ? " active" : ""}`;
+
+    const body = document.createElement("button");
+    body.type = "button";
+    body.className = "history-item-body";
+    body.innerHTML = `<strong>${escapeHtml(session.title)}</strong><small>${escapeHtml(formatDateTime(session.last_message_at))}</small>`;
+    body.addEventListener("click", () => void openSession(session.session_id));
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "history-delete";
+    del.setAttribute("aria-label", "Delete chat");
+    del.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+    del.addEventListener("click", (e) => { e.stopPropagation(); void deleteSession(session.session_id); });
+
+    row.appendChild(body);
+    row.appendChild(del);
+    dom.historyList.appendChild(row);
   });
+
+  // Pagination footer
+  dom.historyFooter.hidden = false;
+  dom.historyPrevButton.disabled = state.historyPage <= 0;
+  dom.historyNextButton.disabled = state.historyPage >= totalPages - 1;
+  dom.historyPageLabel.textContent = `${state.historyPage + 1}/${totalPages}`;
+}
+
+async function deleteSession(sessionId) {
+  if (!confirm("Delete this chat?")) return;
+  try {
+    await fetchJson(`/api/v1/chat/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(state.userId)}`, { method: "DELETE" });
+  } catch (error) {
+    console.error("Delete session failed", error);
+  }
+  if (sessionId === state.sessionId) startNewChat(false);
+  await loadSessions();
+  renderHistory();
+  updateSessionHeader();
+}
+
+async function clearAllHistory() {
+  if (!confirm("Clear all chat history? This cannot be undone.")) return;
+  try {
+    await fetchJson(`/api/v1/chat/sessions?user_id=${encodeURIComponent(state.userId)}`, { method: "DELETE" });
+  } catch (error) {
+    console.error("Clear history failed", error);
+  }
+  state.historyPage = 0;
+  startNewChat(false);
+  await loadSessions();
+  renderAll();
 }
 
 function renderSuggestions() {
   const suggestions = buildSuggestions();
-  dom.suggestionCount.textContent = `${suggestions.length} ideas`;
+  dom.suggestionCount.textContent = String(suggestions.length);
 
   renderSuggestionCollection(dom.promptDeck, suggestions.slice(0, 6), "prompt-card");
   renderSuggestionCollection(dom.showcaseList, suggestions.slice(0, 3), "showcase-card");
@@ -545,6 +677,11 @@ function buildSuggestions() {
       prompt: `take a screenshot from ${firstAgentName}`,
     },
     {
+      title: "Check storage",
+      description: "Inspect current disk usage and the biggest folders/files on that device.",
+      prompt: `check storage on ${firstAgentName} and list top 10 biggest folders and files`,
+    },
+    {
       title: "Show processes",
       description: "Inspect active processes on your chosen machine.",
       prompt: `show processes on ${firstAgentName}`,
@@ -577,9 +714,12 @@ function buildSuggestions() {
 function renderAgents() {
   dom.agentList.innerHTML = "";
   if (!state.agents.length) {
-    dom.agentList.innerHTML = `<div class="empty-copy">No agents registered yet. Install one desktop agent and it will appear here.</div>`;
+    dom.agentList.innerHTML = `<div class="empty-copy">No agents registered yet.</div>`;
     return;
   }
+
+  const allModels = getAllModelChoices();
+  const visionModels = allModels.filter((item) => item.modality === "vision" || item.provider === "gemini");
 
   state.agents.forEach((agent) => {
     const article = document.createElement("article");
@@ -587,13 +727,344 @@ function renderAgents() {
     const capabilityLine = Array.isArray(agent.capabilities_json) && agent.capabilities_json.length
       ? agent.capabilities_json.slice(0, 5).join(", ")
       : "Capabilities pending";
-    article.innerHTML = `
+    const preferences = agent.model_preferences || {};
+    const preferredText = preferences.preferred_text
+      ? `${preferences.preferred_text.provider} / ${preferences.preferred_text.model}`
+      : "runtime default";
+    const preferredVision = preferences.preferred_vision
+      ? `${preferences.preferred_vision.provider} / ${preferences.preferred_vision.model}`
+      : "runtime vision default";
+    const allowedPool = Array.isArray(preferences.allowed_models) && preferences.allowed_models.length
+      ? preferences.allowed_models.map((item) => `${item.provider} / ${item.model}`).join(", ")
+      : "All configured models";
+
+    const head = document.createElement("div");
+    head.className = "agent-head";
+    head.innerHTML = `
       <strong>${escapeHtml(agent.name)}</strong>
       <div class="status-line">${escapeHtml(agent.status)}</div>
-      <span>${escapeHtml(capabilityLine)}</span>
+      <div class="agent-capability-line">${escapeHtml(capabilityLine)}</div>
+      <div class="agent-model-summary">Text: ${escapeHtml(preferredText)}</div>
+      <div class="agent-model-summary">Vision: ${escapeHtml(preferredVision)}</div>
+      <div class="agent-model-summary">Allowed: ${escapeHtml(allowedPool)}</div>
     `;
+    article.appendChild(head);
+
+    if (allModels.length) {
+      const editor = document.createElement("div");
+      editor.className = "agent-model-editor";
+
+      const row = document.createElement("div");
+      row.className = "agent-model-row";
+
+      const textField = document.createElement("label");
+      textField.className = "field compact-field";
+      textField.innerHTML = "<span>Preferred text model</span>";
+      const textSelect = document.createElement("select");
+      appendModelOptions(textSelect, allModels, buildModelRefKey(preferences.preferred_text), true, "Use runtime default");
+      textField.appendChild(textSelect);
+
+      const visionField = document.createElement("label");
+      visionField.className = "field compact-field";
+      visionField.innerHTML = "<span>Preferred vision model</span>";
+      const visionSelect = document.createElement("select");
+      appendModelOptions(visionSelect, visionModels, buildModelRefKey(preferences.preferred_vision), true, "Use vision default");
+      visionField.appendChild(visionSelect);
+
+      const allowedField = document.createElement("label");
+      allowedField.className = "field compact-field";
+      allowedField.innerHTML = "<span>Allowed models for this agent</span>";
+      const allowedSelect = document.createElement("select");
+      allowedSelect.className = "agent-multi-select";
+      allowedSelect.multiple = true;
+      const allowedKeys = new Set((preferences.allowed_models || []).map((item) => buildModelRefKey(item)));
+      appendModelOptions(allowedSelect, allModels, "", false, "");
+      Array.from(allowedSelect.options).forEach((option) => {
+        option.selected = allowedKeys.has(option.value);
+      });
+      allowedField.appendChild(allowedSelect);
+
+      row.appendChild(textField);
+      row.appendChild(visionField);
+      row.appendChild(allowedField);
+      editor.appendChild(row);
+
+      const actions = document.createElement("div");
+      actions.className = "agent-model-actions";
+      const saveButton = document.createElement("button");
+      saveButton.type = "button";
+      saveButton.className = "ghost-button";
+      saveButton.textContent = state.agentSaveState[agent.name] ? "Saving..." : "Save agent models";
+      saveButton.disabled = Boolean(state.agentSaveState[agent.name]);
+      saveButton.addEventListener("click", () => void saveAgentModelPreferences(
+        agent.name,
+        textSelect.value,
+        visionSelect.value,
+        Array.from(allowedSelect.selectedOptions).map((option) => option.value),
+      ));
+      actions.appendChild(saveButton);
+      editor.appendChild(actions);
+
+      article.appendChild(editor);
+    }
+
     dom.agentList.appendChild(article);
   });
+}
+
+function renderModelLibrary() {
+  dom.modelList.innerHTML = "";
+
+  const modelInfo = state.modelInfo;
+  if (!modelInfo) {
+    dom.modelSummary.textContent = "Loading available models...";
+    return;
+  }
+
+  const active = modelInfo.active
+    ? `${modelInfo.active.provider} / ${modelInfo.active.model}`
+    : "No active model selected";
+  const installedCount = Array.isArray(modelInfo.installed_ollama_models)
+    ? modelInfo.installed_ollama_models.length
+    : 0;
+  dom.modelSummary.textContent = `Active: ${active}. Local installed: ${installedCount}. Choose a profile below, then switch.`;
+
+  const allModels = getAllModelChoices();
+  if (!allModels.length) {
+    dom.modelSelect.innerHTML = "";
+    dom.applyModelButton.disabled = true;
+    dom.modelDetails.innerHTML = "";
+    return;
+  }
+
+  if (!findModelOptionByKey(state.selectedModelKey)) {
+    const activeKey = modelInfo.active ? buildModelRefKey(modelInfo.active) : "";
+    state.selectedModelKey = activeKey || buildModelRefKey(allModels[0]);
+  }
+
+  appendModelOptions(dom.modelSelect, allModels, state.selectedModelKey, false, "");
+  dom.modelSelect.disabled = state.modelSwitching;
+  dom.applyModelButton.disabled = state.modelSwitching || !state.selectedModelKey;
+  dom.applyModelButton.textContent = state.modelSwitching ? "Switching..." : "Switch";
+  renderSelectedModelDetails();
+
+  const sections = new Map();
+  allModels.forEach((item) => {
+    const key = item.role_group_label || "General";
+    if (!sections.has(key)) sections.set(key, []);
+    sections.get(key).push(item);
+  });
+
+  sections.forEach((items, title) => {
+    const group = document.createElement("section");
+    group.className = "model-group";
+
+    const heading = document.createElement("div");
+    heading.className = "model-group-title";
+    heading.textContent = title;
+    group.appendChild(heading);
+
+    items.forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `model-item${item.active ? " active" : ""}`;
+      button.disabled = state.modelSwitching;
+
+      const tags = [];
+      if (item.active) tags.push("active");
+      if (item.installed && item.provider === "ollama") tags.push("installed");
+      else if (!item.installed && item.provider === "ollama") tags.push("auto-pull");
+      if (item.configured) tags.push("configured");
+      if (item.recommended) tags.push("recommended");
+      if (item.source === "cloud") tags.push("cloud");
+
+      button.innerHTML = `
+        <div class="model-item-main">
+          <strong>${escapeHtml(item.label || item.model)}</strong>
+          <span>${escapeHtml(`${item.provider} · ${item.summary}`)}</span>
+        </div>
+        <div class="model-badges">${tags.map((tag) => `<span class="model-badge">${escapeHtml(tag)}</span>`).join("")}</div>
+      `;
+      button.addEventListener("click", () => void selectModel(item.provider, item.model));
+      group.appendChild(button);
+    });
+
+    dom.modelList.appendChild(group);
+  });
+}
+
+function onModelSelectChange() {
+  state.selectedModelKey = dom.modelSelect.value;
+  renderSelectedModelDetails();
+  renderModelLibrary();
+}
+
+async function applySelectedModel() {
+  const selected = parseModelRefKey(state.selectedModelKey);
+  if (!selected) return;
+  await selectModel(selected.provider, selected.model);
+}
+
+async function selectModel(provider, model) {
+  if (state.modelSwitching) return;
+  if (state.modelInfo?.active?.provider === provider && state.modelInfo?.active?.model === model) {
+    state.selectedModelKey = `${provider}::${model}`;
+    renderModelLibrary();
+    return;
+  }
+
+  state.modelSwitching = true;
+  state.selectedModelKey = `${provider}::${model}`;
+  state.modelSwitchTarget = { provider, model };
+  dom.modelSummary.textContent = `Switching to ${provider} / ${model}...`;
+  dom.modelPill.textContent = `Switching to ${provider} / ${model}...`;
+  renderModelLibrary();
+  renderModelSwitchModal();
+
+  try {
+    await fetchJson("/api/v1/models/select", {
+      method: "POST",
+      body: JSON.stringify({ provider, model, auto_pull: true }),
+    });
+    await loadModelInfo();
+    renderAll();
+  } catch (error) {
+    console.error("Model switch failed", error);
+    dom.modelSummary.textContent = `Model switch failed: ${error.message || String(error)}`;
+    await loadModelInfo();
+    updateConnectionLabel();
+  } finally {
+    state.modelSwitching = false;
+    state.modelSwitchTarget = null;
+    renderModelSwitchModal();
+    renderModelLibrary();
+  }
+}
+
+function renderModelSwitchModal() {
+  const isOpen = Boolean(state.modelSwitching && state.modelSwitchTarget);
+  dom.modelSwitchModal.hidden = !isOpen;
+  document.body.classList.toggle("modal-open", isOpen);
+
+  if (!isOpen) {
+    return;
+  }
+
+  const item = findModelOptionByKey(buildModelRefKey(state.modelSwitchTarget));
+  const label = item?.label || state.modelSwitchTarget.model;
+  const provider = state.modelSwitchTarget.provider;
+  const detailBits = [];
+
+  if (item?.summary) {
+    detailBits.push(item.summary);
+  }
+  if (provider === "ollama" && !item?.installed) {
+    detailBits.push("This model is not local yet, so Ollama may need a moment to pull or warm it.");
+  } else {
+    detailBits.push("Please wait while the next model is loaded and warmed up.");
+  }
+
+  dom.modelSwitchTitle.textContent = `Switching to ${label}`;
+  dom.modelSwitchDetail.textContent = detailBits.join(" ");
+}
+
+function renderSelectedModelDetails() {
+  const item = findModelOptionByKey(state.selectedModelKey);
+  if (!item) {
+    dom.modelDetails.innerHTML = "";
+    return;
+  }
+
+  const badges = [
+    item.family,
+    item.role_group_label,
+    item.speed,
+    item.source,
+    item.resource_tier,
+    ...(item.roles || []),
+  ].filter(Boolean);
+
+  dom.modelDetails.innerHTML = `
+    <strong>${escapeHtml(item.label || item.model)}</strong>
+    <p>${escapeHtml(item.summary || item.model)}</p>
+    <div class="model-details-meta">
+      ${badges.map((badge) => `<span class="model-badge">${escapeHtml(badge)}</span>`).join("")}
+      ${item.cloud_auth_required ? `<span class="model-badge">requires Ollama cloud auth</span>` : ""}
+      ${item.installed ? `<span class="model-badge">installed</span>` : ""}
+      ${item.provider === "ollama" && !item.installed ? `<span class="model-badge">auto-pull on switch</span>` : ""}
+    </div>
+  `;
+}
+
+function getAllModelChoices() {
+  if (!state.modelInfo) return [];
+  return [...(state.modelInfo.ollama_choices || []), ...(state.modelInfo.gemini_choices || [])];
+}
+
+function appendModelOptions(selectNode, items, selectedKey, includeBlank, blankLabel) {
+  selectNode.innerHTML = "";
+  if (includeBlank) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = blankLabel || "None";
+    selectNode.appendChild(option);
+  }
+  items.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = buildModelRefKey(item);
+    option.textContent = buildModelOptionLabel(item);
+    option.selected = option.value === selectedKey;
+    selectNode.appendChild(option);
+  });
+}
+
+function buildModelOptionLabel(item) {
+  const name = item.label || item.model;
+  const role = item.role_group_label || item.role_group || "General";
+  return `${name} · ${role} · ${item.provider}`;
+}
+
+function buildModelRefKey(modelRef) {
+  if (!modelRef || !modelRef.provider || !modelRef.model) return "";
+  return `${modelRef.provider}::${modelRef.model}`;
+}
+
+function parseModelRefKey(value) {
+  if (!value || !value.includes("::")) return null;
+  const [provider, ...rest] = value.split("::");
+  const model = rest.join("::");
+  if (!provider || !model) return null;
+  return { provider, model };
+}
+
+function findModelOptionByKey(key) {
+  if (!key) return null;
+  return getAllModelChoices().find((item) => buildModelRefKey(item) === key) || null;
+}
+
+async function saveAgentModelPreferences(agentName, preferredTextKey, preferredVisionKey, allowedKeys) {
+  state.agentSaveState[agentName] = true;
+  renderAgents();
+
+  const payload = {
+    preferred_text: parseModelRefKey(preferredTextKey),
+    preferred_vision: parseModelRefKey(preferredVisionKey),
+    allowed_models: allowedKeys.map(parseModelRefKey).filter(Boolean),
+  };
+
+  try {
+    const updated = await fetchJson(`/api/v1/agents/${encodeURIComponent(agentName)}/models`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    state.agents = state.agents.map((agent) => agent.name === agentName ? updated : agent);
+  } catch (error) {
+    console.error("Failed to save agent model preferences", error);
+    alert(`Failed to save agent model preferences for ${agentName}: ${error.message || String(error)}`);
+  } finally {
+    state.agentSaveState[agentName] = false;
+    renderAgents();
+  }
 }
 
 function renderUploadTray() {
@@ -642,9 +1113,7 @@ function renderMessages() {
   dom.messageList.innerHTML = "";
   dom.welcomeState.classList.toggle("is-hidden", state.messages.length > 0);
 
-  if (!state.messages.length) {
-    return;
-  }
+  if (!state.messages.length) return;
 
   state.messages.forEach((message) => {
     const node = dom.messageTemplate.content.firstElementChild.cloneNode(true);
@@ -703,28 +1172,9 @@ function autoResizeTextarea() {
   dom.messageInput.style.height = `${Math.min(dom.messageInput.scrollHeight, 192)}px`;
 }
 
-function setDrawerState(target, isOpen) {
-  if (window.innerWidth > 1080) {
-    return;
-  }
-
-  if (target === "sidebar") {
-    state.sidebarOpen = isOpen;
-    dom.sidebar.classList.toggle("open", isOpen);
-  }
-  if (target === "inspector") {
-    state.inspectorOpen = isOpen;
-    dom.inspector.classList.toggle("open", isOpen);
-  }
-
-  const anyOpen = state.sidebarOpen || state.inspectorOpen;
-  dom.backdrop.hidden = !anyOpen;
-}
-
+/* ─── PWA ─── */
 async function installApp() {
-  if (!state.installPrompt) {
-    return;
-  }
+  if (!state.installPrompt) return;
   await state.installPrompt.prompt();
   await state.installPrompt.userChoice;
   state.installPrompt = null;
@@ -739,6 +1189,7 @@ function registerPWA() {
   }
 }
 
+/* ─── Upload handling ─── */
 async function uploadSelectedFiles(files) {
   const placeholders = files.map((file) => createUploadPlaceholder(file));
   state.pendingUploads.push(...placeholders);
@@ -749,7 +1200,6 @@ async function uploadSelectedFiles(files) {
       uploadSingleFile(files[index], placeholder.localId)
     )
   );
-
   renderAll();
 }
 
@@ -776,7 +1226,6 @@ async function uploadSingleFile(file, localId) {
       error: error.message || String(error),
     });
   }
-
   renderAll();
 }
 
@@ -797,18 +1246,14 @@ function createUploadPlaceholder(file) {
 
 function replacePendingUpload(localId, nextValues) {
   state.pendingUploads = state.pendingUploads.map((item) => {
-    if (item.localId !== localId) {
-      return item;
-    }
+    if (item.localId !== localId) return item;
     return { ...item, ...nextValues };
   });
 }
 
 function removePendingUpload(localId) {
   const match = state.pendingUploads.find((item) => item.localId === localId);
-  if (match?.preview_url) {
-    URL.revokeObjectURL(match.preview_url);
-  }
+  if (match?.preview_url) URL.revokeObjectURL(match.preview_url);
   state.pendingUploads = state.pendingUploads.filter((item) => item.localId !== localId);
   renderAll();
 }
@@ -821,9 +1266,7 @@ function resetPendingUploads() {
 
 function releaseUploadPreviews(uploads) {
   uploads.forEach((item) => {
-    if (item.preview_url) {
-      URL.revokeObjectURL(item.preview_url);
-    }
+    if (item.preview_url) URL.revokeObjectURL(item.preview_url);
   });
 }
 
@@ -837,25 +1280,19 @@ function toChatAttachment(upload) {
 }
 
 function describeUploadStatus(upload) {
-  if (upload.status === "uploading") {
-    return `Uploading ${formatBytes(upload.size_bytes || 0)}...`;
-  }
-  if (upload.status === "error") {
-    return upload.error || "Upload failed";
-  }
+  if (upload.status === "uploading") return `Uploading ${formatBytes(upload.size_bytes || 0)}...`;
+  if (upload.status === "error") return upload.error || "Upload failed";
   return `${upload.kind === "image" ? "Image" : "File"} | ${formatBytes(upload.size_bytes || 0)}`;
 }
 
+/* ─── Network ─── */
 async function fetchJson(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     const message = await response.text();
     throw new Error(message || `Request failed with ${response.status}`);
@@ -863,14 +1300,13 @@ async function fetchJson(url, options = {}) {
   return await response.json();
 }
 
+/* ─── Utilities ─── */
 function createSessionId() {
   return `web:${state.userId}:${createId()}`;
 }
 
 function createId() {
-  if (window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -884,36 +1320,20 @@ function escapeHtml(value) {
 }
 
 function formatTime(value) {
-  if (!value) {
-    return "now";
-  }
-  try {
-    return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "now";
-  }
+  if (!value) return "now";
+  try { return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+  catch { return "now"; }
 }
 
 function formatDateTime(value) {
-  if (!value) {
-    return "recently";
-  }
+  if (!value) return "recently";
   try {
-    return new Date(value).toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "recently";
-  }
+    return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return "recently"; }
 }
 
 function formatBytes(bytes) {
-  if (!bytes) {
-    return "0 B";
-  }
+  if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;
   let unitIndex = 0;

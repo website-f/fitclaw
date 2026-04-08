@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.conversation import ConversationMessage, MessageRole
@@ -67,24 +67,43 @@ class MemoryService:
             .limit(limit)
         ).all()
 
+        session_ids = [str(row.session_id) for row in session_rows]
+        latest_by_session: dict[str, ConversationMessage] = {}
+        first_user_by_session: dict[str, ConversationMessage] = {}
+
+        if session_ids:
+            latest_messages = db.scalars(
+                select(ConversationMessage)
+                .where(ConversationMessage.platform_user_id == platform_user_id)
+                .where(ConversationMessage.session_id.in_(session_ids))
+                .order_by(
+                    ConversationMessage.session_id.asc(),
+                    ConversationMessage.created_at.desc(),
+                    ConversationMessage.id.desc(),
+                )
+            ).all()
+            for message in latest_messages:
+                latest_by_session.setdefault(str(message.session_id), message)
+
+            first_user_messages = db.scalars(
+                select(ConversationMessage)
+                .where(ConversationMessage.platform_user_id == platform_user_id)
+                .where(ConversationMessage.session_id.in_(session_ids))
+                .where(ConversationMessage.role == MessageRole.user)
+                .order_by(
+                    ConversationMessage.session_id.asc(),
+                    ConversationMessage.created_at.asc(),
+                    ConversationMessage.id.asc(),
+                )
+            ).all()
+            for message in first_user_messages:
+                first_user_by_session.setdefault(str(message.session_id), message)
+
         summaries: list[dict] = []
         for row in session_rows:
             session_id = str(row.session_id)
-            latest = db.scalar(
-                select(ConversationMessage)
-                .where(ConversationMessage.session_id == session_id)
-                .where(ConversationMessage.platform_user_id == platform_user_id)
-                .order_by(ConversationMessage.created_at.desc())
-                .limit(1)
-            )
-            first_user = db.scalar(
-                select(ConversationMessage)
-                .where(ConversationMessage.session_id == session_id)
-                .where(ConversationMessage.platform_user_id == platform_user_id)
-                .where(ConversationMessage.role == MessageRole.user)
-                .order_by(ConversationMessage.created_at.asc())
-                .limit(1)
-            )
+            latest = latest_by_session.get(session_id)
+            first_user = first_user_by_session.get(session_id)
 
             title_source = (first_user.content if first_user else latest.content if latest else session_id).strip()
             title = title_source.replace("\n", " ")
@@ -101,6 +120,25 @@ class MemoryService:
             )
 
         return summaries
+
+    @staticmethod
+    def delete_session(db: Session, session_id: str, platform_user_id: str) -> int:
+        result = db.execute(
+            sa_delete(ConversationMessage)
+            .where(ConversationMessage.session_id == session_id)
+            .where(ConversationMessage.platform_user_id == platform_user_id)
+        )
+        db.commit()
+        return result.rowcount  # type: ignore[return-value]
+
+    @staticmethod
+    def delete_all_sessions(db: Session, platform_user_id: str) -> int:
+        result = db.execute(
+            sa_delete(ConversationMessage)
+            .where(ConversationMessage.platform_user_id == platform_user_id)
+        )
+        db.commit()
+        return result.rowcount  # type: ignore[return-value]
 
     @staticmethod
     def get_recent_attachment_asset_ids(

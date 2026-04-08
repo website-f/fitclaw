@@ -8,12 +8,17 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models.agent import Agent, AgentStatus
 from app.models.base import utcnow
+from app.schemas.agent import AgentResponse
+from app.schemas.model import ActiveModelConfig
+from app.services.runtime_config_service import RuntimeConfigService
 
 settings = get_settings()
 redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
 
 
 class AgentService:
+    MODEL_PREFS_KEY = "model_preferences"
+
     @staticmethod
     def _heartbeat_key(name: str) -> str:
         return f"agent:heartbeat:{name}"
@@ -128,3 +133,104 @@ class AgentService:
             json.dumps(payload),
         )
 
+    @staticmethod
+    def get_model_preferences(agent: Agent) -> dict:
+        raw = (agent.metadata_json or {}).get(AgentService.MODEL_PREFS_KEY, {})
+        if not isinstance(raw, dict):
+            raw = {}
+        preferred_text = AgentService._normalize_model_ref(raw.get("preferred_text"))
+        preferred_vision = AgentService._normalize_model_ref(raw.get("preferred_vision"))
+        allowed_models = AgentService._normalize_model_ref_list(raw.get("allowed_models"))
+        if not allowed_models:
+            allowed_models = RuntimeConfigService.get_available_model_refs()
+        return {
+            "preferred_text": preferred_text,
+            "preferred_vision": preferred_vision,
+            "allowed_models": allowed_models,
+        }
+
+    @staticmethod
+    def update_model_preferences(
+        db: Session,
+        name: str,
+        preferred_text: dict | None = None,
+        preferred_vision: dict | None = None,
+        allowed_models: list[dict] | None = None,
+    ) -> Agent | None:
+        agent = db.scalar(select(Agent).where(Agent.name == name))
+        if agent is None:
+            return None
+
+        current_metadata = dict(agent.metadata_json or {})
+        current = AgentService.get_model_preferences(agent)
+        merged = {
+            "preferred_text": AgentService._normalize_model_ref(
+                preferred_text if preferred_text is not None else current.get("preferred_text")
+            ),
+            "preferred_vision": AgentService._normalize_model_ref(
+                preferred_vision if preferred_vision is not None else current.get("preferred_vision")
+            ),
+            "allowed_models": AgentService._normalize_model_ref_list(
+                allowed_models if allowed_models is not None else current.get("allowed_models", [])
+            ),
+        }
+
+        current_metadata[AgentService.MODEL_PREFS_KEY] = merged
+        agent.metadata_json = current_metadata
+        agent.updated_at = utcnow()
+        db.commit()
+        db.refresh(agent)
+        AgentService._write_heartbeat(agent)
+        return agent
+
+    @staticmethod
+    def serialize_agent(agent: Agent) -> AgentResponse:
+        preferences = AgentService.get_model_preferences(agent)
+        preferred_text = preferences.get("preferred_text")
+        preferred_vision = preferences.get("preferred_vision")
+        allowed_models = preferences.get("allowed_models", [])
+        return AgentResponse(
+            name=agent.name,
+            status=agent.status,
+            capabilities_json=list(agent.capabilities_json or []),
+            metadata_json=dict(agent.metadata_json or {}),
+            last_heartbeat_at=agent.last_heartbeat_at,
+            current_task_id=agent.current_task_id,
+            registered_at=agent.registered_at,
+            updated_at=agent.updated_at,
+            model_preferences={
+                "preferred_text": ActiveModelConfig(**preferred_text) if preferred_text else None,
+                "preferred_vision": ActiveModelConfig(**preferred_vision) if preferred_vision else None,
+                "allowed_models": [ActiveModelConfig(**item) for item in allowed_models],
+            },
+        )
+
+    @staticmethod
+    def _normalize_model_ref(value) -> dict | None:
+        if isinstance(value, ActiveModelConfig):
+            provider = value.provider.strip().lower()
+            model = value.model.strip()
+        elif isinstance(value, dict):
+            provider = str(value.get("provider", "ollama")).strip().lower()
+            model = str(value.get("model", "")).strip()
+        else:
+            return None
+
+        if provider not in {"ollama", "gemini"} or not model:
+            return None
+        return {"provider": provider, "model": model}
+
+    @staticmethod
+    def _normalize_model_ref_list(values) -> list[dict]:
+        results: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for item in values or []:
+            normalized = AgentService._normalize_model_ref(item)
+            if normalized is None:
+                continue
+            key = (normalized["provider"], normalized["model"])
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append(normalized)
+        return results

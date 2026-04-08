@@ -6,8 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.schemas.agent import AgentResponse
-from app.schemas.device_control import DeviceCommandCreateRequest, DeviceCommandResponse
+from app.schemas.device_control import (
+    DeviceCommandCreateRequest,
+    DeviceCommandResponse,
+    StorageDeleteRequest,
+    StorageInspectRequest,
+)
 from app.services.agent_service import AgentService
+from app.services.control_workflow_service import ControlWorkflowService
 from app.services.device_control_service import DeviceControlService
 
 router = APIRouter(tags=["device-control"])
@@ -33,7 +39,7 @@ def create_device_command(payload: DeviceCommandCreateRequest, db: Session = Dep
 
 @router.get("/api/v1/control/agents", response_model=list[AgentResponse])
 def list_control_agents(db: Session = Depends(get_db)):
-    return AgentService.list_agents(db)
+    return [AgentService.serialize_agent(agent) for agent in AgentService.list_agents(db)]
 
 
 @router.get("/api/v1/control/commands", response_model=list[DeviceCommandResponse])
@@ -63,3 +69,29 @@ def get_device_command_artifact(command_id: str, db: Session = Depends(get_db)):
     if not file_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact file is missing.")
     return FileResponse(file_path)
+
+
+@router.post("/api/v1/control/storage/inspect")
+def inspect_storage(payload: StorageInspectRequest, db: Session = Depends(get_db)):
+    try:
+        return ControlWorkflowService.inspect_storage(
+            db=db,
+            agent_name=payload.agent_name,
+            path=payload.path,
+            top_n=payload.top_n,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/api/v1/control/storage/delete")
+def delete_storage_path(payload: StorageDeleteRequest, db: Session = Depends(get_db)):
+    try:
+        return ControlWorkflowService.delete_path(
+            db=db,
+            agent_name=payload.agent_name,
+            path=payload.path,
+            use_trash=payload.use_trash,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

@@ -30,9 +30,22 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen2.5:3b"
     ollama_models: str = "qwen2.5:3b"
+    ollama_optional_models: str = ""
     ollama_vision_model: str = "gemma3:4b"
     ollama_vision_models: str = ""
     ollama_request_timeout: int = 120
+    ollama_keep_alive: str = "45m"
+    ollama_context_length: int = 8192
+    ollama_vision_context_length: int = 6144
+    ollama_num_predict: int = 768
+    ollama_vision_num_predict: int = 512
+    ollama_num_parallel: int = 1
+    ollama_max_loaded_models: int = 1
+    ollama_max_queue: int = 128
+    ollama_flash_attention: bool = True
+    ollama_prewarm_on_switch: bool = True
+    ollama_preload_active_model_on_startup: bool = True
+    ollama_unload_previous_on_switch: bool = True
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
@@ -83,6 +96,11 @@ class Settings(BaseSettings):
     @property
     def ollama_model_list(self) -> list[str]:
         values = [item.strip() for item in self.ollama_models.split(",")]
+        return [item for item in values if item]
+
+    @property
+    def ollama_optional_model_list(self) -> list[str]:
+        values = [item.strip() for item in self.ollama_optional_models.split(",")]
         return [item for item in values if item]
 
     @property

@@ -24,13 +24,15 @@ HELP_TEXT = (
     "/agents - list registered agents and their status\n"
     "/screenshot [agent] - capture a screenshot from an agent\n"
     "/codex <agent> | <path> | <prompt> - run a Codex prompt on an agent\n"
-    "/models - show the active model and installed Ollama models\n"
+    "/models - show the active model with daily, coding, vision, and cloud options\n"
     "/usemodel <provider> <model> - switch runtime model, example: /usemodel ollama qwen2.5:3b\n"
+    "  Quick picks: qwen3-coder:30b, qwen2.5-coder:7b, gemma3:4b, deepseek-r1:1.5b, kimi-k2.5:cloud\n"
     "\n"
     "Device commands:\n"
     "- verify my agent\n"
     "- list agents\n"
     "- take a screenshot from office-pc\n"
+    "- check storage on office-pc and list top 10 biggest folders and files\n"
     "- show windows on office-pc\n"
     "- show processes on office-pc\n"
     "- open vscode on office-pc in C:\\projects\\repo\n"
@@ -324,16 +326,44 @@ async def send_attachment(update: Update, attachment: MessageAttachment) -> None
 def get_models_text_sync() -> str:
     with session_scope() as db:
         active = RuntimeConfigService.get_active_llm(db)
-    installed = RuntimeConfigService.list_ollama_models()
-    configured = settings.ollama_model_list
+    installed = set(RuntimeConfigService.list_ollama_models())
+    configured = RuntimeConfigService.get_configured_ollama_models()
+    catalog = RuntimeConfigService.build_model_catalog(active_provider=active["provider"], active_model=active["model"])
 
     lines = [
         f"Active model: {active['provider']} / {active['model']}",
         f"Default model: ollama / {settings.ollama_model}",
         "",
-        "Configured Ollama models:",
+        "Model groups:",
     ]
 
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for item in [*catalog["ollama_choices"], *catalog["gemini_choices"]]:
+        grouped.setdefault(str(item["role_group_label"]), []).append(item)
+
+    for group_name in ["Daily And Reports", "Coding And Websites", "Vision And Files", "Reasoning And Planning", "Cloud And Experimental", "General"]:
+        items = grouped.get(group_name, [])
+        if not items:
+            continue
+        lines.append(group_name + ":")
+        for item in items:
+            tags = []
+            if item["active"]:
+                tags.append("active")
+            if item["installed"]:
+                tags.append("installed")
+            elif item["configured"]:
+                tags.append("configured")
+            if item["source"] == "cloud":
+                tags.append("cloud")
+            if item["cloud_auth_required"]:
+                tags.append("auth")
+            suffix = f" [{' | '.join(tags)}]" if tags else ""
+            role_text = ", ".join(item.get("roles", [])[:3])
+            lines.append(f"- {item['model']}{suffix} -> {item['summary']} ({role_text})")
+        lines.append("")
+
+    lines.append("Configured Ollama models:")
     if configured:
         lines.extend([f"- {name}" for name in configured])
     else:
@@ -342,12 +372,22 @@ def get_models_text_sync() -> str:
     lines.append("")
     lines.append("Installed Ollama models:")
     if installed:
-        lines.extend([f"- {name}" for name in installed])
+        lines.extend([f"- {name}" for name in sorted(installed)])
     else:
         lines.append("- none yet")
 
-    if settings.gemini_enabled:
-        lines.extend(["", f"Gemini fallback available: {settings.gemini_model}"])
+    lines.extend(
+        [
+            "",
+            "Pull ideas:",
+            "- qwen3-coder:30b -> best local website and coding model",
+            "- qwen2.5-coder:7b -> lighter local coding model",
+            "- gemma3:12b -> stronger local screenshot and UI review",
+            "- kimi-k2.5:cloud -> Ollama Cloud option, requires Ollama auth/quota",
+            "",
+            "Tip: use `/usemodel ollama qwen3-coder:30b` or `/usemodel ollama gemma3:4b`. Missing Ollama models will auto-pull.",
+        ]
+    )
 
     return "\n".join(lines)
 

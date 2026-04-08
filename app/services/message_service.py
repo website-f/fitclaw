@@ -61,19 +61,8 @@ class MessageService:
             metadata_json=user_metadata,
         )
 
-        command_result = TaskCommandService.try_handle(
-            db=db,
-            user_id=user_id,
-            session_id=resolved_session_id,
-            text=normalized_text,
-        )
-        if command_result is None:
-            command_result = AgentCommandService.try_handle(
-                db=db,
-                user_id=user_id,
-                text=normalized_text,
-            )
-        if command_result is None and assets:
+        command_result = None
+        if assets:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
             prompt_messages = [{"role": "system", "content": settings.system_prompt}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
@@ -86,6 +75,19 @@ class MessageService:
                 prompt_messages=prompt_messages,
                 active_provider=active_llm["provider"],
                 active_model=active_llm["model"],
+            )
+        if command_result is None:
+            command_result = TaskCommandService.try_handle(
+                db=db,
+                user_id=user_id,
+                session_id=resolved_session_id,
+                text=normalized_text,
+            )
+        if command_result is None:
+            command_result = AgentCommandService.try_handle(
+                db=db,
+                user_id=user_id,
+                text=normalized_text,
             )
         if command_result is not None:
             metadata_json = {}

@@ -3,8 +3,21 @@ import httpx
 from pathlib import Path
 
 from app.core.config import get_settings
+from app.services.runtime_config_service import RuntimeConfigService
 
 settings = get_settings()
+OLLAMA_CLIENT = httpx.Client(
+    timeout=settings.ollama_request_timeout,
+    limits=httpx.Limits(max_keepalive_connections=8, max_connections=32),
+)
+GEMINI_CLIENT = httpx.Client(
+    timeout=120,
+    limits=httpx.Limits(max_keepalive_connections=8, max_connections=32),
+)
+TEXT_CONTEXT_CHAR_BUDGET = 9000
+VISION_CONTEXT_CHAR_BUDGET = 6000
+MAX_OLDER_MESSAGE_CHARS = 1000
+MAX_LATEST_MESSAGE_CHARS = 4200
 GEMINI_TEXT_FALLBACK_MODELS = ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite")
 GEMINI_VISION_FALLBACK_MODELS = ("gemini-2.5-flash", "gemini-2.0-flash")
 COMPLEXITY_KEYWORDS = (
@@ -43,42 +56,43 @@ class LLMService:
         active_provider: str | None = None,
         active_model: str | None = None,
     ) -> tuple[str, str]:
+        prepared_messages = LLMService._prepare_messages(messages, max_total_chars=TEXT_CONTEXT_CHAR_BUDGET)
         errors: list[str] = []
         provider = (active_provider or "ollama").strip().lower()
         model = (active_model or settings.ollama_model).strip()
         should_escalate_to_gemini = (
             provider == "ollama"
             and settings.gemini_enabled
-            and LLMService._should_prefer_gemini(messages)
+            and LLMService._should_prefer_gemini(prepared_messages)
         )
 
         if should_escalate_to_gemini:
             try:
-                reply, resolved_model = LLMService._call_gemini(messages, settings.gemini_model)
+                reply, resolved_model = LLMService._call_gemini(prepared_messages, settings.gemini_model)
                 return reply, f"gemini:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Gemini escalation failed: {exc}")
 
             try:
-                reply, resolved_model = LLMService._call_ollama_with_fallbacks(messages, model)
+                reply, resolved_model = LLMService._call_ollama_with_fallbacks(prepared_messages, model)
                 return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama fallback failed: {exc}")
         elif provider == "ollama":
             try:
-                reply, resolved_model = LLMService._call_ollama_with_fallbacks(messages, model)
+                reply, resolved_model = LLMService._call_ollama_with_fallbacks(prepared_messages, model)
                 return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama failed: {exc}")
         elif provider == "gemini":
             try:
-                reply, resolved_model = LLMService._call_gemini(messages, model)
+                reply, resolved_model = LLMService._call_gemini(prepared_messages, model)
                 return reply, f"gemini:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Gemini failed: {exc}")
 
             try:
-                reply, resolved_model = LLMService._call_ollama_with_fallbacks(messages, settings.ollama_model)
+                reply, resolved_model = LLMService._call_ollama_with_fallbacks(prepared_messages, settings.ollama_model)
                 return reply, f"ollama:{resolved_model}"
             except Exception as exc:
                 errors.append(f"Ollama fallback failed: {exc}")
@@ -93,6 +107,7 @@ class LLMService:
         active_provider: str | None = None,
         active_model: str | None = None,
     ) -> tuple[str, str]:
+        prepared_messages = LLMService._prepare_messages(prompt_messages, max_total_chars=VISION_CONTEXT_CHAR_BUDGET)
         provider = (active_provider or "ollama").strip().lower()
         errors: list[str] = []
         encoded_images = [
@@ -103,10 +118,9 @@ class LLMService:
             for asset in image_assets
         ]
 
-        preferred_ollama_model = (
-            active_model.strip()
-            if provider == "ollama" and (active_model or "").strip()
-            else settings.ollama_vision_model or settings.ollama_model
+        preferred_ollama_model = LLMService._resolve_preferred_vision_model(
+            provider=provider,
+            active_model=active_model,
         )
         preferred_gemini_model = (
             active_model.strip()
@@ -117,7 +131,7 @@ class LLMService:
         if provider == "gemini" and settings.gemini_enabled:
             try:
                 reply, resolved_model = LLMService._call_gemini_vision(
-                    prompt_messages,
+                    prepared_messages,
                     prompt_text,
                     encoded_images,
                     preferred_gemini_model,
@@ -128,7 +142,7 @@ class LLMService:
 
             try:
                 reply, resolved_model = LLMService._call_ollama_vision_with_fallbacks(
-                    prompt_messages,
+                    prepared_messages,
                     prompt_text,
                     encoded_images,
                     preferred_ollama_model,
@@ -139,7 +153,7 @@ class LLMService:
         else:
             try:
                 reply, resolved_model = LLMService._call_ollama_vision_with_fallbacks(
-                    prompt_messages,
+                    prepared_messages,
                     prompt_text,
                     encoded_images,
                     preferred_ollama_model,
@@ -151,7 +165,7 @@ class LLMService:
             if settings.gemini_enabled:
                 try:
                     reply, resolved_model = LLMService._call_gemini_vision(
-                        prompt_messages,
+                        prepared_messages,
                         prompt_text,
                         encoded_images,
                         preferred_gemini_model,
@@ -168,15 +182,15 @@ class LLMService:
             "model": model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": settings.llm_temperature},
+            "keep_alive": settings.ollama_keep_alive,
+            "options": RuntimeConfigService.build_ollama_options(model, vision=False),
         }
         errors: list[str] = []
 
         try:
-            response = httpx.post(
+            response = OLLAMA_CLIENT.post(
                 f"{settings.ollama_base_url.rstrip('/')}/api/chat",
                 json=payload,
-                timeout=settings.ollama_request_timeout,
             )
             if response.status_code != 404:
                 response.raise_for_status()
@@ -234,12 +248,12 @@ class LLMService:
             "model": model,
             "messages": prior_messages,
             "stream": False,
-            "options": {"temperature": settings.llm_temperature},
+            "keep_alive": settings.ollama_keep_alive,
+            "options": RuntimeConfigService.build_ollama_options(model, vision=True),
         }
-        response = httpx.post(
+        response = OLLAMA_CLIENT.post(
             f"{settings.ollama_base_url.rstrip('/')}/api/chat",
             json=payload,
-            timeout=settings.ollama_request_timeout,
         )
         if response.status_code == 404:
             not_found_reason = LLMService._extract_ollama_not_found_reason(response)
@@ -293,15 +307,15 @@ class LLMService:
             "model": model,
             "prompt": transcript,
             "stream": False,
-            "options": {"temperature": settings.llm_temperature},
+            "keep_alive": settings.ollama_keep_alive,
+            "options": RuntimeConfigService.build_ollama_options(model, vision=bool(images)),
         }
         if images:
             payload["images"] = images
 
-        response = httpx.post(
+        response = OLLAMA_CLIENT.post(
             f"{settings.ollama_base_url.rstrip('/')}/api/generate",
             json=payload,
-            timeout=settings.ollama_request_timeout,
         )
         not_found_reason = LLMService._extract_ollama_not_found_reason(response)
         if not_found_reason:
@@ -318,12 +332,12 @@ class LLMService:
         payload = {
             "model": model,
             "messages": messages,
+            "keep_alive": settings.ollama_keep_alive,
             "temperature": settings.llm_temperature,
         }
-        response = httpx.post(
+        response = OLLAMA_CLIENT.post(
             f"{settings.ollama_base_url.rstrip('/')}/v1/chat/completions",
             json=payload,
-            timeout=settings.ollama_request_timeout,
         )
         not_found_reason = LLMService._extract_ollama_not_found_reason(response)
         if not_found_reason:
@@ -350,11 +364,10 @@ class LLMService:
         errors: list[str] = []
         for candidate_model in LLMService._candidate_gemini_models(model, vision=False):
             try:
-                response = httpx.post(
+                response = GEMINI_CLIENT.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent",
                     params={"key": settings.gemini_api_key},
                     json=payload,
-                    timeout=60,
                 )
                 response.raise_for_status()
                 content = LLMService._extract_gemini_text(response.json())
@@ -388,11 +401,10 @@ class LLMService:
         errors: list[str] = []
         for candidate_model in LLMService._candidate_gemini_models(model, vision=True):
             try:
-                response = httpx.post(
+                response = GEMINI_CLIENT.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{candidate_model}:generateContent",
                     params={"key": settings.gemini_api_key},
                     json=payload,
-                    timeout=120,
                 )
                 response.raise_for_status()
                 content = LLMService._extract_gemini_text(response.json())
@@ -427,7 +439,7 @@ class LLMService:
         if vision:
             configured.extend([settings.ollama_vision_model, *settings.ollama_vision_model_list])
         else:
-            configured.extend([settings.ollama_model, *settings.ollama_model_list])
+            configured.extend([settings.ollama_model, *settings.ollama_model_list, *settings.ollama_optional_model_list])
 
         seen: set[str] = set()
         candidates: list[str] = []
@@ -438,6 +450,28 @@ class LLMService:
             seen.add(model_name)
             candidates.append(model_name)
         return candidates
+
+    @staticmethod
+    def _resolve_preferred_vision_model(provider: str, active_model: str | None) -> str:
+        active_name = (active_model or "").strip()
+        if provider == "ollama" and active_name and LLMService._looks_like_vision_model(active_name):
+            return active_name
+        if settings.ollama_vision_model.strip():
+            return settings.ollama_vision_model.strip()
+        if settings.ollama_vision_model_list:
+            return settings.ollama_vision_model_list[0]
+        return settings.ollama_model
+
+    @staticmethod
+    def _looks_like_vision_model(model_name: str) -> bool:
+        lowered = model_name.lower().strip()
+        if not lowered:
+            return False
+        if lowered in {item.lower() for item in settings.ollama_vision_model_list}:
+            return True
+        if lowered == settings.ollama_vision_model.lower().strip():
+            return True
+        return any(token in lowered for token in ("vision", "vl", "gemma3", "llava", "minicpm-v"))
 
     @staticmethod
     def _extract_gemini_text(data: dict) -> str:
@@ -457,6 +491,46 @@ class LLMService:
         return "\n".join(f"{item['role'].upper()}: {item['content']}" for item in messages if item.get("content"))
 
     @staticmethod
+    def _prepare_messages(messages: list[dict[str, str]], max_total_chars: int) -> list[dict[str, str]]:
+        if not messages:
+            return messages
+
+        system_message = None
+        non_system_messages: list[dict[str, str]] = []
+        for item in messages:
+            role = str(item.get("role", "")).strip()
+            content = str(item.get("content", "")).strip()
+            if not content:
+                continue
+            if role == "system" and system_message is None:
+                system_message = {"role": role, "content": content[:MAX_LATEST_MESSAGE_CHARS]}
+            else:
+                non_system_messages.append({"role": role, "content": content})
+
+        prepared_reversed: list[dict[str, str]] = []
+        total_chars = len(system_message["content"]) if system_message else 0
+        newest_added = False
+        for item in reversed(non_system_messages):
+            per_message_cap = MAX_LATEST_MESSAGE_CHARS if not newest_added else MAX_OLDER_MESSAGE_CHARS
+            remaining_budget = max_total_chars - total_chars
+            if remaining_budget <= 0:
+                break
+            allowed_chars = min(per_message_cap, remaining_budget)
+            if allowed_chars <= 0:
+                break
+            content = item["content"][:allowed_chars].strip()
+            if not content:
+                continue
+            prepared_reversed.append({"role": item["role"], "content": content})
+            total_chars += len(content)
+            newest_added = True
+
+        prepared = list(reversed(prepared_reversed))
+        if system_message is not None:
+            prepared.insert(0, system_message)
+        return prepared or messages[-1:]
+
+    @staticmethod
     def _should_prefer_gemini(messages: list[dict[str, str]]) -> bool:
         latest_user_message = ""
         for item in reversed(messages):
@@ -467,11 +541,13 @@ class LLMService:
         if not latest_user_message:
             return False
 
-        if len(latest_user_message) >= 1600:
+        if len(latest_user_message) >= 2400:
             return True
-        if latest_user_message.count("\n") >= 14:
+        if latest_user_message.count("\n") >= 24:
             return True
-        return any(keyword in latest_user_message for keyword in COMPLEXITY_KEYWORDS)
+        if any(keyword in latest_user_message for keyword in ("deep analysis", "deep dive", "thorough research", "comprehensive report")):
+            return True
+        return len(latest_user_message) >= 900 and any(keyword in latest_user_message for keyword in COMPLEXITY_KEYWORDS)
 
     @staticmethod
     def _extract_ollama_not_found_reason(response: httpx.Response) -> str | None:

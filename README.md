@@ -187,7 +187,13 @@ Important note:
 
 - `/models`
 - `/usemodel ollama qwen2.5:3b`
+- `/usemodel ollama gemma2:2b`
+- `/usemodel ollama deepseek-r1:1.5b`
 - `/usemodel ollama qwen2.5-coder:7b`
+- `/usemodel ollama qwen3-coder:30b`
+- `/usemodel ollama gemma3:4b`
+- `/usemodel ollama qwen2.5vl:7b`
+- `/usemodel ollama kimi-k2.5:cloud`
 - `/usemodel gemini gemini-2.5-flash`
 
 ### From your app
@@ -215,6 +221,55 @@ Example response:
 }
 ```
 
+Recommended Ollama pull list:
+
+```bash
+docker compose exec ollama ollama pull qwen2.5:3b
+docker compose exec ollama ollama pull gemma2:2b
+docker compose exec ollama ollama pull deepseek-r1:1.5b
+docker compose exec ollama ollama pull qwen2.5-coder:7b
+docker compose exec ollama ollama pull qwen3-coder:30b
+docker compose exec ollama ollama pull gemma3:4b
+docker compose exec ollama ollama pull gemma3:12b
+docker compose exec ollama ollama pull qwen2.5vl:7b
+```
+
+Optional cloud model through Ollama Cloud:
+
+```bash
+docker compose exec ollama ollama pull kimi-k2.5:cloud
+```
+
+You can also preload optional models at container startup by setting:
+
+```env
+OLLAMA_OPTIONAL_MODELS=qwen3-coder:30b,gemma3:12b,kimi-k2.5:cloud
+OLLAMA_KEEP_ALIVE=45m
+```
+
+Performance-tuned single-user VPS defaults:
+
+```env
+OLLAMA_KEEP_ALIVE=45m
+OLLAMA_CONTEXT_LENGTH=8192
+OLLAMA_VISION_CONTEXT_LENGTH=6144
+OLLAMA_NUM_PREDICT=768
+OLLAMA_VISION_NUM_PREDICT=512
+OLLAMA_NUM_PARALLEL=1
+OLLAMA_MAX_LOADED_MODELS=1
+OLLAMA_MAX_QUEUE=128
+OLLAMA_FLASH_ATTENTION=1
+OLLAMA_PREWARM_ON_SWITCH=true
+OLLAMA_PRELOAD_ACTIVE_MODEL_ON_STARTUP=true
+OLLAMA_UNLOAD_PREVIOUS_ON_SWITCH=true
+```
+
+Why model switching can still feel slow:
+
+- switching to a model that was not pulled yet has to download the full weights first
+- large models like `qwen3-coder:30b` or `gemma3:12b` take longer to load into RAM than `qwen2.5:3b`
+- small VPS plans can swap badly if too many models stay loaded at once, so `OLLAMA_MAX_LOADED_MODELS=1` is usually faster overall for single-user setups
+
 ## Telegram usage
 
 Send plain messages for normal chat with memory, or use task commands:
@@ -226,6 +281,8 @@ Send plain messages for normal chat with memory, or use task commands:
 - `continue task tsk_123456789abc add more logging before rerun`
 - `/models`
 - `/usemodel ollama qwen2.5:3b`
+- `/usemodel ollama gemma2:2b`
+- `/usemodel ollama deepseek-r1:1.5b`
 
 Conversation history is stored in SQLite and reused per Telegram user session.
 
@@ -244,6 +301,9 @@ What it includes:
 - responsive mobile-first layout inspired by modern AI mobile apps
 - thinking/loading states while replies are being generated
 - session history loaded from SQLite
+- inspector-side model library grouped into daily, coding, vision, and cloud profiles
+- dropdown model switcher with live detail cards and auto-pull for missing Ollama models
+- per-agent model preferences so each device can have its own preferred text model, vision model, and allowed model pool
 - PWA install support for desktop and mobile home screens
 
 Web chat API endpoints used by the app:

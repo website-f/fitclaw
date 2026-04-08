@@ -1,4 +1,4 @@
-const CACHE_NAME = "fitclaw-aiops-shell-v1";
+const CACHE_NAME = "fitclaw-aiops-shell-v7";
 const APP_SHELL = [
   "/app",
   "/app-manifest.webmanifest",

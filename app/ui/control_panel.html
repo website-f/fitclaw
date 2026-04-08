@@ -3,280 +3,999 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AI Ops Control Panel</title>
+  <title>FitClaw Device Control</title>
   <style>
     :root {
-      --bg: #f3efe3;
-      --card: #fffaf0;
-      --line: #d8ccb4;
-      --ink: #1c1b18;
-      --muted: #6c6657;
-      --accent: #006d77;
-      --accent-2: #d97706;
+      --bg: #0f0911;
+      --panel: rgba(24, 17, 27, 0.88);
+      --panel-2: rgba(31, 22, 35, 0.96);
+      --border: rgba(255, 255, 255, 0.09);
+      --text: #f6edf7;
+      --muted: #baaac0;
+      --accent: #ff4fa2;
+      --accent-2: #ff7a45;
+      --good: #4ade80;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      --radius: 24px;
+      --mono: "Consolas", "SFMono-Regular", ui-monospace, monospace;
+      --sans: "Segoe UI", "Inter", system-ui, sans-serif;
     }
+
     * { box-sizing: border-box; }
+
+    html,
     body {
       margin: 0;
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: radial-gradient(circle at top left, #fff9e8, var(--bg));
-      color: var(--ink);
+      min-height: 100%;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(255, 79, 162, 0.16), transparent 18%),
+        radial-gradient(circle at 80% 20%, rgba(255, 122, 69, 0.12), transparent 24%),
+        radial-gradient(circle at 75% 80%, rgba(190, 24, 93, 0.14), transparent 20%),
+        linear-gradient(180deg, #120b14, #09070a 60%);
     }
-    .wrap {
-      max-width: 1500px;
-      margin: 0 auto;
-      padding: 24px;
-    }
-    h1 { margin: 0 0 8px; font-size: 28px; }
-    .sub { color: var(--muted); margin-bottom: 20px; }
-    .grid {
+
+    body { min-height: 100vh; }
+
+    .shell {
       display: grid;
-      grid-template-columns: 1.3fr 1fr;
+      grid-template-columns: 320px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--border);
+      background: rgba(10, 8, 12, 0.72);
+      backdrop-filter: blur(18px);
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
       gap: 18px;
     }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px 6px 0;
     }
-    .row {
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .title {
+      font-size: 28px;
+      line-height: 1.05;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      margin: 0;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar-card { padding: 16px; }
+
+    .label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .select,
+    .input,
+    .textarea {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 12px 14px;
+      font: inherit;
+      outline: none;
+      transition: border-color 0.16s ease, transform 0.16s ease;
+    }
+
+    .select:focus,
+    .input:focus,
+    .textarea:focus {
+      border-color: rgba(255, 79, 162, 0.52);
+      transform: translateY(-1px);
+    }
+
+    .textarea {
+      min-height: 92px;
+      resize: vertical;
+    }
+
+    .button {
+      border: none;
+      border-radius: 16px;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--text);
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      transition: transform 0.16s ease, opacity 0.16s ease;
+    }
+
+    .button:hover { transform: translateY(-1px); }
+
+    .button.secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .button.warn { background: linear-gradient(135deg, #e11d48, #fb7185); }
+
+    .button.ghost {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .button.slim {
+      padding: 10px 12px;
+      border-radius: 14px;
+      font-size: 13px;
+    }
+
+    .button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .toolbar-actions,
+    .row,
+    .inline-actions {
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
       align-items: center;
-      margin-bottom: 12px;
     }
-    .row.tight { margin-bottom: 8px; }
-    label {
-      display: block;
+
+    .agent-list {
+      display: grid;
+      gap: 10px;
+      max-height: 46vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .agent-item {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+      transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+    }
+
+    .agent-item:hover,
+    .agent-item.active {
+      border-color: rgba(255, 79, 162, 0.42);
+      background: rgba(255, 79, 162, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .agent-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .agent-name {
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: capitalize;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .badge.online { color: var(--good); }
+    .badge.busy { color: var(--warn); }
+    .badge.offline { color: var(--bad); }
+    .badge.unknown { color: var(--muted); }
+
+    .tiny {
       font-size: 12px;
       color: var(--muted);
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+      line-height: 1.45;
     }
-    input, select, textarea, button {
-      font: inherit;
-      border-radius: 12px;
+
+    .caps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
     }
-    input, select, textarea {
-      border: 1px solid var(--line);
-      background: #fff;
-      padding: 10px 12px;
+
+    .cap {
+      font-size: 11px;
+      color: #eed6f4;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .main {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
       min-width: 0;
-      width: 100%;
     }
-    textarea { min-height: 90px; resize: vertical; }
-    button {
-      border: none;
-      background: var(--accent);
-      color: #fff;
-      padding: 10px 14px;
-      cursor: pointer;
-      font-weight: 600;
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      padding: 22px 24px;
+      background: linear-gradient(135deg, rgba(255, 79, 162, 0.12), rgba(255, 122, 69, 0.08));
     }
-    button.alt { background: var(--accent-2); }
-    button.ghost {
-      background: transparent;
-      color: var(--accent);
-      border: 1px solid var(--accent);
+
+    .hero h2 {
+      margin: 0 0 8px;
+      font-size: 30px;
     }
-    .stack { display: grid; gap: 12px; }
-    .half { flex: 1 1 180px; }
-    .image-wrap {
-      border: 1px dashed var(--line);
-      border-radius: 16px;
-      overflow: hidden;
-      background: #111;
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 760px;
+      line-height: 1.6;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.95fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 18px;
+      background: var(--panel-2);
+    }
+
+    .panel h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .panel-sub {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .screen-stage {
       position: relative;
-      min-height: 340px;
+      min-height: 480px;
+      border-radius: 24px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)), #0a070b;
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .image-wrap img {
+
+    .screen-stage img {
       width: 100%;
+      height: 100%;
+      object-fit: contain;
       display: block;
       cursor: crosshair;
+      user-select: none;
+      background: #09070a;
     }
-    .image-note {
+
+    .screen-empty {
       position: absolute;
-      left: 12px;
-      bottom: 12px;
-      background: rgba(0,0,0,0.65);
-      color: #fff;
-      padding: 6px 10px;
-      border-radius: 999px;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+      pointer-events: none;
+    }
+
+    .screen-overlay {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: 16px;
+      background: rgba(7, 5, 8, 0.62);
+      color: #fff1f7;
+      font-size: 13px;
+      backdrop-filter: blur(12px);
+    }
+
+    .screen-hint {
+      color: rgba(255, 241, 247, 0.84);
       font-size: 12px;
     }
-    .output {
-      white-space: pre-wrap;
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 12px;
-      min-height: 120px;
-      max-height: 360px;
-      overflow: auto;
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
     }
+
+    .metric {
+      border-radius: 20px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .metric-sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+      line-height: 1.45;
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.06);
+      margin-top: 8px;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+
+    .storage-tables {
+      display: grid;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .table-wrap {
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 14px;
     }
-    th, td {
-      border-bottom: 1px solid var(--line);
-      padding: 8px 6px;
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
       text-align: left;
       vertical-align: top;
+      font-size: 13px;
     }
-    .small { font-size: 12px; color: var(--muted); }
+
+    th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .path {
+      font-family: var(--mono);
+      word-break: break-all;
+      color: #fff5fb;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .output {
+      min-height: 140px;
+      max-height: 340px;
+      overflow: auto;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      font-family: var(--mono);
+      white-space: pre-wrap;
+      color: #fdeef5;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .log-list {
+      display: grid;
+      gap: 8px;
+      max-height: 24vh;
+      overflow: auto;
+    }
+
+    .log-item {
+      border-radius: 16px;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .log-time {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .empty-state {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      text-align: center;
+      padding: 22px;
+    }
+
+    .panel-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .checkbox {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .checkbox input {
+      width: 16px;
+      height: 16px;
+    }
+
+    .actions-cell {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .fullscreen-stage:fullscreen {
+      background: #050406;
+      padding: 24px;
+    }
+
+    .fullscreen-stage:fullscreen img {
+      object-fit: contain;
+      height: calc(100vh - 48px);
+    }
+
+    @media (max-width: 1360px) {
+      .workspace { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-2,
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+
     @media (max-width: 1080px) {
-      .grid { grid-template-columns: 1fr; }
+      .shell { grid-template-columns: 1fr; }
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .hero { grid-template-columns: 1fr; }
+      .hero-meta { justify-content: flex-start; }
+    }
+
+    @media (max-width: 720px) {
+      .main,
+      .sidebar { padding: 18px 14px; }
+      .metrics { grid-template-columns: 1fr; }
+      .screen-stage { min-height: 320px; }
+      th:nth-child(2),
+      td:nth-child(2) { display: none; }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Device Control Panel</h1>
-    <div class="sub">Live view, mouse and keyboard automation, file browser, process control, and safe app actions for installed agents.</div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="eyebrow">Operator Console</div>
+        <h1 class="title">Device Control</h1>
+        <p class="subtitle">Use this page for live device operations, storage cleanup, screen viewing, and direct agent control. Keep <code>/app</code> focused on chat and automation.</p>
+      </div>
 
-    <div class="row card">
-      <div class="half">
-        <label for="agentSelect">Agent</label>
-        <select id="agentSelect"></select>
+      <div class="card sidebar-card">
+        <label class="label" for="agentSelect">Current Agent</label>
+        <select id="agentSelect" class="select"></select>
+        <div class="toolbar-actions" style="margin-top:12px;">
+          <button class="button slim" id="refreshAgentsBtn">Refresh Agents</button>
+          <button class="button slim secondary" id="refreshCommandsBtn">Refresh Log</button>
+        </div>
+        <div class="panel-note" id="agentStatusText">Loading registered agents...</div>
       </div>
-      <div>
-        <button onclick="refreshAgents()">Refresh Agents</button>
-      </div>
-      <div>
-        <button onclick="captureScreenshot()">Capture Screenshot</button>
-      </div>
-      <div>
-        <button id="liveToggle" class="alt" onclick="toggleLiveView()">Start Live View</button>
-      </div>
-      <div class="small" id="agentStatus">Loading agents...</div>
-    </div>
 
-    <div class="grid">
-      <div class="stack">
-        <div class="card">
-          <div class="row tight">
-            <div class="small">Click the screenshot to send a left-click to that point on the device. Use the controls below for right-click, dragging, typing, hotkeys, files, and app actions.</div>
+      <div class="card sidebar-card">
+        <div class="row" style="justify-content:space-between;">
+          <div>
+            <div class="label" style="margin-bottom:4px;">Agent List</div>
+            <div class="tiny">Pick the active device directly here.</div>
           </div>
-          <div class="image-wrap">
-            <img id="screenImage" alt="Live device screenshot" onclick="clickScreenshot(event)" />
-            <div class="image-note" id="screenMeta">No screenshot yet</div>
-          </div>
+          <div class="pill" id="agentCountPill">0 agents</div>
+        </div>
+        <div id="agentList" class="agent-list"></div>
+      </div>
+
+      <div class="card sidebar-card">
+        <div class="label">Recent Control Log</div>
+        <div class="log-list" id="commandLog"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="card hero">
+        <div>
+          <div class="eyebrow">Live Operations</div>
+          <h2 id="heroTitle">No agent selected yet</h2>
+          <p id="heroSubtitle">Select an agent to view its live screen, inspect storage pressure, review files, and run operational controls from one place.</p>
+        </div>
+        <div class="hero-meta">
+          <div class="pill" id="heroHeartbeat">Heartbeat unknown</div>
+          <div class="pill" id="heroPlatform">Platform unknown</div>
+          <div class="pill" id="heroCapabilities">Capabilities loading</div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="stack">
+          <section class="card panel">
+            <div class="panel-head">
+              <div>
+                <h3>Live Screen</h3>
+                <div class="panel-sub">Near-live screenshot polling with click-to-control and fullscreen viewing.</div>
+              </div>
+              <div class="toolbar-actions">
+                <select id="liveInterval" class="select" style="width:120px;">
+                  <option value="1500">1.5s</option>
+                  <option value="2200" selected>2.2s</option>
+                  <option value="3000">3.0s</option>
+                  <option value="5000">5.0s</option>
+                </select>
+                <button class="button secondary" id="captureBtn">Capture</button>
+                <button class="button" id="liveToggleBtn">Start Live View</button>
+                <button class="button ghost" id="fullscreenBtn">Fullscreen</button>
+              </div>
+            </div>
+
+            <div id="screenStage" class="screen-stage fullscreen-stage">
+              <img id="screenImage" alt="Agent screen view" hidden />
+              <div class="screen-empty" id="screenEmpty">
+                <strong>No screenshot yet</strong>
+                <div>Capture once or start live view to turn this into your remote operator surface.</div>
+              </div>
+              <div class="screen-overlay">
+                <div id="screenMeta">Waiting for first frame</div>
+                <div class="screen-hint">Click anywhere on the screenshot to send a left-click to the remote device.</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card panel">
+            <div class="panel-head">
+              <div>
+                <h3>Storage Pressure</h3>
+                <div class="panel-sub">Inspect current disk usage and break down the biggest apps, folders, and files on the chosen path.</div>
+              </div>
+              <div class="toolbar-actions">
+                <button class="button" id="inspectStorageBtn">Inspect Storage</button>
+              </div>
+            </div>
+
+            <div class="grid-3">
+              <div>
+                <label class="label" for="storagePath">Storage Path</label>
+                <input id="storagePath" class="input" value="C:\" />
+              </div>
+              <div>
+                <label class="label" for="storageTopN">Rows Per Section</label>
+                <select id="storageTopN" class="select">
+                  <option value="5">5</option>
+                  <option value="10" selected>10</option>
+                  <option value="15">15</option>
+                  <option value="20">20</option>
+                </select>
+              </div>
+              <div>
+                <label class="label" for="deleteTargetPath">Delete Path</label>
+                <input id="deleteTargetPath" class="input" placeholder="Paste a file or folder path" />
+              </div>
+            </div>
+
+            <div class="inline-actions" style="margin-top:12px;">
+              <label class="checkbox"><input id="deleteUseTrash" type="checkbox" checked /> Send delete actions to recycle bin when supported</label>
+              <button class="button warn" id="deletePathBtn">Delete Target Path</button>
+            </div>
+
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-label">Drive Used</div>
+                <div class="metric-value" id="metricUsed">--</div>
+                <div class="metric-sub" id="metricUsedSub">Waiting for inspection</div>
+                <div class="progress"><span id="usageProgress" style="width:0%;"></span></div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Drive Free</div>
+                <div class="metric-value" id="metricFree">--</div>
+                <div class="metric-sub" id="metricFreeSub">Current free space</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Scanned Content</div>
+                <div class="metric-value" id="metricScanned">--</div>
+                <div class="metric-sub" id="metricScannedSub">Largest items from scan</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Skipped / Scope</div>
+                <div class="metric-value" id="metricSkipped">--</div>
+                <div class="metric-sub" id="metricSkippedSub">Permissions or transient errors</div>
+              </div>
+            </div>
+
+            <div class="storage-tables">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:22%;">Largest Apps</th>
+                      <th>Path</th>
+                      <th style="width:16%;">Size</th>
+                      <th style="width:20%;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="topAppsTable">
+                    <tr><td colspan="4" class="empty-state">Run a storage inspection to surface app install footprints.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:22%;">Largest Folders</th>
+                      <th>Path</th>
+                      <th style="width:16%;">Size</th>
+                      <th style="width:20%;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="topFoldersTable">
+                    <tr><td colspan="4" class="empty-state">Folder usage will appear here after inspection.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:22%;">Largest Files</th>
+                      <th>Path</th>
+                      <th style="width:16%;">Size</th>
+                      <th style="width:20%;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="topFilesTable">
+                    <tr><td colspan="4" class="empty-state">File hotspots will appear here after inspection.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
         </div>
 
-        <div class="card">
-          <h3>Mouse and Keyboard</h3>
-          <div class="row">
-            <div class="half"><label>X</label><input id="mouseX" type="number" value="200" /></div>
-            <div class="half"><label>Y</label><input id="mouseY" type="number" value="200" /></div>
-            <div class="half"><label>Button</label><select id="mouseButton"><option>left</option><option>right</option><option>middle</option></select></div>
-          </div>
-          <div class="row">
-            <button onclick="sendMouseMove()">Move</button>
-            <button onclick="sendMouseClick()">Click</button>
-            <button class="ghost" onclick="sendMouseDoubleClick()">Double Click</button>
-          </div>
-          <div class="row">
-            <div class="half"><label>Drag To X</label><input id="dragX" type="number" value="500" /></div>
-            <div class="half"><label>Drag To Y</label><input id="dragY" type="number" value="500" /></div>
-            <div class="half"><label>Duration (s)</label><input id="dragDuration" type="number" step="0.1" value="0.3" /></div>
-          </div>
-          <div class="row">
-            <button class="ghost" onclick="sendMouseDrag()">Drag</button>
-          </div>
-          <div class="row">
-            <div class="half"><label>Text</label><textarea id="typeText" placeholder="Type this on the remote device"></textarea></div>
-          </div>
-          <div class="row">
-            <button onclick="sendKeyboardType()">Type Text</button>
-          </div>
-          <div class="row">
-            <div class="half"><label>Hotkey</label><input id="hotkeyText" placeholder="ctrl,shift,esc" /></div>
-            <div class="half"><label>Key Press</label><input id="keypressText" placeholder="enter" /></div>
-          </div>
-          <div class="row">
-            <button onclick="sendHotkey()">Send Hotkey</button>
-            <button class="ghost" onclick="sendKeyPress()">Press Key</button>
-          </div>
-        </div>
-      </div>
+        <div class="stack">
+          <section class="card panel">
+            <div class="panel-head">
+              <div>
+                <h3>Pointer and Keyboard</h3>
+                <div class="panel-sub">Drive the selected machine with direct mouse and key commands.</div>
+              </div>
+            </div>
+            <div class="grid-3">
+              <div>
+                <label class="label" for="mouseX">X</label>
+                <input id="mouseX" class="input" type="number" value="200" />
+              </div>
+              <div>
+                <label class="label" for="mouseY">Y</label>
+                <input id="mouseY" class="input" type="number" value="200" />
+              </div>
+              <div>
+                <label class="label" for="mouseButton">Button</label>
+                <select id="mouseButton" class="select">
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                  <option value="middle">Middle</option>
+                </select>
+              </div>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="button secondary" id="mouseMoveBtn">Move</button>
+              <button class="button" id="mouseClickBtn">Click</button>
+              <button class="button ghost" id="mouseDoubleClickBtn">Double Click</button>
+            </div>
+            <div class="grid-3" style="margin-top:14px;">
+              <div>
+                <label class="label" for="dragX">Drag To X</label>
+                <input id="dragX" class="input" type="number" value="600" />
+              </div>
+              <div>
+                <label class="label" for="dragY">Drag To Y</label>
+                <input id="dragY" class="input" type="number" value="420" />
+              </div>
+              <div>
+                <label class="label" for="dragDuration">Duration (s)</label>
+                <input id="dragDuration" class="input" type="number" step="0.1" value="0.3" />
+              </div>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="button ghost" id="mouseDragBtn">Drag</button>
+            </div>
+            <div style="margin-top:14px;">
+              <label class="label" for="typeText">Text Input</label>
+              <textarea id="typeText" class="textarea" placeholder="Type on the remote machine"></textarea>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="button" id="keyboardTypeBtn">Type Text</button>
+            </div>
+            <div class="grid-2" style="margin-top:14px;">
+              <div>
+                <label class="label" for="hotkeyText">Hotkey</label>
+                <input id="hotkeyText" class="input" placeholder="ctrl,shift,esc" />
+              </div>
+              <div>
+                <label class="label" for="keypressText">Single Key</label>
+                <input id="keypressText" class="input" placeholder="enter" />
+              </div>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="button secondary" id="hotkeyBtn">Send Hotkey</button>
+              <button class="button ghost" id="keypressBtn">Press Key</button>
+            </div>
+          </section>
 
-      <div class="stack">
-        <div class="card">
-          <h3>Files</h3>
-          <div class="row">
-            <div class="half"><label>Path</label><input id="filePath" value="C:\\" /></div>
-          </div>
-          <div class="row">
-            <button onclick="listFiles()">List Directory</button>
-            <button class="ghost" onclick="readFile()">Read File</button>
-          </div>
-          <div class="output" id="fileOutput"></div>
-        </div>
+          <section class="card panel">
+            <div class="panel-head">
+              <div>
+                <h3>Files and Processes</h3>
+                <div class="panel-sub">Browse directories, open files, inspect running processes, and focus windows.</div>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div>
+                <label class="label" for="filePath">Path</label>
+                <input id="filePath" class="input" value="C:\" />
+              </div>
+              <div>
+                <label class="label" for="readMaxBytes">Read Limit</label>
+                <input id="readMaxBytes" class="input" type="number" value="50000" />
+              </div>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="button secondary" id="listFilesBtn">List Directory</button>
+              <button class="button ghost" id="readFileBtn">Read File</button>
+            </div>
+            <div class="grid-2" style="margin-top:14px;">
+              <div>
+                <label class="label" for="killPid">Kill PID</label>
+                <input id="killPid" class="input" placeholder="1234" />
+              </div>
+              <div>
+                <label class="label" for="focusTitle">Focus Window Title Contains</label>
+                <input id="focusTitle" class="input" placeholder="Visual Studio Code" />
+              </div>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="button secondary" id="listProcessesBtn">List Processes</button>
+              <button class="button secondary" id="listWindowsBtn">List Windows</button>
+              <button class="button ghost" id="killProcessBtn">Kill Process</button>
+              <button class="button ghost" id="focusWindowBtn">Focus Window</button>
+            </div>
+            <div class="output" id="opsOutput">Operational output will show here.</div>
+          </section>
 
-        <div class="card">
-          <h3>Processes and Windows</h3>
-          <div class="row">
-            <button onclick="listProcesses()">List Processes</button>
-            <button class="ghost" onclick="listWindows()">List Windows</button>
-          </div>
-          <div class="row">
-            <div class="half"><label>Kill PID</label><input id="killPid" placeholder="1234" /></div>
-            <div class="half"><label>Focus Window Title Contains</label><input id="focusTitle" placeholder="Visual Studio Code" /></div>
-          </div>
-          <div class="row">
-            <button class="ghost" onclick="killProcess()">Kill Process</button>
-            <button class="ghost" onclick="focusWindow()">Focus Window</button>
-          </div>
-          <div class="output" id="processOutput"></div>
+          <section class="card panel">
+            <div class="panel-head">
+              <div>
+                <h3>Launch and App Actions</h3>
+                <div class="panel-sub">Open applications, reveal folders, browse URLs, and send VS Code actions.</div>
+              </div>
+            </div>
+            <div class="grid-2">
+              <div>
+                <label class="label" for="appCommand">Command</label>
+                <input id="appCommand" class="input" placeholder="notepad.exe" />
+              </div>
+              <div>
+                <label class="label" for="appArgs">Arguments</label>
+                <input id="appArgs" class="input" placeholder="comma,separated,args" />
+              </div>
+            </div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button class="button" id="launchAppBtn">Launch App</button>
+            </div>
+            <div class="grid-2" style="margin-top:14px;">
+              <div>
+                <label class="label" for="appUrl">Open URL</label>
+                <input id="appUrl" class="input" placeholder="https://example.com" />
+              </div>
+              <div>
+                <label class="label" for="revealPath">Reveal Path</label>
+                <input id="revealPath" class="input" placeholder="C:\Users\admin\Desktop" />
+              </div>
+            </div>
+            <div class="grid-2" style="margin-top:14px;">
+              <div>
+                <label class="label" for="vscodePath">VS Code Path</label>
+                <input id="vscodePath" class="input" placeholder="C:\projects\repo" />
+              </div>
+              <div style="display:flex; align-items:end;">
+                <div class="inline-actions" style="width:100%;">
+                  <button class="button secondary" id="openUrlBtn">Open URL</button>
+                  <button class="button ghost" id="revealPathBtn">Reveal</button>
+                  <button class="button ghost" id="openVSCodeBtn">Open in VS Code</button>
+                </div>
+              </div>
+            </div>
+            <div class="output" id="appOutput">App actions and launch responses will show here.</div>
+          </section>
         </div>
-
-        <div class="card">
-          <h3>App Actions</h3>
-          <div class="row">
-            <div class="half"><label>Open Application</label><input id="appCommand" placeholder="notepad.exe or /Applications/Notes.app" /></div>
-            <div class="half"><label>Arguments</label><input id="appArgs" placeholder="comma,separated,args" /></div>
-          </div>
-          <div class="row">
-            <button onclick="openApplication()">Launch App</button>
-          </div>
-          <div class="row">
-            <div class="half"><label>Open URL</label><input id="appUrl" placeholder="https://example.com" /></div>
-          </div>
-          <div class="row">
-            <button class="ghost" onclick="openUrl()">Open URL in Browser</button>
-          </div>
-          <div class="row">
-            <div class="half"><label>Reveal Path</label><input id="revealPath" placeholder="C:\\Users\\admin\\Desktop" /></div>
-            <div class="half"><label>VS Code Path</label><input id="vscodePath" placeholder="C:\\projects\\myrepo" /></div>
-          </div>
-          <div class="row">
-            <button class="ghost" onclick="revealPath()">Reveal in File Manager</button>
-            <button class="ghost" onclick="openVSCodePath()">Open in VS Code</button>
-          </div>
-          <div class="output" id="appOutput"></div>
-        </div>
-      </div>
-    </div>
+      </section>
+    </main>
   </div>
-
   <script>
-    let liveTimer = null;
-    let lastScreen = { screen_size: { width: 1, height: 1 }, image_size: { width: 1, height: 1 } };
-    let agentStateByName = new Map();
+    const state = {
+      agents: [],
+      agentMap: new Map(),
+      currentAgentName: "",
+      liveTimer: null,
+      lastScreenMeta: {
+        screen_size: { width: 1, height: 1 },
+        image_size: { width: 1, height: 1 },
+      },
+      currentStorageData: null,
+    };
+
+    function $(id) {
+      return document.getElementById(id);
+    }
 
     async function api(path, options = {}) {
       const response = await fetch(path, {
-        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
         ...options,
       });
       if (!response.ok) {
-        const body = await response.text();
-        throw new Error(body || `Request failed with ${response.status}`);
+        let message = `${response.status} ${response.statusText}`;
+        try {
+          const body = await response.json();
+          message = body.detail || JSON.stringify(body);
+        } catch {
+          const text = await response.text();
+          message = text || message;
+        }
+        throw new Error(message);
       }
       const contentType = response.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
@@ -285,54 +1004,208 @@
       return await response.text();
     }
 
-    function currentAgent() {
-      return document.getElementById("agentSelect").value;
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
     }
 
-    function selectedAgentState() {
-      const name = currentAgent();
-      return name ? agentStateByName.get(name) || null : null;
-    }
-
-    function updateAgentStatusText() {
-      const status = document.getElementById("agentStatus");
-      const agent = selectedAgentState();
-      if (!agentStateByName.size) {
-        status.textContent = "No agents are registered yet";
-        return;
+    function formatBytes(value) {
+      const bytes = Number(value || 0);
+      if (!Number.isFinite(bytes) || bytes <= 0) {
+        return "0 B";
       }
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let size = bytes;
+      let index = 0;
+      while (size >= 1024 && index < units.length - 1) {
+        size /= 1024;
+        index += 1;
+      }
+      return `${index === 0 ? Math.round(size) : size.toFixed(1)} ${units[index]}`;
+    }
+
+    function formatDateTime(value) {
+      if (!value) {
+        return "unknown";
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return String(value);
+      }
+      return date.toLocaleString();
+    }
+
+    function getAgent(agentName = null) {
+      const name = agentName || state.currentAgentName;
+      return name ? state.agentMap.get(name) || null : null;
+    }
+
+    function suggestedRootForAgent(agent) {
+      const metadata = agent?.metadata_json || {};
+      const osText = String(metadata.os || metadata.platform || "").toLowerCase();
+      return osText.includes("windows") ? "C:\\" : "/";
+    }
+
+    function ensureAgentSelected() {
+      const agent = getAgent();
       if (!agent) {
-        status.textContent = `Loaded ${agentStateByName.size} agent${agentStateByName.size === 1 ? "" : "s"}`;
-        return;
+        throw new Error("Select an agent first.");
       }
-      status.textContent = `${agent.name} is ${agent.status} | Loaded ${agentStateByName.size} agent${agentStateByName.size === 1 ? "" : "s"}`;
+      if (agent.status !== "online" && agent.status !== "busy") {
+        throw new Error(`${agent.name} is currently ${agent.status}. Wait for it to come back online.`);
+      }
+      return agent;
     }
 
-    async function refreshAgents() {
-      const agents = await api("/api/v1/control/agents");
-      const select = document.getElementById("agentSelect");
-      const current = select.value;
-      agentStateByName = new Map(agents.map((agent) => [agent.name, agent]));
-      select.innerHTML = "";
-      agents.forEach((agent) => {
-        const option = document.createElement("option");
-        option.value = agent.name;
-        option.textContent = `${agent.name} (${agent.status})`;
-        select.appendChild(option);
-      });
-      if (current && agentStateByName.has(current)) {
-        select.value = current;
-      } else if (agents.length) {
-        select.value = agents[0].name;
+    function logMessage(message, type = "info") {
+      const log = $("commandLog");
+      const item = document.createElement("div");
+      item.className = "log-item";
+      const color =
+        type === "error" ? "var(--bad)" :
+        type === "success" ? "var(--good)" :
+        type === "warn" ? "var(--warn)" :
+        "var(--text)";
+      item.innerHTML = `
+        <div class="log-time">${new Date().toLocaleTimeString()}</div>
+        <div style="color:${color};">${escapeHtml(message)}</div>
+      `;
+      log.prepend(item);
+      while (log.children.length > 24) {
+        log.removeChild(log.lastChild);
       }
-      updateAgentStatusText();
+    }
+
+    function updateHero() {
+      const agent = getAgent();
+      $("agentCountPill").textContent = `${state.agents.length} agent${state.agents.length === 1 ? "" : "s"}`;
+      if (!agent) {
+        $("heroTitle").textContent = "No agent selected yet";
+        $("heroSubtitle").textContent = "Select an agent to view its live screen, inspect storage pressure, review files, and run operational controls from one place.";
+        $("heroHeartbeat").textContent = "Heartbeat unknown";
+        $("heroPlatform").textContent = "Platform unknown";
+        $("heroCapabilities").textContent = "Capabilities loading";
+        $("agentStatusText").textContent = state.agents.length ? "Select an agent to begin controlling it." : "No agents registered yet.";
+        return;
+      }
+      const metadata = agent.metadata_json || {};
+      const capabilities = Array.isArray(agent.capabilities_json) ? agent.capabilities_json : [];
+      const osLabel = metadata.os || metadata.platform || metadata.hostname || "Unknown platform";
+      const capLabel = capabilities.length ? `${capabilities.length} capabilities` : "No capabilities reported";
+      $("heroTitle").textContent = agent.name;
+      $("heroSubtitle").textContent = `Status is ${agent.status}. Use this page for interactive operations; keep /app for natural-language chat and automation flows.`;
+      $("heroHeartbeat").textContent = `Last heartbeat ${formatDateTime(agent.last_heartbeat_at)}`;
+      $("heroPlatform").textContent = osLabel;
+      $("heroCapabilities").textContent = capLabel;
+      $("agentStatusText").textContent = `${agent.name} is ${agent.status}. Registered ${formatDateTime(agent.registered_at)}.`;
+    }
+
+    function renderAgentList() {
+      const container = $("agentList");
+      if (!state.agents.length) {
+        container.innerHTML = `<div class="empty-state">No agents are connected yet. Install or start an agent, then refresh this page.</div>`;
+        return;
+      }
+      container.innerHTML = state.agents.map((agent) => {
+        const metadata = agent.metadata_json || {};
+        const capabilities = (agent.capabilities_json || []).slice(0, 8);
+        const active = agent.name === state.currentAgentName ? "active" : "";
+        const statusClass = escapeHtml(String(agent.status || "unknown"));
+        const platformText = escapeHtml(metadata.os || metadata.platform || metadata.hostname || "No platform metadata");
+        return `
+          <div class="agent-item ${active}" data-agent-name="${escapeHtml(agent.name)}">
+            <div class="agent-top">
+              <div class="agent-name">${escapeHtml(agent.name)}</div>
+              <div class="badge ${statusClass}">${escapeHtml(agent.status)}</div>
+            </div>
+            <div class="tiny">${platformText}</div>
+            <div class="tiny" style="margin-top:6px;">Heartbeat: ${escapeHtml(formatDateTime(agent.last_heartbeat_at))}</div>
+            <div class="caps">
+              ${capabilities.map((cap) => `<span class="cap">${escapeHtml(cap)}</span>`).join("")}
+            </div>
+          </div>
+        `;
+      }).join("");
+      container.querySelectorAll(".agent-item").forEach((item) => {
+        item.addEventListener("click", () => setCurrentAgent(item.dataset.agentName));
+      });
+    }
+
+    function syncAgentSelect() {
+      const select = $("agentSelect");
+      const current = state.currentAgentName;
+      select.innerHTML = state.agents.map((agent) => (
+        `<option value="${escapeHtml(agent.name)}">${escapeHtml(agent.name)} (${escapeHtml(agent.status)})</option>`
+      )).join("");
+      if (current && state.agentMap.has(current)) {
+        select.value = current;
+      } else if (state.agents.length) {
+        state.currentAgentName = state.agents[0].name;
+        select.value = state.currentAgentName;
+      }
+    }
+
+    async function refreshAgents({ preserveSelection = true } = {}) {
+      const current = preserveSelection ? state.currentAgentName : "";
+      const agents = await api("/api/v1/control/agents");
+      state.agents = Array.isArray(agents) ? agents : [];
+      state.agentMap = new Map(state.agents.map((agent) => [agent.name, agent]));
+      state.currentAgentName =
+        current && state.agentMap.has(current)
+          ? current
+          : state.agents[0]?.name || "";
+      syncAgentSelect();
+      renderAgentList();
+      updateHero();
+    }
+
+    function setCurrentAgent(agentName) {
+      if (!agentName || !state.agentMap.has(agentName)) {
+        return;
+      }
+      state.currentAgentName = agentName;
+      $("agentSelect").value = agentName;
+      renderAgentList();
+      updateHero();
+      const root = suggestedRootForAgent(getAgent(agentName));
+      const managedFields = ["storagePath", "filePath"];
+      managedFields.forEach((id) => {
+        const current = $(id).value.trim();
+        if (!current || current === "C:\\" || current === "/") {
+          $(id).value = root;
+        }
+      });
+      refreshCommandLog().catch((error) => logMessage(error.message, "error"));
+    }
+
+    async function refreshCommandLog() {
+      const agent = getAgent();
+      const query = agent ? `?agent_name=${encodeURIComponent(agent.name)}&limit=12` : "?limit=12";
+      const commands = await api(`/api/v1/control/commands${query}`);
+      const container = $("commandLog");
+      if (!Array.isArray(commands) || !commands.length) {
+        container.innerHTML = `<div class="empty-state">No recent control activity yet.</div>`;
+        return;
+      }
+      container.innerHTML = commands.map((command) => `
+        <div class="log-item">
+          <div class="log-time">${escapeHtml(formatDateTime(command.created_at))}</div>
+          <div><strong>${escapeHtml(command.command_type)}</strong> on ${escapeHtml(command.agent_name)}</div>
+          <div class="tiny">Status: ${escapeHtml(command.status)}${command.error_text ? ` | ${escapeHtml(command.error_text)}` : ""}</div>
+        </div>
+      `).join("");
     }
 
     async function createCommand(commandType, payloadJson = {}) {
-      return await api("/api/v1/control/commands", {
+      const agent = ensureAgentSelected();
+      return api("/api/v1/control/commands", {
         method: "POST",
         body: JSON.stringify({
-          agent_name: currentAgent(),
+          agent_name: agent.name,
           command_type: commandType,
           payload_json: payloadJson,
           source: "control_panel",
@@ -340,202 +1213,406 @@
       });
     }
 
-    async function waitForCommand(commandId, timeoutMs = 30000) {
+    async function waitForCommand(commandId, timeoutMs = 40000) {
       const started = Date.now();
       while (Date.now() - started < timeoutMs) {
         const command = await api(`/api/v1/control/commands/${commandId}`);
         if (command.status === "completed" || command.status === "failed") {
           return command;
         }
-        await new Promise((resolve) => setTimeout(resolve, 700));
+        await new Promise((resolve) => setTimeout(resolve, 750));
       }
-      throw new Error("Timed out waiting for device command");
+      throw new Error("Timed out waiting for command completion.");
     }
 
-    async function runCommand(commandType, payloadJson = {}, timeoutMs = 30000) {
-      await refreshAgents();
-      if (!currentAgent()) {
-        throw new Error("Select an agent first.");
-      }
-      const agent = selectedAgentState();
-      if (agent && agent.status !== "online") {
-        throw new Error(`${agent.name} is currently ${agent.status}. Open the agent app on that device and wait for the next heartbeat.`);
-      }
+    async function runCommand(commandType, payloadJson = {}, timeoutMs = 40000) {
       const created = await createCommand(commandType, payloadJson);
-      return await waitForCommand(created.command_id, timeoutMs);
+      const result = await waitForCommand(created.command_id, timeoutMs);
+      await refreshCommandLog();
+      if (result.status !== "completed") {
+        throw new Error(result.error_text || `${commandType} failed.`);
+      }
+      return result;
     }
 
-    function renderObject(targetId, value) {
-      document.getElementById(targetId).textContent =
-        typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    function renderOutput(targetId, value) {
+      $(targetId).textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
     }
 
     async function captureScreenshot() {
-      const command = await runCommand("screenshot", { format: "jpeg", quality: 70 }, 40000);
-      if (command.status !== "completed") {
-        throw new Error(command.error_text || "Screenshot failed");
-      }
-      lastScreen = command.result_json || lastScreen;
-      const img = document.getElementById("screenImage");
-      img.src = `/api/v1/control/commands/${command.command_id}/artifact?ts=${Date.now()}`;
-      const screen = command.result_json.screen_size || {};
-      const image = command.result_json.image_size || {};
-      document.getElementById("screenMeta").textContent =
-        `Screen ${screen.width || "?"}x${screen.height || "?"} | Image ${image.width || "?"}x${image.height || "?"}`;
+      const command = await runCommand("screenshot", { format: "jpeg", quality: 72, max_width: 1680 }, 45000);
+      state.lastScreenMeta = command.result_json || state.lastScreenMeta;
+      const image = $("screenImage");
+      image.hidden = false;
+      image.src = `/api/v1/control/commands/${command.command_id}/artifact?ts=${Date.now()}`;
+      $("screenEmpty").hidden = true;
+      const screen = command.result_json?.screen_size || {};
+      const rendered = command.result_json?.image_size || {};
+      $("screenMeta").textContent = `Screen ${screen.width || "?"}x${screen.height || "?"} | Render ${rendered.width || "?"}x${rendered.height || "?"} | ${formatDateTime(command.completed_at || command.updated_at)}`;
+      logMessage(`Captured screenshot from ${command.agent_name}`, "success");
     }
 
     async function toggleLiveView() {
-      const button = document.getElementById("liveToggle");
-      if (liveTimer) {
-        clearInterval(liveTimer);
-        liveTimer = null;
+      const button = $("liveToggleBtn");
+      if (state.liveTimer) {
+        clearInterval(state.liveTimer);
+        state.liveTimer = null;
         button.textContent = "Start Live View";
+        logMessage("Stopped live view polling.", "warn");
         return;
       }
+      await captureScreenshot();
       button.textContent = "Stop Live View";
-      try {
-        await captureScreenshot();
-      } catch (error) {
-        button.textContent = "Start Live View";
-        showError(error);
-        return;
-      }
-      liveTimer = setInterval(() => {
-        captureScreenshot().catch(showError);
-      }, 2200);
+      const interval = Number($("liveInterval").value || "2200");
+      state.liveTimer = setInterval(() => {
+        captureScreenshot().catch((error) => {
+          logMessage(error.message, "error");
+          clearInterval(state.liveTimer);
+          state.liveTimer = null;
+          button.textContent = "Start Live View";
+        });
+      }, interval);
+      logMessage(`Started live view at ${interval}ms intervals.`, "success");
     }
 
     async function clickScreenshot(event) {
-      if (!lastScreen.screen_size) {
+      if ($("screenImage").hidden) {
         return;
       }
+      const meta = state.lastScreenMeta || {};
+      const screen = meta.screen_size || { width: 1, height: 1 };
       const rect = event.target.getBoundingClientRect();
       const clickX = event.clientX - rect.left;
       const clickY = event.clientY - rect.top;
-      const x = Math.round((clickX / rect.width) * lastScreen.screen_size.width);
-      const y = Math.round((clickY / rect.height) * lastScreen.screen_size.height);
-      document.getElementById("mouseX").value = x;
-      document.getElementById("mouseY").value = y;
+      const x = Math.round((clickX / rect.width) * screen.width);
+      const y = Math.round((clickY / rect.height) * screen.height);
+      $("mouseX").value = x;
+      $("mouseY").value = y;
       await sendMouseClick();
     }
 
+    async function requestFullscreenStage() {
+      const stage = $("screenStage");
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      await stage.requestFullscreen();
+    }
+
+    function tableRowActions(pathValue, options = {}) {
+      const encodedPath = encodeURIComponent(pathValue).replaceAll("'", "%27");
+      const readAction = options.read !== false
+        ? `<button class="button slim ghost" onclick="window.controlPanelSetFilePath(decodeURIComponent('${encodedPath}'), true)">Read</button>`
+        : "";
+      const browseAction = `<button class="button slim secondary" onclick="window.controlPanelSetFilePath(decodeURIComponent('${encodedPath}'), false)">Browse</button>`;
+      const deleteAction = `<button class="button slim warn" onclick="window.controlPanelDeletePath(decodeURIComponent('${encodedPath}'))">Delete</button>`;
+      return `<div class="actions-cell">${browseAction}${readAction}${deleteAction}</div>`;
+    }
+
+    function renderStorageTable(targetId, items, kind) {
+      const body = $(targetId);
+      if (!Array.isArray(items) || !items.length) {
+        body.innerHTML = `<tr><td colspan="4" class="empty-state">No ${kind} found for this path.</td></tr>`;
+        return;
+      }
+      body.innerHTML = items.map((item) => {
+        const label = kind === "apps" ? (item.name || item.path) : item.path;
+        const allowRead = kind === "files";
+        return `
+          <tr>
+            <td>${escapeHtml(label)}</td>
+            <td><div class="path">${escapeHtml(item.path || "")}</div></td>
+            <td>${escapeHtml(item.size_human || formatBytes(item.size_bytes))}</td>
+            <td>${tableRowActions(item.path || "", { read: allowRead })}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function updateStorageSummary(data) {
+      state.currentStorageData = data;
+      const usage = data?.target_usage || {};
+      const usedBytes = Number(usage.used_bytes || 0);
+      const freeBytes = Number(usage.free_bytes || 0);
+      const totalBytes = Number(usage.total_bytes || 0);
+      const percent = Number(usage.percent || 0);
+      $("metricUsed").textContent = formatBytes(usedBytes);
+      $("metricUsedSub").textContent = totalBytes ? `${percent.toFixed(1)}% of ${formatBytes(totalBytes)} total` : "Drive totals unavailable";
+      $("metricFree").textContent = formatBytes(freeBytes);
+      $("metricFreeSub").textContent = totalBytes ? `Approximately ${formatBytes(totalBytes)} total capacity` : "No total capacity reported";
+      $("metricScanned").textContent = data?.estimated_total_human || "--";
+      $("metricScannedSub").textContent = `${data?.scanned_files ?? 0} files and ${data?.scanned_dirs ?? 0} folders scanned`;
+      $("metricSkipped").textContent = String(data?.skipped_entries ?? 0);
+      $("metricSkippedSub").textContent = `Top ${data?.top_n ?? 0} entries at ${data?.path || "selected path"}`;
+      $("usageProgress").style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      renderStorageTable("topAppsTable", data?.top_apps || [], "apps");
+      renderStorageTable("topFoldersTable", data?.top_folders || [], "folders");
+      renderStorageTable("topFilesTable", data?.top_files || [], "files");
+    }
+
+    async function inspectStorage() {
+      const agent = ensureAgentSelected();
+      const path = $("storagePath").value.trim();
+      const top_n = Number($("storageTopN").value || "10");
+      logMessage(`Inspecting storage on ${agent.name} for ${path || "default path"}...`);
+      const data = await api("/api/v1/control/storage/inspect", {
+        method: "POST",
+        body: JSON.stringify({
+          agent_name: agent.name,
+          path: path || null,
+          top_n,
+        }),
+      });
+      updateStorageSummary(data);
+      logMessage(`Storage inspection finished for ${agent.name}`, "success");
+    }
+
+    async function deleteStoragePath(pathValue = null) {
+      const agent = ensureAgentSelected();
+      const targetPath = (pathValue || $("deleteTargetPath").value || "").trim();
+      if (!targetPath) {
+        throw new Error("Enter or choose a path to delete.");
+      }
+      const useTrash = $("deleteUseTrash").checked;
+      const confirmed = window.confirm(`Delete this path on ${agent.name}?\n\n${targetPath}\n\nThis cannot be undone easily if permanent delete is used.`);
+      if (!confirmed) {
+        return;
+      }
+      const data = await api("/api/v1/control/storage/delete", {
+        method: "POST",
+        body: JSON.stringify({
+          agent_name: agent.name,
+          path: targetPath,
+          use_trash: useTrash,
+        }),
+      });
+      $("deleteTargetPath").value = targetPath;
+      renderOutput("opsOutput", data);
+      logMessage(`Deleted ${targetPath} on ${agent.name} using ${data.method || "delete"}.`, "success");
+      if (state.currentStorageData) {
+        inspectStorage().catch((error) => logMessage(error.message, "error"));
+      }
+    }
+
+    window.controlPanelDeletePath = (pathValue) => {
+      deleteStoragePath(pathValue).catch((error) => {
+        logMessage(error.message, "error");
+        renderOutput("opsOutput", error.message);
+      });
+    };
+
+    window.controlPanelSetFilePath = (pathValue, readFileNow = false) => {
+      $("filePath").value = pathValue;
+      $("deleteTargetPath").value = pathValue;
+      if (readFileNow) {
+        readFile().catch((error) => {
+          logMessage(error.message, "error");
+          renderOutput("opsOutput", error.message);
+        });
+      } else {
+        listFiles().catch((error) => {
+          logMessage(error.message, "error");
+          renderOutput("opsOutput", error.message);
+        });
+      }
+    };
+
     async function sendMouseMove() {
-      const x = Number(document.getElementById("mouseX").value);
-      const y = Number(document.getElementById("mouseY").value);
+      const x = Number($("mouseX").value);
+      const y = Number($("mouseY").value);
       const result = await runCommand("mouse_move", { x, y });
-      renderObject("appOutput", result.result_json);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Moved pointer to ${x}, ${y}`, "success");
     }
 
-    async function sendMouseClick(count = 1) {
-      const x = Number(document.getElementById("mouseX").value);
-      const y = Number(document.getElementById("mouseY").value);
-      const button = document.getElementById("mouseButton").value;
-      const result = await runCommand("mouse_click", { x, y, button, clicks: count });
-      renderObject("appOutput", result.result_json);
-    }
-
-    async function sendMouseDoubleClick() {
-      await sendMouseClick(2);
+    async function sendMouseClick(clicks = 1) {
+      const x = Number($("mouseX").value);
+      const y = Number($("mouseY").value);
+      const button = $("mouseButton").value;
+      const result = await runCommand("mouse_click", { x, y, button, clicks });
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Clicked ${button} at ${x}, ${y}`, "success");
     }
 
     async function sendMouseDrag() {
-      const fromX = Number(document.getElementById("mouseX").value);
-      const fromY = Number(document.getElementById("mouseY").value);
-      const toX = Number(document.getElementById("dragX").value);
-      const toY = Number(document.getElementById("dragY").value);
-      const duration = Number(document.getElementById("dragDuration").value || "0.3");
-      const button = document.getElementById("mouseButton").value;
-      const result = await runCommand("mouse_drag", { from_x: fromX, from_y: fromY, to_x: toX, to_y: toY, duration, button });
-      renderObject("appOutput", result.result_json);
+      const from_x = Number($("mouseX").value);
+      const from_y = Number($("mouseY").value);
+      const to_x = Number($("dragX").value);
+      const to_y = Number($("dragY").value);
+      const duration = Number($("dragDuration").value || "0.3");
+      const button = $("mouseButton").value;
+      const result = await runCommand("mouse_drag", { from_x, from_y, to_x, to_y, duration, button });
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Dragged ${button} from ${from_x},${from_y} to ${to_x},${to_y}`, "success");
     }
 
     async function sendKeyboardType() {
-      const text = document.getElementById("typeText").value;
+      const text = $("typeText").value;
       const result = await runCommand("keyboard_type", { text });
-      renderObject("appOutput", result.result_json);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Typed ${text.length} characters on remote device.`, "success");
     }
 
     async function sendHotkey() {
-      const keys = document.getElementById("hotkeyText").value.split(",").map((item) => item.trim()).filter(Boolean);
+      const keys = $("hotkeyText").value.split(",").map((item) => item.trim()).filter(Boolean);
       const result = await runCommand("keyboard_hotkey", { keys });
-      renderObject("appOutput", result.result_json);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Sent hotkey ${keys.join("+")}`, "success");
     }
 
     async function sendKeyPress() {
-      const key = document.getElementById("keypressText").value.trim();
+      const key = $("keypressText").value.trim();
       const result = await runCommand("keyboard_press", { key });
-      renderObject("appOutput", result.result_json);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Pressed key ${key}`, "success");
     }
 
     async function listFiles() {
-      const path = document.getElementById("filePath").value;
-      const result = await runCommand("file_list", { path });
-      renderObject("fileOutput", result.result_json);
+      const path = $("filePath").value.trim();
+      const result = await runCommand("file_list", { path }, 60000);
+      renderOutput("opsOutput", result.result_json);
+      logMessage(`Listed ${path}`, "success");
     }
 
     async function readFile() {
-      const path = document.getElementById("filePath").value;
-      const result = await runCommand("file_read", { path, max_bytes: 50000 }, 40000);
-      renderObject("fileOutput", result.result_json);
+      const path = $("filePath").value.trim();
+      const max_bytes = Number($("readMaxBytes").value || "50000");
+      const result = await runCommand("file_read", { path, max_bytes }, 60000);
+      renderOutput("opsOutput", result.result_json);
+      logMessage(`Read file ${path}`, "success");
     }
 
     async function listProcesses() {
-      const result = await runCommand("process_list", {}, 40000);
-      renderObject("processOutput", result.result_json);
+      const result = await runCommand("process_list", {}, 60000);
+      renderOutput("opsOutput", result.result_json);
+      logMessage("Listed running processes.", "success");
     }
 
     async function listWindows() {
-      const result = await runCommand("window_list", {}, 40000);
-      renderObject("processOutput", result.result_json);
+      const result = await runCommand("window_list", {}, 60000);
+      renderOutput("opsOutput", result.result_json);
+      logMessage("Listed windows.", "success");
     }
 
     async function killProcess() {
-      const pid = Number(document.getElementById("killPid").value);
-      const result = await runCommand("process_kill", { pid });
-      renderObject("processOutput", result.result_json);
+      const pid = Number($("killPid").value || "0");
+      if (!pid) {
+        throw new Error("Enter a PID first.");
+      }
+      const result = await runCommand("process_kill", { pid }, 40000);
+      renderOutput("opsOutput", result.result_json);
+      logMessage(`Killed process ${pid}`, "warn");
     }
 
     async function focusWindow() {
-      const title = document.getElementById("focusTitle").value.trim();
-      const result = await runCommand("window_focus", { title_contains: title }, 40000);
-      renderObject("processOutput", result.result_json);
+      const title_contains = $("focusTitle").value.trim();
+      if (!title_contains) {
+        throw new Error("Enter part of the window title first.");
+      }
+      const result = await runCommand("window_focus", { title_contains }, 40000);
+      renderOutput("opsOutput", result.result_json);
+      logMessage(`Focused window matching "${title_contains}"`, "success");
     }
 
     async function openApplication() {
-      const command = document.getElementById("appCommand").value.trim();
-      const args = document.getElementById("appArgs").value.split(",").map((item) => item.trim()).filter(Boolean);
-      const result = await runCommand("app_launch", { command, args }, 40000);
-      renderObject("appOutput", result.result_json);
+      const command = $("appCommand").value.trim();
+      const args = $("appArgs").value.split(",").map((item) => item.trim()).filter(Boolean);
+      if (!command) {
+        throw new Error("Enter an application command first.");
+      }
+      const result = await runCommand("app_launch", { command, args }, 60000);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Launched ${command}`, "success");
     }
 
     async function openUrl() {
-      const url = document.getElementById("appUrl").value.trim();
+      const url = $("appUrl").value.trim();
+      if (!url) {
+        throw new Error("Enter a URL first.");
+      }
       const result = await runCommand("app_action", { action: "browser_open_url", url }, 40000);
-      renderObject("appOutput", result.result_json);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Opened URL ${url}`, "success");
     }
 
     async function revealPath() {
-      const path = document.getElementById("revealPath").value.trim();
+      const path = $("revealPath").value.trim();
+      if (!path) {
+        throw new Error("Enter a path to reveal first.");
+      }
       const result = await runCommand("app_action", { action: "file_manager_reveal", path }, 40000);
-      renderObject("appOutput", result.result_json);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Revealed ${path}`, "success");
     }
 
     async function openVSCodePath() {
-      const path = document.getElementById("vscodePath").value.trim();
+      const path = $("vscodePath").value.trim();
       const result = await runCommand("app_action", { action: "vscode_open_path", path }, 40000);
-      renderObject("appOutput", result.result_json);
+      renderOutput("appOutput", result.result_json);
+      logMessage(`Opened VS Code${path ? ` at ${path}` : ""}`, "success");
     }
 
-    function showError(error) {
-      document.getElementById("appOutput").textContent = error.message || String(error);
+    function attachHandlers() {
+      $("agentSelect").addEventListener("change", () => setCurrentAgent($("agentSelect").value));
+      $("refreshAgentsBtn").addEventListener("click", () => refreshAgents().catch(handleError));
+      $("refreshCommandsBtn").addEventListener("click", () => refreshCommandLog().catch(handleError));
+      $("captureBtn").addEventListener("click", () => captureScreenshot().catch(handleError));
+      $("liveToggleBtn").addEventListener("click", () => toggleLiveView().catch(handleError));
+      $("fullscreenBtn").addEventListener("click", () => requestFullscreenStage().catch(handleError));
+      $("screenImage").addEventListener("click", (event) => clickScreenshot(event).catch(handleError));
+      $("inspectStorageBtn").addEventListener("click", () => inspectStorage().catch(handleError));
+      $("deletePathBtn").addEventListener("click", () => deleteStoragePath().catch(handleError));
+      $("mouseMoveBtn").addEventListener("click", () => sendMouseMove().catch(handleError));
+      $("mouseClickBtn").addEventListener("click", () => sendMouseClick().catch(handleError));
+      $("mouseDoubleClickBtn").addEventListener("click", () => sendMouseClick(2).catch(handleError));
+      $("mouseDragBtn").addEventListener("click", () => sendMouseDrag().catch(handleError));
+      $("keyboardTypeBtn").addEventListener("click", () => sendKeyboardType().catch(handleError));
+      $("hotkeyBtn").addEventListener("click", () => sendHotkey().catch(handleError));
+      $("keypressBtn").addEventListener("click", () => sendKeyPress().catch(handleError));
+      $("listFilesBtn").addEventListener("click", () => listFiles().catch(handleError));
+      $("readFileBtn").addEventListener("click", () => readFile().catch(handleError));
+      $("listProcessesBtn").addEventListener("click", () => listProcesses().catch(handleError));
+      $("listWindowsBtn").addEventListener("click", () => listWindows().catch(handleError));
+      $("killProcessBtn").addEventListener("click", () => killProcess().catch(handleError));
+      $("focusWindowBtn").addEventListener("click", () => focusWindow().catch(handleError));
+      $("launchAppBtn").addEventListener("click", () => openApplication().catch(handleError));
+      $("openUrlBtn").addEventListener("click", () => openUrl().catch(handleError));
+      $("revealPathBtn").addEventListener("click", () => revealPath().catch(handleError));
+      $("openVSCodeBtn").addEventListener("click", () => openVSCodePath().catch(handleError));
     }
+
+    function handleError(error) {
+      const message = error?.message || String(error);
+      renderOutput("opsOutput", message);
+      renderOutput("appOutput", message);
+      logMessage(message, "error");
+    }
+
+    async function bootstrap() {
+      attachHandlers();
+      await refreshAgents({ preserveSelection: false });
+      if (state.currentAgentName) {
+        setCurrentAgent(state.currentAgentName);
+      }
+      await refreshCommandLog();
+      logMessage("Control panel ready.", "success");
+      setInterval(() => {
+        refreshAgents().catch((error) => logMessage(error.message, "error"));
+      }, 8000);
+      setInterval(() => {
+        refreshCommandLog().catch(() => {});
+      }, 12000);
+    }
+
+    window.addEventListener("beforeunload", () => {
+      if (state.liveTimer) {
+        clearInterval(state.liveTimer);
+      }
+    });
 
     window.addEventListener("load", () => {
-      document.getElementById("agentSelect").addEventListener("change", updateAgentStatusText);
-      refreshAgents().catch(showError);
-      setInterval(() => {
-        refreshAgents().catch(() => {});
-      }, 5000);
+      bootstrap().catch(handleError);
     });
   </script>
 </body>

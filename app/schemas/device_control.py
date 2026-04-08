@@ -36,3 +36,14 @@ class DeviceCommandResponse(BaseModel):
     updated_at: datetime
     completed_at: datetime | None
 
+
+class StorageInspectRequest(BaseModel):
+    agent_name: str = Field(min_length=1, max_length=100)
+    path: str | None = Field(default=None, max_length=500)
+    top_n: int = Field(default=10, ge=1, le=50)
+
+
+class StorageDeleteRequest(BaseModel):
+    agent_name: str = Field(min_length=1, max_length=100)
+    path: str = Field(min_length=1, max_length=1000)
+    use_trash: bool = True

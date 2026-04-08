@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#120910" />
+  <meta name="theme-color" content="#0b1120" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="FitClaw AI Ops" />
@@ -11,6 +11,9 @@
   <link rel="manifest" href="/app-manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/app-assets/icons/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/app-assets/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/app-assets/chat-app.css" />
 </head>
 <body>
@@ -19,82 +22,101 @@
   <div class="ambient ambient-c"></div>
 
   <div class="app-shell" id="appShell">
+    <!-- ── Sidebar drawer (always overlay) ── -->
     <aside class="drawer sidebar" id="sidebar">
-      <div class="brand-row">
-        <div class="brand-mark">FC</div>
-        <div class="brand-text">
-          <p class="eyebrow">Personal AI Ops</p>
-          <h1>FitClaw Brain</h1>
+      <div class="sidebar-header">
+        <div class="brand-row">
+          <div class="brand-mark">FC</div>
+          <div class="brand-text">
+            <p class="eyebrow">Personal AI Ops</p>
+            <h1>FitClaw Brain</h1>
+          </div>
+          <button class="icon-button" id="closeSidebarButton" type="button" aria-label="Close menu">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
         </div>
-        <button class="icon-button mobile-only" id="closeSidebarButton" type="button" aria-label="Close menu">
-          <span></span>
-          <span></span>
+        <button class="primary-button full-width" id="newChatButton" type="button">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span>New chat</span>
         </button>
+        <button class="ghost-button full-width" id="installButton" type="button" hidden>Install app</button>
       </div>
 
-      <div class="glass-card hero-card">
-        <div class="hero-copy">
-          <p class="eyebrow">Portable command center</p>
-          <h2>Create, explore, orchestrate.</h2>
-          <p>Talk to your stack, your models, and your devices from one adaptive workspace.</p>
+      <!-- Nav: Prompt deck (collapsible) -->
+      <section class="nav-section" id="navPromptDeck">
+        <button class="nav-section-toggle" type="button" data-section="promptDeck" aria-expanded="false">
+          <svg class="nav-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Prompt deck</span>
+          <span class="nav-badge" id="suggestionCount">0</span>
+        </button>
+        <div class="nav-section-body" id="promptDeckBody">
+          <div class="prompt-grid" id="promptDeck"></div>
         </div>
-        <div class="hero-actions">
-          <button class="primary-button" id="newChatButton" type="button">New chat</button>
-          <button class="ghost-button" id="installButton" type="button" hidden>Install app</button>
-        </div>
-      </div>
-
-      <section class="panel-section">
-        <div class="section-heading">
-          <h3>Prompt deck</h3>
-          <span id="suggestionCount">0 ideas</span>
-        </div>
-        <div class="prompt-grid" id="promptDeck"></div>
       </section>
 
-      <section class="panel-section history-section">
-        <div class="section-heading">
-          <h3>Recent chats</h3>
-          <button class="text-button" id="refreshHistoryButton" type="button">Refresh</button>
+      <!-- Nav: Recent chats (collapsible) -->
+      <section class="nav-section" id="navRecentChats">
+        <button class="nav-section-toggle" type="button" data-section="recentChats" aria-expanded="false">
+          <svg class="nav-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Recent chats</span>
+          <button class="text-button nav-action" id="refreshHistoryButton" type="button">Refresh</button>
+        </button>
+        <div class="nav-section-body" id="recentChatsBody">
+          <div class="history-list" id="historyList"></div>
+          <div class="history-footer" id="historyFooter" hidden>
+            <button class="clear-all-btn" id="clearAllHistoryButton" type="button">Clear all</button>
+            <div class="history-pager">
+              <button class="history-pager-btn" id="historyPrevButton" type="button" disabled>&lsaquo;</button>
+              <span class="history-pager-label" id="historyPageLabel">1/1</span>
+              <button class="history-pager-btn" id="historyNextButton" type="button" disabled>&rsaquo;</button>
+            </div>
+          </div>
         </div>
-        <div class="history-list" id="historyList"></div>
       </section>
 
-      <section class="panel-section profile-section">
-        <div class="section-heading">
-          <h3>Profile</h3>
-          <span>Sync manually across devices</span>
+      <!-- Nav: Control (link to /control) -->
+      <section class="nav-section" id="navControl">
+        <a class="nav-section-link" href="/control">
+          <svg class="nav-link-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v4M3.5 3l2.8 2.8M1 7h4M3.5 11l2.8-2.8M7 13V9M10.5 11l-2.8-2.8M13 7H9M10.5 3L7.7 5.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span>Control panel</span>
+          <svg class="nav-link-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4.5 3l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </section>
+
+      <!-- Nav: Profile (collapsible) -->
+      <section class="nav-section" id="navProfile">
+        <button class="nav-section-toggle" type="button" data-section="profile" aria-expanded="false">
+          <svg class="nav-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Profile</span>
+        </button>
+        <div class="nav-section-body" id="profileBody">
+          <label class="field">
+            <span>Display name</span>
+            <input id="displayNameInput" type="text" maxlength="40" placeholder="Fitri" />
+          </label>
+          <label class="field">
+            <span>Profile key</span>
+            <input id="profileKeyInput" type="text" maxlength="80" />
+          </label>
+          <button class="ghost-button full-width" id="saveProfileButton" type="button">Save profile</button>
         </div>
-        <label class="field">
-          <span>Display name</span>
-          <input id="displayNameInput" type="text" maxlength="40" placeholder="Fitri" />
-        </label>
-        <label class="field">
-          <span>Profile key</span>
-          <input id="profileKeyInput" type="text" maxlength="80" />
-        </label>
-        <button class="ghost-button full-width" id="saveProfileButton" type="button">Save profile</button>
       </section>
     </aside>
 
+    <!-- ── Main chat area ── -->
     <main class="chat-stage">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="icon-button mobile-only" id="openSidebarButton" type="button" aria-label="Open menu">
-            <span></span>
-            <span></span>
-            <span></span>
+          <button class="icon-button" id="openSidebarButton" type="button" aria-label="Open menu">
+            <svg width="16" height="14" viewBox="0 0 16 14" fill="none"><path d="M1 1h14M1 7h14M1 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </button>
-          <div>
+          <div class="topbar-info">
             <p class="eyebrow" id="connectionLabel">Self-hosted PWA</p>
             <h2 id="sessionTitle">New conversation</h2>
           </div>
         </div>
         <div class="topbar-right">
           <div class="status-pill" id="modelPill">Model loading...</div>
-          <button class="icon-button mobile-only" id="openInspectorButton" type="button" aria-label="Open panel">
-            <span class="dot"></span>
-          </button>
         </div>
       </header>
 
@@ -127,11 +149,16 @@
         <form class="composer glass-card" id="composerForm">
           <input id="filePicker" type="file" multiple hidden />
           <label class="sr-only" for="messageInput">Message</label>
-          <textarea id="messageInput" rows="1" maxlength="8000" placeholder="Send a message to your AI ops platform..."></textarea>
+          <textarea id="messageInput" rows="1" maxlength="8000" placeholder="Message your AI ops platform..."></textarea>
           <div class="composer-actions">
-            <button class="ghost-button small-button" id="attachButton" type="button">Attach</button>
-            <button class="ghost-button small-button" id="clearDraftButton" type="button">Clear</button>
+            <button class="icon-button composer-icon-btn" id="attachButton" type="button" aria-label="Attach file">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M15.2 8.5l-6.4 6.4a4 4 0 01-5.6-5.7l6.4-6.4a2.7 2.7 0 013.7 3.8l-6.4 6.4a1.3 1.3 0 01-1.9-1.9l5.9-5.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="icon-button composer-icon-btn" id="clearDraftButton" type="button" aria-label="Clear draft">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
             <button class="primary-button send-button" id="sendButton" type="submit">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2L7 9M14 2l-4.5 12-2.2-5.3L2 6.5 14 2z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span>Send</span>
             </button>
           </div>
@@ -139,15 +166,15 @@
       </footer>
     </main>
 
-    <aside class="drawer inspector" id="inspector">
+    <!-- ── Inspector drawer (right overlay, opened by FAB) ── -->
+    <aside class="inspector" id="inspector">
       <div class="inspector-head">
         <div>
           <p class="eyebrow">Live system pulse</p>
-          <h3>Agents and ideas</h3>
+          <h3>Agents & models</h3>
         </div>
-        <button class="icon-button mobile-only" id="closeInspectorButton" type="button" aria-label="Close panel">
-          <span></span>
-          <span></span>
+        <button class="icon-button" id="closeInspectorButton" type="button" aria-label="Close panel">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </div>
 
@@ -161,6 +188,23 @@
 
       <section class="glass-card inspector-card">
         <div class="section-heading">
+          <h4>Model library</h4>
+          <button class="text-button" id="refreshModelsButton" type="button">Refresh</button>
+        </div>
+        <div class="model-summary" id="modelSummary">Loading available models...</div>
+        <div class="model-picker">
+          <label class="field compact-field">
+            <span>Active model</span>
+            <select id="modelSelect"></select>
+          </label>
+          <button class="primary-button compact-action" id="applyModelButton" type="button">Switch</button>
+        </div>
+        <div class="model-details-card" id="modelDetails"></div>
+        <div class="model-list" id="modelList"></div>
+      </section>
+
+      <section class="glass-card inspector-card">
+        <div class="section-heading">
           <h4>Suggested actions</h4>
           <span>Tap to run</span>
         </div>
@@ -170,18 +214,35 @@
       <section class="glass-card inspector-card">
         <div class="section-heading">
           <h4>Workspace notes</h4>
-          <span>Persistent on this device</span>
         </div>
         <ul class="note-list">
-          <li>Use the same profile key on multiple devices if you want shared web-chat history.</li>
-          <li>Screenshot and device-command replies can render directly inside the chat thread.</li>
-          <li>The PWA works offline for the shell, but live chat still needs the server connection.</li>
+          <li>Use the same profile key on multiple devices for shared chat history.</li>
+          <li>Screenshot and device-command replies render inside the chat thread.</li>
+          <li>The PWA works offline for the shell; live chat needs a server connection.</li>
         </ul>
       </section>
     </aside>
   </div>
 
+  <!-- Floating action button for inspector -->
+  <button class="fab" id="inspectorFab" type="button" aria-label="System pulse">
+    <svg class="fab-icon-open" width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M10 1v3M10 16v3M1 10h3M16 10h3M3.9 3.9l2.1 2.1M13.9 13.9l2.2 2.2M3.9 16.1l2.1-2.1M13.9 6.1l2.2-2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <svg class="fab-icon-close" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  </button>
+
   <div class="backdrop" id="drawerBackdrop" hidden></div>
+  <div class="loading-modal" id="modelSwitchModal" hidden aria-live="polite" aria-modal="true" role="dialog">
+    <div class="loading-modal-card glass-card">
+      <div class="loading-orb" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <p class="eyebrow">Runtime update</p>
+      <h3 id="modelSwitchTitle">Switching model...</h3>
+      <p id="modelSwitchDetail">Please wait while the next model is loaded and warmed up.</p>
+    </div>
+  </div>
 
   <template id="messageTemplate">
     <article class="message">

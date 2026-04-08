@@ -60,6 +60,18 @@ def list_session_messages(session_id: str, user_id: str, limit: int = 200, db: S
     ]
 
 
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: str, user_id: str, db: Session = Depends(get_db)):
+    deleted = MemoryService.delete_session(db, session_id=session_id, platform_user_id=user_id)
+    return {"deleted": deleted}
+
+
+@router.delete("/sessions")
+def delete_all_sessions(user_id: str, db: Session = Depends(get_db)):
+    deleted = MemoryService.delete_all_sessions(db, platform_user_id=user_id)
+    return {"deleted": deleted}
+
+
 def _serialize_processed_attachments(attachments) -> list[ChatAttachmentResponse]:
     results: list[ChatAttachmentResponse] = []
     for attachment in attachments or []:

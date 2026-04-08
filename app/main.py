@@ -1,19 +1,21 @@
 from pathlib import Path
+import threading
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
-from app.core.database import init_db
+from app.core.database import SessionLocal, init_db
 from app.middleware.agent_auth import AgentBasicAuthMiddleware
 from app.routers import agent_control, agent_tasks, agents, chat, device_control, health, models, tasks, uploads, web_app
+from app.services.runtime_config_service import RuntimeConfigService
 
 settings = get_settings()
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.2.2",
+    version="0.2.14",
     description="Self-hosted personal AI ops platform with Telegram, agent APIs, and background workers.",
 )
 
@@ -47,6 +49,29 @@ app.include_router(web_app.router)
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    if settings.ollama_preload_active_model_on_startup:
+        threading.Thread(target=_prewarm_active_model, name="fitclaw-ollama-prewarm", daemon=True).start()
+
+
+def _prewarm_active_model() -> None:
+    db = SessionLocal()
+    try:
+        active = RuntimeConfigService.get_active_llm(db)
+    finally:
+        db.close()
+
+    if active.get("provider") != "ollama":
+        return
+
+    model_name = str(active.get("model", "")).strip()
+    if not model_name:
+        return
+
+    try:
+        profile = RuntimeConfigService.get_model_profile("ollama", model_name)
+        RuntimeConfigService.prewarm_ollama_model(model_name, bool(profile and profile.modality == "vision"))
+    except Exception:
+        return
 
 
 @app.get("/", tags=["root"])
@@ -58,5 +83,5 @@ def read_root() -> dict[str, str]:
         "health": "/health",
         "control": "/control",
         "app": "/app",
-        "version": "0.2.2",
+        "version": "0.2.14",
     }
