@@ -61,7 +61,22 @@ That workflow bundles:
 - macOS `.pkg`
 - macOS `.dmg`
 - Android `.apk`
-- iOS simulator `.zip`
+- iOS `.ipa` when the signing secrets are configured
+
+For a real iPhone-installable agent build in GitHub Actions, configure these repository secrets:
+
+- `IOS_CERTIFICATE_P12_BASE64`
+- `IOS_CERTIFICATE_PASSWORD`
+- `IOS_DEVELOPMENT_TEAM_ID`
+- `IOS_AGENT_PROVISIONING_PROFILE_BASE64`
+
+Then run:
+
+- `.github/workflows/build-mobile-agent-ios.yml`
+
+or the combined:
+
+- `.github/workflows/build-agent-all-platforms.yml`
 
 ## Build Windows
 

@@ -1,6 +1,6 @@
 {
   "name": "fitclaw-aiops-agent-mobile-wrapper",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "private": true,
   "description": "Capacitor wrapper for the FitClaw mobile agent companion app.",
   "scripts": {
@@ -16,6 +16,7 @@
     "cap:open:ios": "npx --no-install cap open ios"
   },
   "dependencies": {
+    "@capacitor/browser": "^7.0.0",
     "@capacitor/core": "^7.4.2"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import heapq
 from io import BytesIO
 import json
@@ -11,9 +11,11 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import time as time_module
 from typing import Any
 from urllib.parse import urlencode
 import webbrowser
+from zoneinfo import ZoneInfo
 
 import psutil
 
@@ -71,6 +73,16 @@ def _load_windows_module():
     except Exception:
         return None
     return gw
+
+
+def _load_uiautomation_module():
+    if platform.system() != "Windows":
+        return None
+    try:
+        import uiautomation as auto
+    except Exception:
+        return None
+    return auto
 
 
 def _bool_value(value: Any, default: bool = False) -> bool:
@@ -709,27 +721,82 @@ def _calendar_windows_snapshot() -> list[dict[str, Any]]:
     return results[:20]
 
 
+def _is_outlook_onboarding_title(title: str) -> bool:
+    lowered = str(title or "").strip().lower()
+    return any(
+        token in lowered
+        for token in (
+            "welcome to outlook",
+            "add your email account",
+            "outlook 2016",
+            "outlook setup",
+            "account setup",
+        )
+    )
+
+
+def _close_windows_matching(tokens: list[str]) -> list[str]:
+    gw = _load_windows_module()
+    if gw is None:
+        return []
+
+    normalized_tokens = [item.strip().lower() for item in tokens if item and item.strip()]
+    closed: list[str] = []
+    for window in gw.getAllWindows():
+        title = str(getattr(window, "title", "") or "").strip()
+        lowered = title.lower()
+        if not title or not any(token in lowered for token in normalized_tokens):
+            continue
+        try:
+            window.close()
+            closed.append(title)
+        except Exception:
+            continue
+    return closed
+
+
+def _looks_like_google_calendar_title(title: str, title_hint: str | None = None) -> bool:
+    lowered = str(title or "").strip().lower()
+    if not lowered:
+        return False
+    if "google calendar" in lowered or "calendar.google.com" in lowered:
+        return True
+    if "calendar" in lowered and ("event details" in lowered or "find a time" in lowered or "add guests" in lowered):
+        return True
+
+    normalized_hint = str(title_hint or "").strip().lower()
+    browser_markers = ("brave", "chrome", "edge", "firefox", "opera", "vivaldi", "arc")
+    if "calendar" in lowered and any(marker in lowered for marker in browser_markers):
+        if normalized_hint and normalized_hint in lowered:
+            return True
+    return False
+
+
 def _calendar_probe(_: dict[str, Any]) -> dict[str, Any]:
     windows = _calendar_windows_snapshot()
     titles = [str(item.get("title", "")).lower() for item in windows]
     running_browsers = _running_browser_processes()
-    has_google_calendar_window = any("google calendar" in title or "calendar.google.com" in title for title in titles)
+    has_google_calendar_window = any(_looks_like_google_calendar_title(title) for title in titles)
     has_outlook_window = any("outlook" in title for title in titles)
+    outlook_onboarding_detected = any(_is_outlook_onboarding_title(str(item.get("title", ""))) for item in windows)
     outlook_executable = _find_outlook_executable()
     outlook_running = any(
         str(process.info.get("name") or "").strip().lower() == "outlook.exe"
         for process in psutil.process_iter(["name"])
     )
-    outlook_available = bool(outlook_executable or outlook_running or has_outlook_window)
+    outlook_available = bool((has_outlook_window or outlook_running) and not outlook_onboarding_detected)
 
-    recommended_provider = "ics"
-    reason = "No active calendar app was detected, so a local .ics invite is the safest fallback."
+    recommended_provider = "google"
+    reason = "I can open a prefilled Google Calendar event in the default browser on this device."
     if has_google_calendar_window:
         recommended_provider = "google"
         reason = "Google Calendar already appears to be open on this device."
     elif outlook_available:
         recommended_provider = "outlook"
         reason = "Outlook looks available on this device, so the event can usually be saved directly."
+    elif outlook_onboarding_detected:
+        recommended_provider = "google"
+        reason = "Outlook is installed but appears to be in first-run setup, so Google Calendar is the safer path."
     elif running_browsers:
         recommended_provider = "google"
         reason = "A browser is already running, so opening a prefilled Google Calendar event is the best next option."
@@ -738,6 +805,7 @@ def _calendar_probe(_: dict[str, Any]) -> dict[str, Any]:
         "calendar_windows": windows,
         "has_google_calendar_window": has_google_calendar_window,
         "has_outlook_window": has_outlook_window,
+        "outlook_onboarding_detected": outlook_onboarding_detected,
         "outlook_available": outlook_available,
         "outlook_executable": outlook_executable,
         "running_browsers": running_browsers,
@@ -755,7 +823,30 @@ def _parse_event_datetime(raw: str | None) -> datetime | None:
     parsed = datetime.fromisoformat(normalized)
     if parsed.tzinfo is not None:
         return parsed.astimezone()
-    return parsed
+    return parsed.replace(tzinfo=timezone.utc).astimezone()
+
+
+def _calendar_timezone(payload: dict[str, Any]) -> ZoneInfo:
+    timezone_name = str(payload.get("timezone") or "").strip()
+    if timezone_name:
+        try:
+            return ZoneInfo(timezone_name)
+        except Exception:
+            pass
+    return datetime.now().astimezone().tzinfo or ZoneInfo("UTC")
+
+
+def _calendar_is_all_day(payload: dict[str, Any], starts_at: datetime, ends_at: datetime) -> bool:
+    if _bool_value(payload.get("all_day"), default=False):
+        return True
+    tz = _calendar_timezone(payload)
+    start_local = starts_at.astimezone(tz)
+    end_local = ends_at.astimezone(tz)
+    return (
+        start_local.time() == datetime.min.time()
+        and end_local.time() == datetime.min.time()
+        and (end_local - start_local) >= timedelta(days=1)
+    )
 
 
 def _ics_escape(value: str | None) -> str:
@@ -769,6 +860,8 @@ def _build_google_calendar_url(payload: dict[str, Any]) -> str:
         raise ValueError("Calendar start time is required.")
     if ends_at is None:
         ends_at = starts_at
+    tz = _calendar_timezone(payload)
+    all_day = _calendar_is_all_day(payload, starts_at, ends_at)
 
     def format_utc(value: datetime) -> str:
         return value.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -776,10 +869,17 @@ def _build_google_calendar_url(payload: dict[str, Any]) -> str:
     params = {
         "action": "TEMPLATE",
         "text": str(payload.get("title", "")).strip(),
-        "dates": f"{format_utc(starts_at)}/{format_utc(ends_at)}",
         "details": str(payload.get("description") or "").strip(),
         "location": str(payload.get("location") or "").strip(),
     }
+    if all_day:
+        start_local = starts_at.astimezone(tz)
+        end_local = ends_at.astimezone(tz)
+        if end_local <= start_local:
+            end_local = start_local + timedelta(days=1)
+        params["dates"] = f"{start_local.strftime('%Y%m%d')}/{end_local.strftime('%Y%m%d')}"
+    else:
+        params["dates"] = f"{format_utc(starts_at)}/{format_utc(ends_at)}"
     timezone_name = str(payload.get("timezone") or "").strip()
     if timezone_name:
         params["ctz"] = timezone_name
@@ -835,6 +935,13 @@ def _create_outlook_event(payload: dict[str, Any]) -> dict[str, Any]:
     if platform.system() != "Windows":
         raise RuntimeError("Direct Outlook calendar creation is only available on Windows agents.")
 
+    existing_windows = _calendar_windows_snapshot()
+    if any(_is_outlook_onboarding_title(str(item.get("title", ""))) for item in existing_windows):
+        _close_windows_matching(["welcome to outlook", "outlook setup", "add your email account"])
+        raise RuntimeError(
+            "Outlook is installed but not configured on this device yet. Use Google Calendar instead, or finish Outlook setup first."
+        )
+
     starts_at = _parse_event_datetime(payload.get("starts_at"))
     if starts_at is None:
         raise ValueError("Calendar start time is required.")
@@ -885,6 +992,13 @@ Write-Output 'saved'
         check=True,
     )
 
+    refreshed_windows = _calendar_windows_snapshot()
+    if any(_is_outlook_onboarding_title(str(item.get("title", ""))) for item in refreshed_windows):
+        _close_windows_matching(["welcome to outlook", "outlook setup", "add your email account"])
+        raise RuntimeError(
+            "Outlook opened its first-run setup instead of saving the event. Google Calendar is the better option on this device."
+        )
+
     return {
         "ok": True,
         "provider_used": "outlook",
@@ -893,12 +1007,236 @@ Write-Output 'saved'
     }
 
 
+def _find_google_calendar_window(title_hint: str, attempts: int = 20, delay_seconds: float = 0.6):
+    gw = _load_windows_module()
+    if gw is None:
+        return None, None
+
+    for _ in range(max(attempts, 1)):
+        best_match = None
+        best_score = -1
+        for window in gw.getAllWindows():
+            title = str(getattr(window, "title", "") or "").strip()
+            if not title:
+                continue
+            if not _looks_like_google_calendar_title(title, title_hint):
+                continue
+            lowered = title.lower()
+            score = 0
+            if "google calendar" in lowered or "calendar.google.com" in lowered:
+                score += 4
+            if "event details" in lowered:
+                score += 3
+            if "calendar" in lowered:
+                score += 2
+            if str(title_hint or "").strip().lower() and str(title_hint).strip().lower() in lowered:
+                score += 2
+            if score > best_score:
+                best_match = (window, title)
+                best_score = score
+        if best_match is not None:
+            return best_match
+        time_module.sleep(delay_seconds)
+    return None, None
+
+
+def _google_calendar_window_still_editing(title: str | None) -> bool:
+    lowered = str(title or "").strip().lower()
+    if not lowered:
+        return True
+    return "event details" in lowered or "find a time" in lowered
+
+
+def _find_google_calendar_save_button(title_hint: str, attempts: int = 30, delay_seconds: float = 0.75):
+    auto = _load_uiautomation_module()
+    if auto is None:
+        return None, None
+
+    normalized_hint = str(title_hint or "").strip().lower()
+    for _ in range(max(attempts, 1)):
+        best_match = None
+        best_score = -1
+        root = auto.GetRootControl()
+        for window in root.GetChildren():
+            title = str(getattr(window, "Name", "") or "").strip()
+            if not title or not _looks_like_google_calendar_title(title, title_hint):
+                continue
+
+            try:
+                button = window.ButtonControl(searchDepth=30, Name="Save")
+                exists = button.Exists(0, 0)
+            except Exception:
+                continue
+            if not exists:
+                continue
+
+            score = 0
+            lowered = title.lower()
+            if "event details" in lowered:
+                score += 4
+            if "google calendar" in lowered or "calendar.google.com" in lowered:
+                score += 3
+            if "calendar" in lowered:
+                score += 2
+            if normalized_hint and normalized_hint in lowered:
+                score += 1
+
+            if score > best_score:
+                best_match = (button, title)
+                best_score = score
+
+        if best_match is not None:
+            return best_match
+        time_module.sleep(delay_seconds)
+    return None, None
+
+
+def _attempt_google_calendar_auto_save_uia(payload: dict[str, Any]) -> dict[str, Any] | None:
+    auto = _load_uiautomation_module()
+    if auto is None:
+        return None
+
+    button, matched_title = _find_google_calendar_save_button(str(payload.get("title") or ""))
+    if button is None:
+        return {
+            "attempted": False,
+            "saved": False,
+            "method": "uiautomation",
+            "reason": "Could not find an accessible Google Calendar Save button in time.",
+        }
+
+    final_title = matched_title
+    last_error = None
+    for attempt in range(3):
+        try:
+            button.SetFocus()
+        except Exception:
+            pass
+        time_module.sleep(0.25)
+        action_method = "uia-click"
+        try:
+            invoke_pattern = button.GetInvokePattern()
+            invoke_pattern.Invoke()
+            action_method = "uia-invoke"
+        except Exception as exc:
+            last_error = str(exc)
+            try:
+                button.Click()
+                action_method = "uia-click"
+            except Exception as click_exc:
+                last_error = f"{exc}; click fallback: {click_exc}"
+        time_module.sleep(1.4 + (attempt * 0.4))
+
+        try:
+            foreground = auto.GetForegroundControl()
+            final_title = str(getattr(foreground, "Name", "") or "").strip() or final_title
+        except Exception:
+            pass
+
+        if not _google_calendar_window_still_editing(final_title):
+            return {
+                "attempted": True,
+                "saved": True,
+                "method": action_method,
+                "window_title": matched_title,
+                "final_window_title": final_title,
+                "attempts": attempt + 1,
+            }
+
+    result = {
+        "attempted": True,
+        "saved": False,
+        "method": "uiautomation",
+        "window_title": matched_title,
+        "final_window_title": final_title,
+        "attempts": 3,
+    }
+    if last_error:
+        result["reason"] = last_error
+    return result
+
+
+def _attempt_google_calendar_auto_save(payload: dict[str, Any]) -> dict[str, Any]:
+    if platform.system() != "Windows":
+        return {"attempted": False, "reason": "Automatic Google Calendar save is currently available on Windows desktop agents only."}
+
+    uia_result = _attempt_google_calendar_auto_save_uia(payload)
+    if uia_result is not None and uia_result.get("saved"):
+        return uia_result
+    if not _has_pyautogui():
+        return uia_result or {"attempted": False, "reason": "Mouse and keyboard automation is unavailable on this agent build."}
+
+    window, matched_title = _find_google_calendar_window(str(payload.get("title") or ""))
+    if window is None:
+        if uia_result is not None:
+            return uia_result
+        return {"attempted": False, "reason": "Could not find the Google Calendar browser window in time."}
+
+    try:
+        if getattr(window, "isMinimized", False):
+            window.restore()
+    except Exception:
+        pass
+    try:
+        window.activate()
+    except Exception:
+        pass
+
+    time_module.sleep(2.0)
+    pyautogui = _pyautogui()
+    left = int(getattr(window, "left", 0) or 0)
+    top = int(getattr(window, "top", 0) or 0)
+    width = int(getattr(window, "width", 0) or 0)
+    height = int(getattr(window, "height", 0) or 0)
+    if width <= 0 or height <= 0:
+        return {"attempted": False, "reason": "The Google Calendar window geometry was not available for automation."}
+
+    save_x = left + min(max(int(width * 0.45), 160), max(width - 160, 160))
+    save_y = top + min(max(int(height * 0.08), 80), 130)
+
+    final_title = matched_title
+    for attempt in range(3):
+        try:
+            window.activate()
+        except Exception:
+            pass
+        time_module.sleep(0.4)
+        pyautogui.click(save_x, save_y)
+        time_module.sleep(1.4 + (attempt * 0.4))
+        final_title = str(getattr(window, "title", "") or "").strip() or final_title
+        if not _google_calendar_window_still_editing(final_title):
+            return {
+                "attempted": True,
+                "saved": True,
+                "method": "click-save-button",
+                "window_title": matched_title,
+                "final_window_title": final_title,
+                "click_point": {"x": save_x, "y": save_y},
+                "attempts": attempt + 1,
+            }
+
+    return {
+        "attempted": True,
+        "saved": False,
+        "method": "click-save-button",
+        "window_title": matched_title,
+        "final_window_title": final_title,
+        "click_point": {"x": save_x, "y": save_y},
+        "attempts": 3,
+        "fallback_from": uia_result.get("method") if isinstance(uia_result, dict) else None,
+        "reason": (uia_result or {}).get("reason") if isinstance(uia_result, dict) else None,
+    }
+
+
 def _calendar_create(payload: dict[str, Any]) -> dict[str, Any]:
     probe = _calendar_probe({})
     preferred_provider = str(payload.get("provider") or "").strip().lower()
     provider = preferred_provider or str(probe.get("recommended_provider") or "google")
-    if provider == "google" and not probe.get("running_browsers"):
-        provider = "ics"
+
+    if provider == "outlook" and not probe.get("outlook_available"):
+        if preferred_provider == "outlook":
+            raise RuntimeError("Outlook is not ready on this device. Try Google Calendar instead.")
+        provider = "google"
 
     if provider == "outlook":
         try:
@@ -910,17 +1248,20 @@ def _calendar_create(payload: dict[str, Any]) -> dict[str, Any]:
                 raise
             payload = dict(payload)
             payload["_outlook_error"] = str(exc)
-            provider = "google" if probe.get("running_browsers") else "ics"
+            provider = "google"
 
     if provider == "google":
         url = _build_google_calendar_url(payload)
         webbrowser.open(url, new=2)
+        auto_save = _attempt_google_calendar_auto_save(payload)
         return {
             "ok": True,
             "provider_used": "google",
             "opened": True,
-            "saved": False,
-            "requires_user_confirmation": True,
+            "saved": bool(auto_save.get("saved")),
+            "requires_user_confirmation": not bool(auto_save.get("saved")),
+            "auto_save_attempted": bool(auto_save.get("attempted")),
+            "auto_save_result": auto_save,
             "opened_url": url,
             "probe": probe,
             "outlook_error": payload.get("_outlook_error"),

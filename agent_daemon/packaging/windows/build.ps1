@@ -39,6 +39,7 @@ Push-Location $agentRoot
   --hidden-import pyrect `
   --hidden-import mouseinfo `
   --hidden-import pygetwindow `
+  --hidden-import uiautomation `
   --collect-data pyautogui `
   --collect-data pyscreeze `
   --collect-data mouseinfo `

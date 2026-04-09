@@ -267,6 +267,59 @@ Artifacts:
 - `PersonalAIOpsAgent-dist-ios`
 - `PersonalAIOpsAgent-dist-bundle-<version>` from the all-platform workflow
 
+### Real iPhone install via GitHub Actions
+
+The iOS agent workflow now supports exporting a real signed `.ipa` for iPhone install.
+
+You must add these repository secrets first:
+
+- `IOS_CERTIFICATE_P12_BASE64`
+- `IOS_CERTIFICATE_PASSWORD`
+- `IOS_DEVELOPMENT_TEAM_ID`
+- `IOS_AGENT_PROVISIONING_PROFILE_BASE64`
+
+What those are:
+
+- `IOS_CERTIFICATE_P12_BASE64`
+  Base64 of your Apple signing certificate `.p12`
+- `IOS_CERTIFICATE_PASSWORD`
+  Password used when exporting that `.p12`
+- `IOS_DEVELOPMENT_TEAM_ID`
+  Your Apple Developer Team ID
+- `IOS_AGENT_PROVISIONING_PROFILE_BASE64`
+  Base64 of the provisioning profile for `com.fitclaw.aiopsagent`
+
+The certificate and provisioning profile must match the export method you choose:
+
+- `development`
+- `ad-hoc`
+- `app-store`
+- `enterprise`
+
+Example to create the Base64 values locally:
+
+```bash
+base64 -i certificate.p12 | pbcopy
+base64 -i agent.mobileprovision | pbcopy
+```
+
+On Windows PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("certificate.p12"))
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("agent.mobileprovision"))
+```
+
+How to run it:
+
+1. Push the repo to GitHub.
+2. Open `Actions`.
+3. Run `Build Mobile Agent iOS IPA`.
+4. Choose the `export_method`.
+5. Download the `PersonalAIOpsAgent-dist-ios` artifact.
+
+That artifact now contains a signed `.ipa` instead of a simulator `.app` zip.
+
 ### Full web app wrapper
 
 - [`.github/workflows/build-mobile-android.yml`](../.github/workflows/build-mobile-android.yml)
@@ -296,6 +349,8 @@ This means:
 If you want one run that collects Windows, macOS, Android, and iOS agent outputs into a single downloadable bundle, run:
 
 - `Build Agent All Platforms Dist Bundle`
+
+That workflow now also lets you choose the iOS export method for the bundled `.ipa`.
 
 ## Fastest practical path
 

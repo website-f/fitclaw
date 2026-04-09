@@ -7,10 +7,12 @@ const els = {
   agentName: document.getElementById("agentName"),
   displayLabel: document.getElementById("displayLabel"),
   autoHeartbeat: document.getElementById("autoHeartbeat"),
+  autoControl: document.getElementById("autoControl"),
   statusBadge: document.getElementById("statusBadge"),
   lastAction: document.getElementById("lastAction"),
   lastHeartbeat: document.getElementById("lastHeartbeat"),
   healthState: document.getElementById("healthState"),
+  lastCommand: document.getElementById("lastCommand"),
   activityLog: document.getElementById("activityLog"),
   capabilities: document.getElementById("capabilities"),
   saveConfig: document.getElementById("saveConfig"),
@@ -23,6 +25,8 @@ const els = {
 };
 
 let heartbeatTimer = null;
+let controlTimer = null;
+let commandLoopBusy = false;
 
 function nowLabel() {
   return new Date().toLocaleString();
@@ -59,6 +63,7 @@ function loadConfig() {
     els.agentName.value = saved.agentName || defaultName;
     els.displayLabel.value = saved.displayLabel || (navigator.userAgentData?.platform || navigator.platform || "Mobile device");
     els.autoHeartbeat.checked = saved.autoHeartbeat !== false;
+    els.autoControl.checked = saved.autoControl !== false;
     const enabled = new Set(saved.capabilities || getCapabilities());
     els.capabilities.querySelectorAll("input").forEach((input) => {
       input.checked = enabled.has(input.value);
@@ -79,6 +84,7 @@ function readConfig() {
     agentName: els.agentName.value.trim(),
     displayLabel: els.displayLabel.value.trim(),
     autoHeartbeat: els.autoHeartbeat.checked,
+    autoControl: els.autoControl.checked,
     capabilities: getCapabilities(),
   };
 }
@@ -89,6 +95,7 @@ function saveConfig() {
   els.lastAction.textContent = "Config saved";
   log(`Saved config for agent ${config.agentName || "(unnamed)"}.`);
   configureHeartbeatLoop();
+  configureControlLoop();
   return config;
 }
 
@@ -136,6 +143,7 @@ async function buildMetadata() {
     display_label: config.displayLabel || config.agentName,
     user_agent: navigator.userAgent,
     registered_from: "mobile_wrapper",
+    control_actions: ["calendar_probe", "calendar_create", "browser_open_url"],
   };
 
   if ("geolocation" in navigator) {
@@ -227,6 +235,161 @@ async function sendHeartbeat() {
   log(`Heartbeat accepted for ${payload.name}.`);
 }
 
+function getCapacitorBrowser() {
+  return window.Capacitor?.Plugins?.Browser || null;
+}
+
+async function openExternalUrl(url) {
+  const browser = getCapacitorBrowser();
+  if (browser?.open) {
+    await browser.open({ url });
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function buildGoogleCalendarUrl(payload) {
+  const params = new URLSearchParams();
+  params.set("action", "TEMPLATE");
+  params.set("text", payload.title || "FitClaw Event");
+
+  const startsAt = payload.starts_at ? new Date(payload.starts_at) : null;
+  const endsAt = payload.ends_at ? new Date(payload.ends_at) : null;
+  if (startsAt && !Number.isNaN(startsAt.getTime())) {
+    const startStamp = startsAt.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    const endTarget = endsAt && !Number.isNaN(endsAt.getTime())
+      ? endsAt
+      : new Date(startsAt.getTime() + 60 * 60 * 1000);
+    const endStamp = endTarget.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    params.set("dates", `${startStamp}/${endStamp}`);
+  }
+
+  if (payload.description) {
+    params.set("details", payload.description);
+  }
+  if (payload.location) {
+    params.set("location", payload.location);
+  }
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function buildMobileCalendarProbe(config) {
+  return {
+    calendar_windows: [],
+    has_google_calendar_window: false,
+    has_outlook_window: false,
+    outlook_onboarding_detected: false,
+    outlook_available: false,
+    outlook_executable: null,
+    running_browsers: ["capacitor-browser"],
+    recommended_provider: "google",
+    reason: `This mobile agent can hand off calendar events to Google Calendar while the app stays open on ${config.displayLabel || config.agentName}.`,
+    probed_at: new Date().toISOString(),
+    mobile_agent: true,
+  };
+}
+
+async function handleControlCommand(command) {
+  const payload = command.payload_json || {};
+  const action = payload.action || command.command_type;
+  const config = readConfig();
+
+  if (command.command_type !== "app_action") {
+    throw new Error(`Unsupported mobile control command \`${command.command_type}\`.`);
+  }
+
+  if (action === "calendar_probe") {
+    return buildMobileCalendarProbe(config);
+  }
+
+  if (action === "calendar_create") {
+    const provider = String(payload.provider || "google").trim().toLowerCase();
+    if (provider && provider !== "google") {
+      throw new Error("This mobile agent currently supports Google Calendar handoff only.");
+    }
+    const url = buildGoogleCalendarUrl(payload);
+    await openExternalUrl(url);
+    return {
+      ok: true,
+      provider_used: "google",
+      opened: true,
+      saved: false,
+      requires_user_confirmation: true,
+      opened_url: url,
+      mobile_agent: true,
+    };
+  }
+
+  if (action === "browser_open_url") {
+    const url = String(payload.url || "").trim();
+    if (!url) {
+      throw new Error("No URL was provided.");
+    }
+    await openExternalUrl(url);
+    return {
+      ok: true,
+      action,
+      url,
+      mobile_agent: true,
+    };
+  }
+
+  throw new Error(`Unsupported mobile app action \`${action}\`.`);
+}
+
+async function submitControlResult(commandId, status, resultJson = {}, errorText = null) {
+  await fetchJson(`/api/v1/agent-control/${encodeURIComponent(commandId)}/result`, {
+    method: "POST",
+    body: JSON.stringify({
+      status,
+      result_json: resultJson,
+      error_text: errorText,
+    }),
+  });
+}
+
+async function pollControlCommands() {
+  if (commandLoopBusy) {
+    return;
+  }
+  const config = readConfig();
+  if (!config.agentName || !config.serverUrl || !config.sharedKey || !config.autoControl) {
+    return;
+  }
+
+  commandLoopBusy = true;
+  try {
+    const command = await fetchJson(`/api/v1/agent-control/claim/${encodeURIComponent(config.agentName)}`, {
+      method: "POST",
+    });
+    if (!command) {
+      return;
+    }
+
+    const commandLabel = `${command.command_type}${command.payload_json?.action ? ` / ${command.payload_json.action}` : ""}`;
+    els.lastCommand.textContent = commandLabel;
+    els.lastAction.textContent = `Processing ${commandLabel}`;
+    log(`Processing control command ${command.command_id}: ${commandLabel}`);
+
+    try {
+      const result = await handleControlCommand(command);
+      await submitControlResult(command.command_id, "completed", result, null);
+      els.lastAction.textContent = `Completed ${commandLabel}`;
+      log(`Completed control command ${command.command_id}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await submitControlResult(command.command_id, "failed", {}, message);
+      els.lastAction.textContent = `Failed ${commandLabel}`;
+      log(`Control command ${command.command_id} failed: ${message}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log(`Control polling failed: ${message}`);
+  } finally {
+    commandLoopBusy = false;
+  }
+}
+
 async function removeAgent() {
   const config = readConfig();
   if (!config.agentName) {
@@ -245,6 +408,7 @@ async function removeAgent() {
 
   localStorage.removeItem(STORAGE_KEY);
   els.lastHeartbeat.textContent = "Never";
+  els.lastCommand.textContent = "None yet";
   els.lastAction.textContent = "Agent removed";
   setStatus("badge-idle", "Removed");
   log(`Removed agent ${config.agentName} and cleared saved config.`);
@@ -268,6 +432,24 @@ function configureHeartbeatLoop() {
       log(`Auto heartbeat failed: ${error.message}`);
     });
   }, 60000);
+}
+
+function configureControlLoop() {
+  if (controlTimer) {
+    clearInterval(controlTimer);
+    controlTimer = null;
+  }
+
+  if (!els.autoControl.checked) {
+    log("Auto control handling is off.");
+    return;
+  }
+
+  controlTimer = setInterval(() => {
+    pollControlCommands().catch((error) => {
+      log(`Auto control polling failed: ${error.message}`);
+    });
+  }, 12000);
 }
 
 function openWebApp() {
@@ -296,10 +478,13 @@ els.sendHeartbeat.addEventListener("click", () => runAction(sendHeartbeat, "Hear
 els.openWebApp.addEventListener("click", () => runAction(async () => openWebApp(), "Open web app"));
 els.removeAgent.addEventListener("click", () => runAction(removeAgent, "Remove agent"));
 els.autoHeartbeat.addEventListener("change", configureHeartbeatLoop);
+els.autoControl.addEventListener("change", configureControlLoop);
 els.clearLog.addEventListener("click", () => {
   els.activityLog.textContent = "Activity log cleared.";
 });
 
 loadConfig();
 configureHeartbeatLoop();
+configureControlLoop();
+pollControlCommands().catch(() => {});
 log("Mobile agent companion loaded.");

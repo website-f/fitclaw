@@ -1,7 +1,18 @@
-name: Build Mobile Agent iOS App
+name: Build Mobile Agent iOS IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      export_method:
+        description: Export method for the signed iPhone build
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - ad-hoc
+          - app-store
+          - enterprise
   push:
     paths:
       - "mobile_wrapper/**"
@@ -10,6 +21,12 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    env:
+      AGENT_BUNDLE_ID: com.fitclaw.aiopsagent
+      IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_DEVELOPMENT_TEAM_ID: ${{ secrets.IOS_DEVELOPMENT_TEAM_ID }}
+      IOS_AGENT_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_AGENT_PROVISIONING_PROFILE_BASE64 }}
     defaults:
       run:
         working-directory: mobile_wrapper
@@ -22,7 +39,38 @@ jobs:
         id: version
         run: echo "value=$(tr -d '[:space:]' < ../agent_daemon/VERSION)" >> "$GITHUB_OUTPUT"
 
+      - name: Check signing prerequisites
+        id: signing
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_EXPORT_METHOD: ${{ github.event.inputs.export_method }}
+        run: |
+          export_method="$INPUT_EXPORT_METHOD"
+          if [ -z "$export_method" ]; then
+            export_method="development"
+          fi
+          echo "export_method=$export_method" >> "$GITHUB_OUTPUT"
+
+          missing=0
+          for key in IOS_CERTIFICATE_P12_BASE64 IOS_CERTIFICATE_PASSWORD IOS_AGENT_PROVISIONING_PROFILE_BASE64; do
+            if [ -z "${!key}" ]; then
+              echo "Missing required secret: $key" >&2
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -eq 0 ]; then
+            echo "can_sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_sign=false" >> "$GITHUB_OUTPUT"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "Manual IPA builds require the iOS signing secrets." >&2
+              exit 1
+            fi
+          fi
+
       - name: Setup Node
+        if: steps.signing.outputs.can_sign == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -30,37 +78,142 @@ jobs:
           cache-dependency-path: mobile_wrapper/package-lock.json
 
       - name: Install dependencies
+        if: steps.signing.outputs.can_sign == 'true'
         run: npm ci
 
       - name: Ensure iOS platform
+        if: steps.signing.outputs.can_sign == 'true'
         run: npm run cap:ensure:ios
 
       - name: Install CocoaPods dependencies
+        if: steps.signing.outputs.can_sign == 'true'
         run: |
           cd ios/App
           pod install
 
-      - name: Build unsigned iOS simulator app
+      - name: Install signing certificate and provisioning profile
+        if: steps.signing.outputs.can_sign == 'true'
+        id: signing_assets
         run: |
+          CERT_PATH="$RUNNER_TEMP/fitclaw-agent-cert.p12"
+          PROFILE_PATH="$RUNNER_TEMP/fitclaw-agent.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/fitclaw-agent-profile.plist"
+          KEYCHAIN_PATH="$RUNNER_TEMP/fitclaw-agent-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(python3 -c "import secrets; print(secrets.token_urlsafe(24))")"
+
+          echo -n "$IOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          echo -n "$IOS_AGENT_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")
+          TEAM_ID="$IOS_DEVELOPMENT_TEAM_ID"
+          if [ -z "$TEAM_ID" ]; then
+            TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$PROFILE_PLIST")
+          fi
+          IDENTITY_NAME=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F\" '/"/ {print $2; exit}')
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+          echo "keychain_password=$KEYCHAIN_PASSWORD" >> "$GITHUB_OUTPUT"
+          echo "profile_uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
+          echo "profile_name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+          echo "team_id=$TEAM_ID" >> "$GITHUB_OUTPUT"
+          echo "identity_name=$IDENTITY_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Archive signed iPhone app
+        if: steps.signing.outputs.can_sign == 'true'
+        env:
+          EXPORT_METHOD: ${{ steps.signing.outputs.export_method }}
+          PROFILE_NAME: ${{ steps.signing_assets.outputs.profile_name }}
+          TEAM_ID: ${{ steps.signing_assets.outputs.team_id }}
+          IDENTITY_NAME: ${{ steps.signing_assets.outputs.identity_name }}
+        run: |
+          mkdir -p build/ios-archive build/ios-export ../agent_daemon/dist
           cd ios/App
           xcodebuild \
             -workspace App.xcworkspace \
             -scheme App \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ../../build/ios-sim \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath ../../build/ios-archive/FitClawAgent.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$AGENT_BUNDLE_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$IDENTITY_NAME" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            clean archive
 
-      - name: Stage iOS simulator app in agent dist
+          cat > ../../build/ios-export/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${EXPORT_METHOD}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>destination</key>
+            <string>export</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${AGENT_BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath ../../build/ios-archive/FitClawAgent.xcarchive \
+            -exportOptionsPlist ../../build/ios-export/ExportOptions.plist \
+            -exportPath ../../build/ios-export
+
+      - name: Stage signed IPA in agent dist
+        if: steps.signing.outputs.can_sign == 'true'
         run: |
-          mkdir -p ../agent_daemon/dist
-          ditto -c -k --sequesterRsrc --keepParent build/ios-sim/Build/Products/Debug-iphonesimulator/App.app ../agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-ios-simulator-app.zip
+          IPA_PATH="$(find build/ios-export -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [ -z "$IPA_PATH" ]; then
+            echo "No .ipa file was exported." >&2
+            exit 1
+          fi
+          cp "$IPA_PATH" ../agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-ios.ipa
 
       - name: Upload iOS dist artifact
+        if: steps.signing.outputs.can_sign == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: PersonalAIOpsAgent-dist-ios
-          path: agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-ios-simulator-app.zip
+          path: agent_daemon/dist
           if-no-files-found: error
+
+      - name: Skip note when signing secrets are absent
+        if: steps.signing.outputs.can_sign != 'true'
+        run: |
+          echo "Skipping signed iOS IPA build because the signing secrets are not configured on this repository."
+
+      - name: Cleanup signing assets
+        if: always() && steps.signing.outputs.can_sign == 'true'
+        run: |
+          if [ -n "${{ steps.signing_assets.outputs.profile_uuid }}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/${{ steps.signing_assets.outputs.profile_uuid }}.mobileprovision"
+          fi
+          if [ -n "${{ steps.signing_assets.outputs.keychain_path }}" ]; then
+            security delete-keychain "${{ steps.signing_assets.outputs.keychain_path }}" || true
+          fi

@@ -115,7 +115,7 @@ class MessageService:
                 active_model=active_llm["model"],
             )
         if command_result is not None:
-            metadata_json = {}
+            metadata_json = dict(command_result.metadata_json or {})
             if command_result.attachments:
                 metadata_json["attachments"] = [attachment.to_metadata() for attachment in command_result.attachments]
             MemoryService.add_message(

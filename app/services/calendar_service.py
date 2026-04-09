@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass, field
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 import json
 import re
 from pathlib import Path
@@ -50,6 +50,14 @@ class CalendarSyncResult:
     metadata: dict = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class CalendarAgentPlan:
+    agent: Agent | None = None
+    needs_selection: bool = False
+    reply_lines: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+
+
 class CalendarService:
     CREATE_PATTERN = re.compile(
         r"\b(?:schedule|set|add|book|create|plan|put|save|insert|mark|send|sent)\b.*\b(?:meeting|call|event|calendar|reminder|appointment|birthday)\b|"
@@ -88,6 +96,9 @@ class CalendarService:
             return CalendarService._handle_cancel(db, user_id, normalized)
         if CalendarService.CREATE_PATTERN.search(normalized) or CalendarService._looks_like_create_request(normalized):
             return CalendarService._handle_create(db, user_id, session_id, normalized)
+        pending_result = CalendarService._handle_pending_sync_reply(db, user_id, session_id, normalized)
+        if pending_result is not None:
+            return pending_result
         return None
 
     @staticmethod
@@ -146,44 +157,82 @@ class CalendarService:
         db.commit()
         db.refresh(event)
 
-        sync_result = CalendarService._attempt_device_calendar_sync(
+        provider_preference = CalendarService._extract_calendar_provider_preference(text)
+        plan = CalendarService._build_calendar_agent_plan(db, text)
+
+        if plan.needs_selection:
+            event.metadata_json = {
+                **(event.metadata_json or {}),
+                "device_sync": {
+                    **plan.metadata,
+                    "status": "awaiting_agent_selection",
+                    "provider_preference": provider_preference,
+                },
+            }
+            db.commit()
+            db.refresh(event)
+            lines = CalendarService._build_event_summary_lines(event)
+            lines.extend(["", *plan.reply_lines])
+            return CommandResult(
+                reply="\n".join(lines),
+                provider="calendar-command",
+                metadata_json={
+                    "calendar_pending_sync": {
+                        "event_id": event.event_id,
+                        "status": "awaiting_agent_selection",
+                        "candidate_agents": list((plan.metadata or {}).get("candidate_agents", [])),
+                    }
+                },
+            )
+
+        if plan.agent is None:
+            sync_metadata = {
+                "status": "no_registered_agents",
+                "provider_preference": provider_preference,
+            }
+            event.metadata_json = {**(event.metadata_json or {}), "device_sync": sync_metadata}
+            db.commit()
+            db.refresh(event)
+            lines = CalendarService._build_event_summary_lines(event)
+            lines.extend(
+                [
+                    "",
+                    "I could not find any registered agent to apply this directly on a device.",
+                    "I attached an `.ics` invite so you can import it elsewhere if needed.",
+                ]
+            )
+            attachment = CalendarService._build_ics_attachment(event)
+            return CommandResult(
+                reply="\n".join(lines),
+                provider="calendar-command",
+                attachments=[attachment],
+            )
+
+        sync_result = CalendarService._sync_event_to_agent(
             db=db,
             user_id=user_id,
-            text=text,
             event=event,
+            agent=plan.agent,
+            provider_preference=provider_preference,
         )
         if sync_result.metadata:
             event.metadata_json = {**(event.metadata_json or {}), "device_sync": sync_result.metadata}
             db.commit()
             db.refresh(event)
 
-        lines = [
-            f"Calendar event `{event.event_id}` is scheduled.",
-            f"Title: {event.title}",
-            f"Starts: {CalendarService._format_event_time(event.starts_at, event.timezone)}",
-        ]
-        if event.ends_at:
-            lines.append(f"Ends: {CalendarService._format_event_time(event.ends_at, event.timezone)}")
-        if event.location:
-            lines.append(f"Location: {event.location}")
-        if event.meeting_url:
-            lines.append(f"Meeting link: {event.meeting_url}")
-        lines.append(f"Reminder: {event.reminder_minutes_before} minutes before")
-        lines.append("I attached an `.ics` invite so you can import it elsewhere if needed.")
+        lines = CalendarService._build_event_summary_lines(event)
         if sync_result.reply_lines:
             lines.extend(["", *sync_result.reply_lines])
 
-        attachment = MessageAttachment(
-            kind="document",
-            path=str(ics_path),
-            caption=f"Calendar invite for {event.title}",
-            filename=ics_path.name,
-            explicit_public_url=f"/api/v1/calendar/events/{event.event_id}/ics",
-        )
+        attachments: list[MessageAttachment] = []
+        if CalendarService._should_attach_ics(event, sync_result):
+            lines.extend(["", "I attached an `.ics` invite as a fallback you can import elsewhere if needed."])
+            attachments.append(CalendarService._build_ics_attachment(event))
+
         return CommandResult(
             reply="\n".join(lines),
             provider="calendar-command",
-            attachments=[attachment],
+            attachments=attachments,
         )
 
     @staticmethod
@@ -319,7 +368,7 @@ class CalendarService:
         )
         has_time_marker = bool(
             re.search(
-                r"\b(today|tomorrow|day after tomorrow|next\s+\w+|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+                r"\b(today|tomorrow|tomorow|tmr|tmrw|day after tomorrow|next\s+\w+|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
                 lowered,
             )
             or re.search(r"\b\d{4}-\d{2}-\d{2}\b", lowered)
@@ -333,14 +382,13 @@ class CalendarService:
         )
 
     @staticmethod
-    def _attempt_device_calendar_sync(db: Session, user_id: str, text: str, event: CalendarEvent) -> CalendarSyncResult:
-        agent, status_note = CalendarService._resolve_calendar_agent(db, text)
-        if agent is None:
-            if status_note:
-                return CalendarSyncResult(reply_lines=[status_note], metadata={"status": "not_attempted"})
-            return CalendarSyncResult()
-
-        provider_preference = CalendarService._extract_calendar_provider_preference(text)
+    def _sync_event_to_agent(
+        db: Session,
+        user_id: str,
+        event: CalendarEvent,
+        agent: Agent,
+        provider_preference: str | None,
+    ) -> CalendarSyncResult:
         probe_command, timeout_error = CalendarService._execute_device_command_and_wait(
             db=db,
             user_id=user_id,
@@ -353,7 +401,7 @@ class CalendarService:
             return CalendarSyncResult(
                 attempted=True,
                 reply_lines=[f"Device calendar check on `{agent.name}` is still running. Try again in a few seconds."],
-                metadata={"status": "pending", "agent_name": agent.name},
+                metadata={"status": "pending", "agent_name": agent.name, "provider_preference": provider_preference},
             )
 
         probe_result = {}
@@ -371,10 +419,10 @@ class CalendarService:
             return CalendarSyncResult(
                 attempted=True,
                 reply_lines=[f"Device calendar inspection failed on `{agent.name}`: {probe_command.error_text or 'unknown error'}"],
-                metadata={"status": "probe_failed", "agent_name": agent.name},
+                metadata={"status": "probe_failed", "agent_name": agent.name, "provider_preference": provider_preference},
             )
 
-        chosen_provider = provider_preference or str(probe_result.get("recommended_provider") or "google")
+        chosen_provider = CalendarService._choose_calendar_provider(probe_result, provider_preference)
         payload = {
             "action": "calendar_create",
             "provider": chosen_provider,
@@ -383,9 +431,10 @@ class CalendarService:
             "description": event.description or "",
             "location": event.location or "",
             "meeting_url": event.meeting_url or "",
-            "starts_at": event.starts_at.isoformat(),
-            "ends_at": event.ends_at.isoformat() if event.ends_at else "",
+            "starts_at": CalendarService._serialize_event_datetime_for_device(event.starts_at, event.timezone),
+            "ends_at": CalendarService._serialize_event_datetime_for_device(event.ends_at, event.timezone) if event.ends_at else "",
             "timezone": event.timezone,
+            "all_day": CalendarService._is_all_day_event(event),
             "reminder_minutes_before": event.reminder_minutes_before,
         }
 
@@ -400,8 +449,15 @@ class CalendarService:
         if timeout_error:
             return CalendarSyncResult(
                 attempted=True,
-                reply_lines=[f"Calendar sync on `{agent.name}` is still running. I already saved the internal event and attached the invite."],
-                metadata={"status": "pending", "agent_name": agent.name, "probe": probe_result},
+                reply_lines=[
+                    f"Calendar sync on `{agent.name}` is still running. I saved the internal event already, and the device is still processing the calendar action."
+                ],
+                metadata={
+                    "status": "pending",
+                    "agent_name": agent.name,
+                    "probe": probe_result,
+                    "provider_preference": provider_preference,
+                },
             )
 
         if create_command is None:
@@ -418,18 +474,83 @@ class CalendarService:
                 provider_preference=provider_preference,
             )
 
+        if (
+            create_command.status == DeviceCommandStatus.failed
+            and chosen_provider == "outlook"
+            and provider_preference != "outlook"
+        ):
+            retry_payload = {**payload, "provider": "google"}
+            retry_command, retry_timeout = CalendarService._execute_device_command_and_wait(
+                db=db,
+                user_id=user_id,
+                agent=agent,
+                command_type="app_action",
+                payload_json=retry_payload,
+                timeout_seconds=25,
+            )
+            if retry_timeout:
+                return CalendarSyncResult(
+                    attempted=True,
+                    reply_lines=[
+                        f"Outlook did not respond cleanly on `{agent.name}`, so I switched to Google Calendar and the device is still processing that handoff."
+                    ],
+                    metadata={
+                        "status": "pending",
+                        "agent_name": agent.name,
+                        "probe": probe_result,
+                        "provider_preference": provider_preference,
+                        "provider_used": "google",
+                    },
+                )
+            if retry_command is not None and retry_command.status == DeviceCommandStatus.completed:
+                result = dict(retry_command.result_json or {})
+                lines = [
+                    f"`{agent.name}` did not have a ready Outlook session, so I switched the sync to Google Calendar."
+                ]
+                lines.extend(CalendarService._build_calendar_sync_reply_lines(agent.name, probe_result, result))
+                return CalendarSyncResult(
+                    attempted=True,
+                    reply_lines=lines,
+                    metadata={
+                        "status": "completed",
+                        "agent_name": agent.name,
+                        "probe": probe_result,
+                        "result": result,
+                        "provider_preference": provider_preference,
+                    },
+                )
+            if retry_command is not None and CalendarService._should_use_calendar_fallback(retry_command.error_text):
+                return CalendarService._attempt_legacy_device_calendar_sync(
+                    db=db,
+                    user_id=user_id,
+                    agent=agent,
+                    event=event,
+                    provider_preference="google",
+                )
+
         if create_command.status == DeviceCommandStatus.failed:
             return CalendarSyncResult(
                 attempted=True,
                 reply_lines=[f"Device calendar sync failed on `{agent.name}`: {create_command.error_text or 'unknown error'}"],
-                metadata={"status": "create_failed", "agent_name": agent.name, "probe": probe_result},
+                metadata={
+                    "status": "create_failed",
+                    "agent_name": agent.name,
+                    "probe": probe_result,
+                    "provider_preference": provider_preference,
+                },
             )
 
         result = dict(create_command.result_json or {})
         return CalendarSyncResult(
             attempted=True,
             reply_lines=CalendarService._build_calendar_sync_reply_lines(agent.name, probe_result, result),
-            metadata={"status": "completed", "agent_name": agent.name, "probe": probe_result, "result": result},
+            metadata={
+                "status": "completed",
+                "agent_name": agent.name,
+                "probe": probe_result,
+                "result": result,
+                "provider_preference": provider_preference,
+            },
         )
 
     @staticmethod
@@ -485,28 +606,83 @@ class CalendarService:
         )
 
     @staticmethod
-    def _resolve_calendar_agent(db: Session, text: str) -> tuple[Agent | None, str | None]:
+    def _build_calendar_agent_plan(db: Session, text: str) -> CalendarAgentPlan:
         agents = AgentService.list_agents(db)
         if not agents:
-            return None, None
+            return CalendarAgentPlan(
+                agent=None,
+                needs_selection=False,
+                reply_lines=[],
+                metadata={"candidate_agents": [], "online_agents": [], "offline_agents": []},
+            )
 
         matches = CalendarService._match_agents_in_text(text, agents)
+        online_agents = [agent for agent in agents if agent.status == AgentStatus.online]
+        offline_agents = [agent for agent in agents if agent.status != AgentStatus.online]
+
         if len(matches) == 1:
             agent = matches[0]
-            if agent.status != AgentStatus.online:
-                return None, f"`{agent.name}` is currently `{agent.status.value}`, so I kept the event internally and attached the invite."
-            return agent, None
+            if agent.status == AgentStatus.online:
+                return CalendarAgentPlan(
+                    agent=agent,
+                    needs_selection=False,
+                    metadata={
+                        "candidate_agents": [agent.name],
+                        "online_agents": [item.name for item in online_agents],
+                        "offline_agents": [item.name for item in offline_agents],
+                    },
+                )
+            prompt_lines = [f"`{agent.name}` is currently `{agent.status.value}`."]
+            if online_agents:
+                prompt_lines.append(
+                    "Reply with one of these online agents to apply it on a device: "
+                    + ", ".join(item.name for item in online_agents)
+                    + "."
+                )
+            else:
+                prompt_lines.append(
+                    "All agents are offline right now. Reply with an agent name later when one is online, or reply `ics only` if you just want the invite file."
+                )
+            return CalendarAgentPlan(
+                needs_selection=True,
+                reply_lines=prompt_lines,
+                metadata={
+                    "requested_agent": agent.name,
+                    "candidate_agents": [item.name for item in agents],
+                    "online_agents": [item.name for item in online_agents],
+                    "offline_agents": [item.name for item in offline_agents],
+                },
+            )
         if len(matches) > 1:
             names = ", ".join(agent.name for agent in matches)
-            return None, f"I scheduled the event, but I found multiple matching agents for device sync: {names}."
+            return CalendarAgentPlan(
+                needs_selection=True,
+                reply_lines=[
+                    f"I found multiple matching agents: {names}.",
+                    "Reply with the exact agent name you want to use, or reply `ics only`.",
+                ],
+                metadata={
+                    "candidate_agents": [agent.name for agent in matches],
+                    "online_agents": [item.name for item in online_agents],
+                    "offline_agents": [item.name for item in offline_agents],
+                },
+            )
 
-        online_agents = [agent for agent in agents if agent.status == AgentStatus.online]
-        if len(online_agents) == 1:
-            return online_agents[0], None
-        if len(online_agents) > 1:
-            names = ", ".join(agent.name for agent in online_agents)
-            return None, f"I scheduled the event and attached the invite. If you want device sync too, name one online agent: {names}."
-        return None, None
+        prompt_lines = ["Which agent should I use to put this into a calendar on one of your devices?"]
+        if online_agents:
+            prompt_lines.append("Online now: " + ", ".join(agent.name for agent in online_agents) + ".")
+        if offline_agents:
+            prompt_lines.append("Offline right now: " + ", ".join(agent.name for agent in offline_agents) + ".")
+        prompt_lines.append("Reply with an agent name, or reply `ics only` if you just want the invite file.")
+        return CalendarAgentPlan(
+            needs_selection=True,
+            reply_lines=prompt_lines,
+            metadata={
+                "candidate_agents": [agent.name for agent in agents],
+                "online_agents": [item.name for item in online_agents],
+                "offline_agents": [item.name for item in offline_agents],
+            },
+        )
 
     @staticmethod
     def _extract_calendar_provider_preference(text: str) -> str | None:
@@ -518,6 +694,24 @@ class CalendarService:
         if ".ics" in lowered or "invite file" in lowered:
             return "ics"
         return None
+
+    @staticmethod
+    def _choose_calendar_provider(probe_result: dict, provider_preference: str | None) -> str:
+        preferred = str(provider_preference or "").strip().lower()
+        if preferred in {"google", "outlook", "ics"}:
+            return preferred
+
+        recommended = str(probe_result.get("recommended_provider") or "google").strip().lower() or "google"
+        if recommended != "outlook":
+            return recommended
+
+        if probe_result.get("outlook_onboarding_detected"):
+            return "google"
+
+        if not probe_result.get("has_outlook_window"):
+            return "google"
+
+        return "outlook"
 
     @staticmethod
     def _match_agents_in_text(text: str, agents: list[Agent]) -> list[Agent]:
@@ -616,19 +810,47 @@ class CalendarService:
     @staticmethod
     def _build_calendar_sync_reply_lines(agent_name: str, probe_result: dict, result: dict) -> list[str]:
         lines: list[str] = []
+        provider_used = str(result.get("provider_used") or "").strip().lower()
         if probe_result.get("has_google_calendar_window"):
             lines.append(f"`{agent_name}` already appears to have Google Calendar open.")
-        elif probe_result.get("outlook_available"):
+        elif probe_result.get("outlook_onboarding_detected"):
+            lines.append(f"`{agent_name}` appears to have Outlook installed, but it is still in first-run setup.")
+        elif provider_used == "outlook" and probe_result.get("outlook_available"):
             lines.append(f"`{agent_name}` appears to have Outlook available for direct calendar saves.")
+        elif provider_used == "google" and probe_result.get("outlook_available") and not probe_result.get("has_outlook_window"):
+            lines.append(
+                f"`{agent_name}` has Outlook installed, but it did not look like an active ready calendar session, so I used Google Calendar instead."
+            )
 
-        provider_used = str(result.get("provider_used") or "").strip().lower()
         if provider_used == "outlook":
             lines.append(f"Device calendar sync: saved the event directly into Outlook on `{agent_name}`.")
         elif provider_used == "google":
-            lines.append(
-                f"Device calendar sync: opened a prefilled Google Calendar event on `{agent_name}`. "
-                "If that browser session is already signed in, you can confirm it there immediately."
-            )
+            auto_save_present = "auto_save_attempted" in result
+            auto_save_result = dict(result.get("auto_save_result") or {})
+            if result.get("saved"):
+                lines.append(
+                    f"Device calendar sync: opened Google Calendar on `{agent_name}` and saved the event automatically."
+                )
+            elif result.get("auto_save_attempted"):
+                lines.append(
+                    f"Device calendar sync: opened Google Calendar on `{agent_name}` and triggered the Save action automatically. "
+                    "If the edit page is still visible, press Save once to confirm."
+                )
+                if auto_save_result.get("reason"):
+                    lines.append(f"Auto-save note: {auto_save_result['reason']}")
+            elif auto_save_present:
+                lines.append(
+                    f"Device calendar sync: opened a prefilled Google Calendar event on `{agent_name}`, but automatic Save could not be confirmed."
+                )
+                if auto_save_result.get("reason"):
+                    lines.append(f"Auto-save note: {auto_save_result['reason']}")
+            elif result.get("requires_user_confirmation"):
+                lines.append(
+                    f"Device calendar sync: opened a prefilled Google Calendar event on `{agent_name}`. "
+                    "This device is still on an older agent build, so it did not click Save automatically."
+                )
+            else:
+                lines.append(f"Device calendar sync: used Google Calendar on `{agent_name}`.")
         elif provider_used == "ics":
             lines.append(
                 f"Device calendar sync: opened a local `.ics` invite on `{agent_name}` so the device calendar app can import it."
@@ -637,9 +859,228 @@ class CalendarService:
         if result.get("outlook_error"):
             lines.append(f"Outlook direct-save was unavailable, so I fell back automatically: {result['outlook_error']}")
         reason = str(probe_result.get("reason") or "").strip()
-        if reason:
+        if reason and not (
+            provider_used == "google"
+            and "outlook" in reason.lower()
+            and not probe_result.get("has_outlook_window")
+        ):
             lines.append(f"Device check: {reason}")
         return lines
+
+    @staticmethod
+    def _handle_pending_sync_reply(db: Session, user_id: str, session_id: str, text: str) -> CommandResult | None:
+        event = CalendarService._get_pending_sync_event(db, user_id=user_id, session_id=session_id)
+        if event is None:
+            return None
+
+        lowered = text.strip().lower()
+        sync_meta = dict((event.metadata_json or {}).get("device_sync", {}))
+        provider_preference = CalendarService._extract_calendar_provider_preference(text) or str(
+            sync_meta.get("provider_preference") or ""
+        ).strip() or None
+
+        if CalendarService._is_calendar_cancel_reply(lowered):
+            event.status = CalendarEventStatus.cancelled
+            event.metadata_json = {**(event.metadata_json or {}), "device_sync": {**sync_meta, "status": "cancelled"}}
+            db.commit()
+            db.refresh(event)
+            return CommandResult(
+                reply=f"Cancelled `{event.title}` ({event.event_id}).",
+                provider="calendar-command",
+            )
+
+        if CalendarService._is_calendar_ics_reply(lowered):
+            event.metadata_json = {**(event.metadata_json or {}), "device_sync": {**sync_meta, "status": "ics-only"}}
+            db.commit()
+            db.refresh(event)
+            lines = CalendarService._build_event_summary_lines(event)
+            lines.extend(["", "I attached the `.ics` invite so you can import it or use it elsewhere."])
+            return CommandResult(
+                reply="\n".join(lines),
+                provider="calendar-command",
+                attachments=[CalendarService._build_ics_attachment(event)],
+            )
+
+        all_agents = AgentService.list_agents(db)
+        matched_agents = CalendarService._match_agents_in_text(text, all_agents)
+        online_agents = [agent for agent in all_agents if agent.status == AgentStatus.online]
+        selected_agent: Agent | None = None
+
+        if len(matched_agents) == 1:
+            selected_agent = matched_agents[0]
+        elif CalendarService._is_calendar_affirmative_reply(lowered):
+            if len(online_agents) == 1:
+                selected_agent = online_agents[0]
+            else:
+                names = ", ".join(agent.name for agent in online_agents) if online_agents else "none"
+                return CommandResult(
+                    reply=(
+                        "I still need the exact agent name for that calendar sync.\n\n"
+                        f"Online now: {names}.\n"
+                        "Reply with one agent name, or reply `ics only`."
+                    ),
+                    provider="calendar-command",
+                    metadata_json={
+                        "calendar_pending_sync": {
+                            "event_id": event.event_id,
+                            "status": "awaiting_agent_selection",
+                        }
+                    },
+                )
+
+        if selected_agent is None:
+            candidate_names = sync_meta.get("candidate_agents") or [agent.name for agent in all_agents]
+            online_names = [agent.name for agent in online_agents]
+            offline_names = [agent.name for agent in all_agents if agent.status != AgentStatus.online]
+            lines = ["I still need the agent name for this calendar sync."]
+            if online_names:
+                lines.append("Online now: " + ", ".join(online_names) + ".")
+            if offline_names:
+                lines.append("Offline right now: " + ", ".join(offline_names) + ".")
+            if candidate_names:
+                lines.append("Reply with one of these agent names: " + ", ".join(candidate_names) + ".")
+            lines.append("Or reply `ics only` if you just want the invite file.")
+            return CommandResult(
+                reply="\n".join(lines),
+                provider="calendar-command",
+                metadata_json={
+                    "calendar_pending_sync": {
+                        "event_id": event.event_id,
+                        "status": "awaiting_agent_selection",
+                    }
+                },
+            )
+
+        if selected_agent.status != AgentStatus.online:
+            online_names = [agent.name for agent in online_agents]
+            lines = [f"`{selected_agent.name}` is currently `{selected_agent.status.value}`."]
+            if online_names:
+                lines.append("Use one of the online agents instead: " + ", ".join(online_names) + ".")
+            else:
+                lines.append("No agents are online right now. Reply `ics only` if you want the invite file for now.")
+            return CommandResult(
+                reply="\n".join(lines),
+                provider="calendar-command",
+                metadata_json={
+                    "calendar_pending_sync": {
+                        "event_id": event.event_id,
+                        "status": "awaiting_agent_selection",
+                    }
+                },
+            )
+
+        sync_result = CalendarService._sync_event_to_agent(
+            db=db,
+            user_id=user_id,
+            event=event,
+            agent=selected_agent,
+            provider_preference=provider_preference,
+        )
+        event.metadata_json = {**(event.metadata_json or {}), "device_sync": sync_result.metadata}
+        db.commit()
+        db.refresh(event)
+
+        lines = CalendarService._build_event_summary_lines(event)
+        lines.extend(["", f"Using `{selected_agent.name}` for device calendar sync."])
+        if sync_result.reply_lines:
+            lines.extend(["", *sync_result.reply_lines])
+
+        attachments: list[MessageAttachment] = []
+        if CalendarService._should_attach_ics(event, sync_result):
+            lines.extend(["", "I attached the `.ics` invite as a fallback."])
+            attachments.append(CalendarService._build_ics_attachment(event))
+
+        return CommandResult(
+            reply="\n".join(lines),
+            provider="calendar-command",
+            attachments=attachments,
+        )
+
+    @staticmethod
+    def _get_pending_sync_event(db: Session, user_id: str, session_id: str) -> CalendarEvent | None:
+        stmt = (
+            select(CalendarEvent)
+            .where(CalendarEvent.platform_user_id == user_id)
+            .where(CalendarEvent.user_session_id == session_id)
+            .where(CalendarEvent.status == CalendarEventStatus.scheduled)
+            .order_by(CalendarEvent.created_at.desc())
+            .limit(8)
+        )
+        cutoff = utcnow() - timedelta(hours=8)
+        for event in db.scalars(stmt).all():
+            created_at = event.created_at
+            if created_at is not None and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            if created_at and created_at < cutoff:
+                continue
+            sync_meta = dict((event.metadata_json or {}).get("device_sync", {}))
+            if str(sync_meta.get("status") or "").strip().lower() == "awaiting_agent_selection":
+                return event
+        return None
+
+    @staticmethod
+    def _is_calendar_ics_reply(text: str) -> bool:
+        patterns = (
+            "ics only",
+            "invite only",
+            "just send invite",
+            "send invite",
+            "send the invite",
+            "send ics",
+            "use ics",
+        )
+        return any(pattern in text for pattern in patterns)
+
+    @staticmethod
+    def _is_calendar_cancel_reply(text: str) -> bool:
+        return any(
+            pattern in text
+            for pattern in ("cancel it", "cancel this", "never mind", "nevermind", "forget it", "dont do it", "don't do it")
+        )
+
+    @staticmethod
+    def _is_calendar_affirmative_reply(text: str) -> bool:
+        compact = text.strip().lower()
+        return compact in {"yes", "y", "ok", "okay", "sure", "go ahead", "do it", "use it", "confirm"}
+
+    @staticmethod
+    def _build_event_summary_lines(event: CalendarEvent) -> list[str]:
+        lines = [
+            f"Calendar event `{event.event_id}` is scheduled.",
+            f"Title: {event.title}",
+            f"Starts: {CalendarService._format_event_time(event.starts_at, event.timezone)}",
+        ]
+        if event.ends_at:
+            lines.append(f"Ends: {CalendarService._format_event_time(event.ends_at, event.timezone)}")
+        if event.location:
+            lines.append(f"Location: {event.location}")
+        if event.meeting_url:
+            lines.append(f"Meeting link: {event.meeting_url}")
+        lines.append(f"Reminder: {event.reminder_minutes_before} minutes before")
+        return lines
+
+    @staticmethod
+    def _build_ics_attachment(event: CalendarEvent) -> MessageAttachment:
+        ics_path = Path(str(event.ics_path or CalendarService._write_ics_file(event)))
+        return MessageAttachment(
+            kind="document",
+            path=str(ics_path),
+            caption=f"Calendar invite for {event.title}",
+            filename=ics_path.name,
+            explicit_public_url=f"/api/v1/calendar/events/{event.event_id}/ics",
+        )
+
+    @staticmethod
+    def _should_attach_ics(event: CalendarEvent, sync_result: CalendarSyncResult) -> bool:
+        sync_meta = dict(sync_result.metadata or {})
+        result = dict(sync_meta.get("result") or {})
+        status = str(sync_meta.get("status") or "").strip().lower()
+        provider_used = str(result.get("provider_used") or "").strip().lower()
+        if provider_used == "ics":
+            return True
+        if status in {"no_registered_agents", "probe_failed", "create_failed", "legacy-failed", "legacy-unsupported", "ics-only"}:
+            return True
+        return False
 
     @staticmethod
     def _build_windows_calendar_fallback_script(event: CalendarEvent, provider_preference: str | None) -> str:
@@ -650,9 +1091,10 @@ class CalendarService:
             "description": event.description or "",
             "location": event.location or "",
             "meeting_url": event.meeting_url or "",
-            "starts_at": event.starts_at.isoformat(),
-            "ends_at": event.ends_at.isoformat() if event.ends_at else "",
+            "starts_at": CalendarService._serialize_event_datetime_for_device(event.starts_at, event.timezone),
+            "ends_at": CalendarService._serialize_event_datetime_for_device(event.ends_at, event.timezone) if event.ends_at else "",
             "timezone": event.timezone,
+            "all_day": CalendarService._is_all_day_event(event),
             "reminder_minutes_before": event.reminder_minutes_before,
         }
         payload_b64 = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
@@ -707,7 +1149,7 @@ function Write-IcsFile([object]$Item) {{
   return $Target
 }}
 
-if ($Preferred -ne 'google') {{
+if ($Preferred -eq 'outlook') {{
   try {{
     $Outlook = New-Object -ComObject Outlook.Application
     $Appointment = $Outlook.CreateItem(1)
@@ -730,7 +1172,7 @@ if ($Preferred -ne 'google') {{
     $UsedProvider = 'outlook'
     $Messages.Add('Saved the event directly into Outlook on this device.')
   }} catch {{
-    $Messages.Add('Outlook direct-save was not available, so I switched to a fallback path.')
+    $Messages.Add('Outlook direct-save was not available, so I switched to Google Calendar.')
   }}
 }}
 
@@ -804,7 +1246,7 @@ $Messages -join [Environment]::NewLine
     def _parse_date_reference(text: str, today: date) -> date | None:
         if "day after tomorrow" in text:
             return today + timedelta(days=2)
-        if "tomorrow" in text:
+        if any(token in text for token in ("tomorrow", "tomorow", "tmr", "tmrw")):
             return today + timedelta(days=1)
         if "today" in text:
             return today
@@ -894,6 +1336,14 @@ $Messages -join [Environment]::NewLine
             cleaned = working.strip(" .,-")
             return f"Reminder: {cleaned[:140]}" if cleaned else ""
 
+        keyword_title = CalendarService._extract_keyword_subject_title(working)
+        if keyword_title:
+            return keyword_title[:140]
+
+        meeting_title = CalendarService._extract_meeting_or_call_title(working)
+        if meeting_title:
+            return meeting_title[:140]
+
         as_title = re.search(
             r"\bas\s+(.+?)(?=\s+\b(?:today|tomorrow|day after tomorrow|next|on|at|for|location|loc|venue|room|note|notes|agenda|description|desc)\b|$)",
             working,
@@ -920,6 +1370,141 @@ $Messages -join [Environment]::NewLine
         working = CalendarService._remove_schedule_suffixes(working)
         cleaned = " ".join(working.split()).strip(" .,-")
         return cleaned[:140]
+
+    @staticmethod
+    def _extract_keyword_subject_title(text: str) -> str:
+        keyword = CalendarService._extract_subject_around_keyword(
+            text,
+            keywords={"birthday", "anniversary"},
+            keep_tokens={"my", "our", "his", "her", "their", "mom", "mother", "mum", "dad", "father", "wife", "husband", "son", "daughter", "brother", "sister", "sisters", "brothers"},
+            stop_tokens={
+                "i",
+                "want",
+                "you",
+                "to",
+                "set",
+                "add",
+                "put",
+                "create",
+                "make",
+                "book",
+                "schedule",
+                "plan",
+                "save",
+                "send",
+                "calendar",
+                "event",
+                "reminder",
+                "meeting",
+                "call",
+                "appointment",
+                "the",
+                "a",
+                "an",
+                "for",
+                "fro",
+                "as",
+                "in",
+                "on",
+                "at",
+                "agent",
+            },
+        )
+        if keyword:
+            return CalendarService._humanize_title(keyword)
+        return ""
+
+    @staticmethod
+    def _extract_meeting_or_call_title(text: str) -> str:
+        lowered = text.lower()
+        if "meeting" not in lowered and "call" not in lowered:
+            return ""
+
+        kind = "Call" if "call" in lowered and "meeting" not in lowered else "Meeting"
+
+        with_match = re.search(r"\bwith\s+(.+)", text, re.IGNORECASE)
+        if with_match:
+            subject = CalendarService._clean_title_fragment(with_match.group(1))
+            if subject:
+                return f"{kind} with {subject}"
+
+        topic_match = re.search(
+            r"\b(?:meeting|call)\b\s+(?:about|regarding|for)\s+(.+)",
+            text,
+            re.IGNORECASE,
+        )
+        if topic_match:
+            topic = CalendarService._clean_title_fragment(topic_match.group(1))
+            if topic:
+                return f"{kind}: {topic}"
+
+        return ""
+
+    @staticmethod
+    def _extract_subject_around_keyword(
+        text: str,
+        *,
+        keywords: set[str],
+        keep_tokens: set[str],
+        stop_tokens: set[str],
+    ) -> str:
+        token_matches = list(re.finditer(r"[A-Za-z0-9']+", text))
+        if not token_matches:
+            return ""
+
+        tokens = [match.group(0) for match in token_matches]
+        lowered = [token.lower() for token in tokens]
+        keyword_indexes = [index for index, token in enumerate(lowered) if token in keywords]
+        if not keyword_indexes:
+            return ""
+
+        index = keyword_indexes[-1]
+        collected = [tokens[index]]
+        steps = 0
+        cursor = index - 1
+        while cursor >= 0 and steps < 5:
+            value = tokens[cursor]
+            lowered_value = lowered[cursor]
+            if lowered_value in stop_tokens and lowered_value not in keep_tokens:
+                break
+            if not re.search(r"[A-Za-z0-9]", value):
+                break
+            collected.insert(0, value)
+            cursor -= 1
+            steps += 1
+
+        result = " ".join(collected).strip()
+        result = re.sub(r"\b(?:for|fro)\b\s*$", "", result, flags=re.IGNORECASE).strip()
+        return result
+
+    @staticmethod
+    def _humanize_title(value: str) -> str:
+        cleaned = " ".join(value.split()).strip(" .,-")
+        if not cleaned:
+            return ""
+        return cleaned[0].upper() + cleaned[1:]
+
+    @staticmethod
+    def _clean_title_fragment(value: str) -> str:
+        cleaned = " ".join(value.strip().split())
+        patterns = [
+            r",.*$",
+            r"\b(?:today|tomorrow|day after tomorrow|tomorow|tmr|tmrw)\b.*$",
+            r"\bnext\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*$",
+            r"\b(?:on|this)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*$",
+            r"\bon\s+\d{4}-\d{2}-\d{2}\b.*$",
+            r"\bon\s+\d{1,2}/\d{1,2}(?:/\d{2,4})?\b.*$",
+            r"\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b.*$",
+            r"\bfor\s+\d+\s*(?:minutes?|mins?|hours?|hrs?)\b.*$",
+            r"\b(?:put|save|insert|mark|add|create)\b.*$",
+            r"\b(?:in|on|to)\s+(?:my|the|google|outlook)\b.*$",
+            r"\b(?:location|loc|venue|room|note|notes|agenda|description|desc)\s*:.*$",
+            r"https?://\S+.*$",
+        ]
+        for pattern in patterns:
+            cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\b(?:one|of|my|our)\s+agents?\b.*$", "", cleaned, flags=re.IGNORECASE)
+        return cleaned.strip(" .,-")
 
     @staticmethod
     def _extract_description(text: str) -> str | None:
@@ -956,17 +1541,48 @@ $Messages -join [Environment]::NewLine
             tz = ZoneInfo(timezone_name)
         except Exception:
             tz = ZoneInfo(settings.timezone)
-        localized = value.astimezone(tz)
+        localized = CalendarService._coerce_utc_datetime(value).astimezone(tz)
         return localized.strftime("%Y-%m-%d %I:%M %p %Z")
+
+    @staticmethod
+    def _coerce_utc_datetime(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=ZoneInfo("UTC"))
+        return value.astimezone(ZoneInfo("UTC"))
+
+    @staticmethod
+    def _serialize_event_datetime_for_device(value: datetime, timezone_name: str) -> str:
+        try:
+            tz = ZoneInfo(timezone_name)
+        except Exception:
+            tz = ZoneInfo(settings.timezone)
+        return CalendarService._coerce_utc_datetime(value).astimezone(tz).isoformat()
+
+    @staticmethod
+    def _is_all_day_event(event: CalendarEvent) -> bool:
+        if event.ends_at is None:
+            return False
+        try:
+            tz = ZoneInfo(event.timezone)
+        except Exception:
+            tz = ZoneInfo(settings.timezone)
+        start_local = CalendarService._coerce_utc_datetime(event.starts_at).astimezone(tz)
+        end_local = CalendarService._coerce_utc_datetime(event.ends_at).astimezone(tz)
+        return (
+            start_local.time() == dt_time(0, 0)
+            and end_local.time() == dt_time(0, 0)
+            and (end_local - start_local) >= timedelta(days=1)
+        )
 
     @staticmethod
     def _write_ics_file(event: CalendarEvent) -> Path:
         CALENDAR_DIR.mkdir(parents=True, exist_ok=True)
         output_path = CALENDAR_DIR / f"{event.event_id}.ics"
-        start_utc = event.starts_at.astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%SZ")
-        end_dt = (event.ends_at or (event.starts_at + timedelta(minutes=max(event.reminder_minutes_before, 15)))).astimezone(ZoneInfo("UTC"))
+        start_utc = CalendarService._coerce_utc_datetime(event.starts_at).strftime("%Y%m%dT%H%M%SZ")
+        end_source = event.ends_at or (event.starts_at + timedelta(minutes=max(event.reminder_minutes_before, 15)))
+        end_dt = CalendarService._coerce_utc_datetime(end_source)
         end_utc = end_dt.strftime("%Y%m%dT%H%M%SZ")
-        created_utc = event.created_at.astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%SZ")
+        created_utc = CalendarService._coerce_utc_datetime(event.created_at).strftime("%Y%m%dT%H%M%SZ")
         lines = [
             "BEGIN:VCALENDAR",
             "VERSION:2.0",

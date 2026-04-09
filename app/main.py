@@ -15,7 +15,7 @@ settings = get_settings()
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.12",
+    version="0.3.21",
     description="Self-hosted personal AI ops platform with Telegram, agent APIs, and background workers.",
 )
 
@@ -87,5 +87,5 @@ def read_root() -> dict[str, str]:
         "control": "/control",
         "app": "/app",
         "transit_live": "/transit-live",
-        "version": "0.3.12",
+        "version": "0.3.21",
     }

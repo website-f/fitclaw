@@ -68,6 +68,11 @@
         <span>Send heartbeat every 60 seconds while the app stays open</span>
       </label>
 
+      <label class="toggle">
+        <input id="autoControl" type="checkbox" checked />
+        <span>Process control commands while the app stays open, including Google Calendar handoff</span>
+      </label>
+
       <div class="actions">
         <button id="saveConfig" class="button button-secondary" type="button">Save</button>
         <button id="testServer" class="button button-secondary" type="button">Test Server</button>
@@ -94,6 +99,10 @@
         <span class="metric-label">Server health</span>
         <strong id="healthState">Unknown</strong>
       </article>
+      <article class="card metric">
+        <span class="metric-label">Last command</span>
+        <strong id="lastCommand">None yet</strong>
+      </article>
     </section>
 
     <section class="card">
@@ -109,6 +118,7 @@
       <ul class="facts">
         <li>A separate mobile packaging lane for the agent app.</li>
         <li>Simple server registration and heartbeat testing on Android/iOS.</li>
+        <li>Calendar handoff support while the mobile agent app stays open.</li>
         <li>A clean base for adding native background, push, and sensor plugins later.</li>
       </ul>
     </section>

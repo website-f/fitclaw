@@ -68,3 +68,4 @@ class CommandResult:
     handled_as_task_command: bool = False
     handled_as_agent_command: bool = False
     attachments: list[MessageAttachment] = field(default_factory=list)
+    metadata_json: dict = field(default_factory=dict)

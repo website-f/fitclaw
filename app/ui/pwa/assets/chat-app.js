@@ -13,6 +13,7 @@ const state = {
   agents: [],
   pendingUploads: [],
   modelInfo: null,
+  appVersion: "",
   selectedModelKey: "",
   modelSwitching: false,
   modelSwitchTarget: null,
@@ -103,7 +104,7 @@ async function boot() {
   renderMessages();
   updateSessionHeader();
 
-  await Promise.all([loadModelInfo(), loadAgents(), loadSessions()]);
+  await Promise.all([loadAppMeta(), loadModelInfo(), loadAgents(), loadSessions()]);
   await loadCurrentSession();
   renderAll();
   scrollMessagesToBottom();
@@ -289,8 +290,18 @@ async function openSession(sessionId) {
 
 /* ─── Data loading ─── */
 async function refreshRuntimeData() {
-  await Promise.all([loadAgents(), loadModelInfo()]);
+  await Promise.all([loadAppMeta(), loadAgents(), loadModelInfo()]);
   renderAll();
+}
+
+async function loadAppMeta() {
+  try {
+    const response = await fetchJson("/");
+    state.appVersion = response?.version || "";
+  } catch (error) {
+    console.error("Failed to load app meta", error);
+    state.appVersion = "";
+  }
 }
 
 async function loadModelInfo() {
@@ -484,7 +495,8 @@ function renderProfile() {
 function updateConnectionLabel() {
   const onlineAgents = state.agents.filter((agent) => agent.status === "online").length;
   const networkLabel = navigator.onLine ? "Connected" : "Offline shell";
-  dom.connectionLabel.textContent = `${networkLabel} | ${onlineAgents} agent${onlineAgents === 1 ? "" : "s"} online`;
+  const versionLabel = state.appVersion ? ` | v${state.appVersion}` : "";
+  dom.connectionLabel.textContent = `${networkLabel} | ${onlineAgents} agent${onlineAgents === 1 ? "" : "s"} online${versionLabel}`;
   if (state.modelInfo?.active) {
     dom.modelPill.textContent = `${state.modelInfo.active.provider} / ${state.modelInfo.active.model}`;
   } else {
