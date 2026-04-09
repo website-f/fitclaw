@@ -565,23 +565,37 @@ class TransitService:
             adjacency[from_stop].append(edge)
 
         for station_name, stop_ids in station_groups.items():
-            unique = list(dict.fromkeys(stop_ids))
-            if len(unique) <= 1:
+            TransitService._add_transfer_edges(
+                adjacency=adjacency,
+                stops_by_id=stops_by_id,
+                stop_ids=stop_ids,
+                minutes=6.0,
+                label=station_name,
+            )
+
+        normalized_station_groups: dict[str, list[str]] = defaultdict(list)
+        for stop_id, stop in stops_by_id.items():
+            normalized_name = TransitService._normalize_stop_name(stop["stop_name"])
+            if normalized_name:
+                normalized_station_groups[normalized_name].append(stop_id)
+
+        for normalized_name, stop_ids in normalized_station_groups.items():
+            unique_station_names = {
+                stops_by_id.get(stop_id, {}).get("stop_name", "")
+                for stop_id in stop_ids
+                if stops_by_id.get(stop_id, {}).get("stop_name")
+            }
+            if len(unique_station_names) <= 1:
                 continue
-            for from_id in unique:
-                for to_id in unique:
-                    if from_id == to_id:
-                        continue
-                    adjacency[from_id].append(
-                        TransitEdge(
-                            to_stop_id=to_id,
-                            minutes=6.0,
-                            edge_type="transfer",
-                            route_label="Transfer",
-                            from_stop_name=station_name,
-                            to_stop_name=station_name,
-                        )
-                    )
+            transfer_label = " / ".join(sorted(unique_station_names))
+            TransitService._add_transfer_edges(
+                adjacency=adjacency,
+                stops_by_id=stops_by_id,
+                stop_ids=stop_ids,
+                minutes=4.0,
+                label=transfer_label,
+                cross_name_only=True,
+            )
 
         graph = TransitGraph(
             network=network,
@@ -719,12 +733,18 @@ class TransitService:
             last = current_edges[-1]
             total = round(sum(item.minutes for item in current_edges), 1)
             if first.edge_type == "transfer":
+                transfer_origin = first.from_stop_name or ""
+                transfer_destination = last.to_stop_name or first.to_stop_name or ""
+                if transfer_origin and transfer_destination and transfer_origin != transfer_destination:
+                    instruction = f"Transfer between {transfer_origin} and {transfer_destination}."
+                else:
+                    instruction = f"Transfer at {transfer_origin or transfer_destination}."
                 steps.append(
                     TransitRouteStepResponse(
                         step_type="transfer",
-                        instruction=f"Transfer at {first.from_stop_name or first.to_stop_name}.",
-                        from_stop=first.from_stop_name or "",
-                        to_stop=last.to_stop_name or "",
+                        instruction=instruction,
+                        from_stop=transfer_origin,
+                        to_stop=transfer_destination,
                         route_id=None,
                         route_label="Transfer",
                         stop_count=0,
@@ -855,6 +875,37 @@ class TransitService:
         lowered = re.sub(r"\b(?:stesen|station|lrt|mrt|monorail|ktm|komuter|line)\b", " ", lowered)
         lowered = re.sub(r"[^a-z0-9]+", "", lowered)
         return lowered
+
+    @staticmethod
+    def _add_transfer_edges(
+        adjacency: dict[str, list[TransitEdge]],
+        stops_by_id: dict[str, dict[str, str]],
+        stop_ids: list[str],
+        minutes: float,
+        label: str,
+        cross_name_only: bool = False,
+    ) -> None:
+        unique = list(dict.fromkeys(stop_ids))
+        if len(unique) <= 1:
+            return
+        for from_id in unique:
+            from_name = stops_by_id.get(from_id, {}).get("stop_name") or ""
+            for to_id in unique:
+                if from_id == to_id:
+                    continue
+                to_name = stops_by_id.get(to_id, {}).get("stop_name") or ""
+                if cross_name_only and from_name == to_name:
+                    continue
+                adjacency[from_id].append(
+                    TransitEdge(
+                        to_stop_id=to_id,
+                        minutes=minutes,
+                        edge_type="transfer",
+                        route_label="Transfer",
+                        from_stop_name=from_name or label,
+                        to_stop_name=to_name or label,
+                    )
+                )
 
     @staticmethod
     def _providers_for_nearby(provider_key: str | None = None, mode: str | None = "bus") -> list[TransitProvider]:

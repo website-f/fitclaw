@@ -19,8 +19,10 @@ const state = {
   agentSaveState: {},
   sending: false,
   installPrompt: null,
+  installContext: "none",
   sidebarOpen: false,
   inspectorOpen: false,
+  composerFocused: false,
   historyPage: 0,
   historyPageSize: 8,
 };
@@ -34,9 +36,17 @@ const dom = {
   modelSwitchModal: document.getElementById("modelSwitchModal"),
   modelSwitchTitle: document.getElementById("modelSwitchTitle"),
   modelSwitchDetail: document.getElementById("modelSwitchDetail"),
+  installHelpModal: document.getElementById("installHelpModal"),
+  installHelpTitle: document.getElementById("installHelpTitle"),
+  installHelpText: document.getElementById("installHelpText"),
+  installHelpSteps: document.getElementById("installHelpSteps"),
+  installHelpPrimaryButton: document.getElementById("installHelpPrimaryButton"),
+  installHelpDismissButton: document.getElementById("installHelpDismissButton"),
   sessionTitle: document.getElementById("sessionTitle"),
   connectionLabel: document.getElementById("connectionLabel"),
   modelPill: document.getElementById("modelPill"),
+  topbarNewChatButton: document.getElementById("topbarNewChatButton"),
+  deleteChatButton: document.getElementById("deleteChatButton"),
   promptDeck: document.getElementById("promptDeck"),
   showcaseList: document.getElementById("showcaseList"),
   quickChipRow: document.getElementById("quickChipRow"),
@@ -45,6 +55,7 @@ const dom = {
   messageScroll: document.getElementById("messageScroll"),
   messageList: document.getElementById("messageList"),
   welcomeState: document.getElementById("welcomeState"),
+  composerWrap: document.querySelector(".composer-wrap"),
   composerForm: document.getElementById("composerForm"),
   filePicker: document.getElementById("filePicker"),
   messageInput: document.getElementById("messageInput"),
@@ -104,6 +115,8 @@ function bindEvents() {
   dom.attachButton.addEventListener("click", () => dom.filePicker.click());
   dom.filePicker.addEventListener("change", onFileSelection);
   dom.newChatButton.addEventListener("click", () => startNewChat(true));
+  dom.topbarNewChatButton.addEventListener("click", () => startNewChat(true));
+  dom.deleteChatButton.addEventListener("click", () => void deleteCurrentSession());
   dom.refreshHistoryButton.addEventListener("click", (e) => {
     e.stopPropagation();
     void loadSessions().then(renderHistory);
@@ -115,7 +128,11 @@ function bindEvents() {
   dom.saveProfileButton.addEventListener("click", saveProfile);
   dom.messageInput.addEventListener("input", autoResizeTextarea);
   dom.messageInput.addEventListener("keydown", onComposerKeyDown);
+  dom.messageInput.addEventListener("focus", onComposerFocus);
+  dom.messageInput.addEventListener("blur", onComposerBlur);
   dom.installButton.addEventListener("click", installApp);
+  dom.installHelpPrimaryButton.addEventListener("click", hideInstallHelpModal);
+  dom.installHelpDismissButton.addEventListener("click", hideInstallHelpModal);
 
   // History pagination & clear
   dom.historyPrevButton.addEventListener("click", () => { state.historyPage = Math.max(0, state.historyPage - 1); renderHistory(); });
@@ -142,11 +159,13 @@ function bindEvents() {
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     state.installPrompt = event;
-    dom.installButton.hidden = false;
+    state.installContext = "prompt";
+    updateInstallButtonVisibility();
   });
   window.addEventListener("appinstalled", () => {
     state.installPrompt = null;
-    dom.installButton.hidden = true;
+    state.installContext = "installed";
+    updateInstallButtonVisibility();
   });
 
   window.addEventListener("online", updateConnectionLabel);
@@ -154,11 +173,12 @@ function bindEvents() {
 
   // Visual viewport for mobile keyboard
   if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", () => {
-      document.documentElement.style.setProperty("--vvh", `${window.visualViewport.height}px`);
-    });
-    document.documentElement.style.setProperty("--vvh", `${window.visualViewport.height}px`);
+    window.visualViewport.addEventListener("resize", syncVisualViewport);
+    window.visualViewport.addEventListener("scroll", syncVisualViewport);
   }
+  state.installContext = getInstallContext();
+  updateInstallButtonVisibility();
+  syncVisualViewport();
 }
 
 /* ─── Drawer management ─── */
@@ -295,7 +315,7 @@ async function loadAgents() {
 
 async function loadSessions() {
   try {
-    state.sessions = await fetchJson(`/api/v1/chat/sessions?user_id=${encodeURIComponent(state.userId)}`);
+    state.sessions = await fetchJson(`/api/v1/chat/sessions?user_id=${encodeURIComponent(state.userId)}&limit=1000`);
   } catch (error) {
     console.error("Failed to load sessions", error);
     state.sessions = [];
@@ -304,13 +324,13 @@ async function loadSessions() {
 
 async function loadCurrentSession() {
   const currentSummary = state.sessions.find((item) => item.session_id === state.sessionId);
-  if (!currentSummary && state.sessions.length > 0) {
-    state.sessionId = state.sessions[0].session_id;
-    persistSessionId();
-  }
-
   if (!state.sessionId) {
     startNewChat(false);
+    return;
+  }
+
+  if (!currentSummary) {
+    state.messages = [];
     return;
   }
 
@@ -447,6 +467,7 @@ function renderAll() {
   renderModelSwitchModal();
   renderProfile();
   updateSessionHeader();
+  renderTopbarActions();
   renderHistory();
   renderSuggestions();
   renderUploadTray();
@@ -477,55 +498,177 @@ function updateSessionHeader() {
   dom.sessionTitle.textContent = title;
 }
 
+function renderTopbarActions() {
+  const currentSummary = state.sessions.find((item) => item.session_id === state.sessionId);
+  dom.deleteChatButton.disabled = !currentSummary;
+  dom.deleteChatButton.classList.toggle("is-disabled", !currentSummary);
+}
+
 function deriveTitleFromMessages() {
   const firstUser = state.messages.find((message) => message.role === "user");
   if (!firstUser) return "";
   return firstUser.content.replace(/\s+/g, " ").slice(0, 80);
 }
 
+/* ══ History render state ══ */
+const HISTORY_PAGE_SIZE = 6; // items revealed per batch
+
 function renderHistory() {
   dom.historyList.innerHTML = "";
+  state.historyRenderedCount = HISTORY_PAGE_SIZE; // reset per full re-render
 
   if (!state.sessions.length) {
-    dom.historyList.innerHTML = `<div class="empty-copy">No chat history yet.</div>`;
+    dom.historyList.innerHTML = `<div class="empty-copy" style="padding:.75rem .4rem;font-size:.82rem;color:var(--muted);">No chat history yet.</div>`;
     dom.historyFooter.hidden = true;
     return;
   }
 
-  const total = state.sessions.length;
-  const pageSize = state.historyPageSize;
-  const totalPages = Math.ceil(total / pageSize);
-  state.historyPage = Math.min(state.historyPage, totalPages - 1);
-  const start = state.historyPage * pageSize;
-  const pageItems = state.sessions.slice(start, start + pageSize);
+  renderHistoryBatch(HISTORY_PAGE_SIZE);
+  dom.historyFooter.hidden = !state.sessions.length;
+}
 
-  pageItems.forEach((session) => {
-    const row = document.createElement("div");
-    row.className = `history-item${session.session_id === state.sessionId ? " active" : ""}`;
+/** Renders sessions[0..upTo] grouped, replacing previous content */
+function renderHistoryBatch(upTo) {
+  // Remove existing sentinel / loading indicator before re-rendering
+  const existingSentinel = dom.historyList.querySelector(".history-sentinel");
+  const existingLoader   = dom.historyList.querySelector(".history-loading-more");
+  if (existingSentinel) existingSentinel.remove();
+  if (existingLoader)   existingLoader.remove();
 
-    const body = document.createElement("button");
-    body.type = "button";
-    body.className = "history-item-body";
-    body.innerHTML = `<strong>${escapeHtml(session.title)}</strong><small>${escapeHtml(formatDateTime(session.last_message_at))}</small>`;
-    body.addEventListener("click", () => void openSession(session.session_id));
+  const grouped = groupSessionsForHistory(state.sessions.slice(0, upTo));
+  const hasMore = upTo < state.sessions.length;
 
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "history-delete";
-    del.setAttribute("aria-label", "Delete chat");
-    del.innerHTML = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
-    del.addEventListener("click", (e) => { e.stopPropagation(); void deleteSession(session.session_id); });
+  // Build or update groups
+  dom.historyList.innerHTML = "";
+  grouped.forEach((group) => {
+    const section = document.createElement("section");
+    section.className = "history-group";
 
-    row.appendChild(body);
-    row.appendChild(del);
-    dom.historyList.appendChild(row);
+    const heading = document.createElement("h4");
+    heading.className = "history-group-label";
+    heading.textContent = group.label;
+    section.appendChild(heading);
+
+    const stack = document.createElement("div");
+    stack.className = "history-group-items";
+
+    group.items.forEach((session) => {
+      stack.appendChild(buildHistoryItem(session));
+    });
+
+    section.appendChild(stack);
+    dom.historyList.appendChild(section);
   });
 
-  // Pagination footer
-  dom.historyFooter.hidden = false;
-  dom.historyPrevButton.disabled = state.historyPage <= 0;
-  dom.historyNextButton.disabled = state.historyPage >= totalPages - 1;
-  dom.historyPageLabel.textContent = `${state.historyPage + 1}/${totalPages}`;
+  if (hasMore) {
+    attachHistorySentinel(upTo);
+  }
+}
+
+/** Builds a single history row element */
+function buildHistoryItem(session) {
+  const row = document.createElement("div");
+  row.className = `history-item${session.session_id === state.sessionId ? " active" : ""}`;
+
+  const body = document.createElement("button");
+  body.type = "button";
+  body.className = "history-item-body";
+  body.title = session.title;
+  body.innerHTML = `
+    <span class="history-item-icon" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M13.5 9.5A5.5 5.5 0 01 2.5 9.5C2.5 6.46 5.08 4 8 4s5.5 2.46 5.5 5.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        <path d="M4.5 12.5l-.8 1.8 2-1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="history-item-title">${escapeHtml(session.title)}</span>
+  `;
+  body.addEventListener("click", () => void openSession(session.session_id));
+
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "history-delete";
+  del.setAttribute("aria-label", `Delete ${session.title}`);
+  del.innerHTML = `<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+  del.addEventListener("click", (e) => { e.stopPropagation(); void deleteSession(session.session_id); });
+
+  row.appendChild(body);
+  row.appendChild(del);
+  return row;
+}
+
+/** Appends a sentinel div + IntersectionObserver to load more on scroll */
+function attachHistorySentinel(currentlyShown) {
+  // Loading indicator
+  const loader = document.createElement("div");
+  loader.className = "history-loading-more";
+  loader.setAttribute("aria-hidden", "true");
+  dom.historyList.appendChild(loader);
+
+  // 1px sentinel just below the loader
+  const sentinel = document.createElement("div");
+  sentinel.className = "history-sentinel";
+  dom.historyList.appendChild(sentinel);
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      if (!entries[0].isIntersecting) return;
+      observer.disconnect();
+      const nextBatch = currentlyShown + HISTORY_PAGE_SIZE;
+      state.historyRenderedCount = nextBatch;
+      renderHistoryBatch(nextBatch);
+    },
+    { root: dom.historyList, threshold: 0 }
+  );
+  observer.observe(sentinel);
+}
+
+function groupSessionsForHistory(sessions) {
+  const todayStart = startOfLocalDay(new Date());
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  const previousWeekStart = new Date(todayStart);
+  previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+
+  const groups = [];
+  const buckets = new Map();
+
+  sessions.forEach((session) => {
+    const lastMessageDate = new Date(session.last_message_at);
+    const dayStart = startOfLocalDay(lastMessageDate);
+
+    let label = formatMonthLabel(lastMessageDate);
+    if (dayStart.getTime() >= todayStart.getTime()) {
+      label = "Today";
+    } else if (dayStart.getTime() >= yesterdayStart.getTime()) {
+      label = "Yesterday";
+    } else if (dayStart.getTime() >= previousWeekStart.getTime()) {
+      label = "Previous 7 Days";
+    }
+
+    if (!buckets.has(label)) {
+      const group = { label, items: [] };
+      buckets.set(label, group);
+      groups.push(group);
+    }
+    buckets.get(label).items.push(session);
+  });
+
+  return groups;
+}
+
+function startOfLocalDay(value) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function formatMonthLabel(value) {
+  try {
+    return new Date(value).toLocaleDateString([], { month: "long", year: "numeric" });
+  } catch {
+    return "Older";
+  }
 }
 
 async function deleteSession(sessionId) {
@@ -537,8 +680,7 @@ async function deleteSession(sessionId) {
   }
   if (sessionId === state.sessionId) startNewChat(false);
   await loadSessions();
-  renderHistory();
-  updateSessionHeader();
+  renderAll();
 }
 
 async function clearAllHistory() {
@@ -552,6 +694,15 @@ async function clearAllHistory() {
   startNewChat(false);
   await loadSessions();
   renderAll();
+}
+
+async function deleteCurrentSession() {
+  const currentSummary = state.sessions.find((item) => item.session_id === state.sessionId);
+  if (!currentSummary) {
+    startNewChat(true);
+    return;
+  }
+  await deleteSession(currentSummary.session_id);
 }
 
 function renderSuggestions() {
@@ -1148,7 +1299,8 @@ function renderMessages() {
     } else if (!message.content && attachments.length) {
       bubble.classList.add("is-hidden");
     } else {
-      bubble.innerHTML = linkifyText(message.content || "");
+      bubble.classList.remove("is-hidden");
+      bubble.replaceChildren(buildMessageContent(message));
     }
 
     const attachmentStack = node.querySelector(".attachment-stack");
@@ -1180,6 +1332,269 @@ function renderMessages() {
   });
 }
 
+function buildMessageContent(message) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "rich-message";
+
+  const text = String(message.content || "");
+  if (!text.trim()) {
+    return wrapper;
+  }
+
+  if ((message.provider || "") === "transit-route" || /^Best route on /im.test(text)) {
+    return buildTransitRouteContent(text);
+  }
+
+  appendFormattedBlocks(wrapper, text);
+  return wrapper;
+}
+
+function buildTransitRouteContent(text) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "route-card";
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return wrapper;
+  }
+
+  const headerLine = lines[0];
+  const durationLine = lines.find((line) => /^-\s*Estimated travel time:/i.test(line)) || "";
+  const noteLines = lines.filter((line) => /^Note:/i.test(line));
+  const stepLines = lines.filter((line) => /^-\s+/i.test(line) && !/^-\s*Estimated travel time:/i.test(line));
+
+  const match = headerLine.match(/^Best route on\s+(.+?)\s+from\s+(.+?)\s+to\s+(.+?):?$/i);
+  const title = document.createElement("div");
+  title.className = "route-card-head";
+  if (match) {
+    const heading = document.createElement("h4");
+    heading.textContent = `${beautifyLabel(match[2])} to ${beautifyLabel(match[3])}`;
+    const network = document.createElement("p");
+    network.textContent = `via ${beautifyLabel(match[1])}`;
+    title.appendChild(heading);
+    title.appendChild(network);
+  } else {
+    const heading = document.createElement("h4");
+    heading.textContent = headerLine.replace(/:$/, "");
+    title.appendChild(heading);
+  }
+  wrapper.appendChild(title);
+
+  if (durationLine) {
+    const meta = document.createElement("div");
+    meta.className = "route-meta";
+    const pill = document.createElement("span");
+    pill.className = "route-pill";
+    pill.textContent = durationLine.replace(/^-+\s*/i, "");
+    meta.appendChild(pill);
+    wrapper.appendChild(meta);
+  }
+
+  if (stepLines.length) {
+    const trail = document.createElement("ol");
+    trail.className = "route-trail";
+    stepLines.forEach((line, index) => {
+      const item = document.createElement("li");
+      item.className = "route-step";
+
+      const marker = document.createElement("span");
+      marker.className = "route-step-index";
+      marker.textContent = String(index + 1);
+
+      const copy = document.createElement("div");
+      copy.className = "route-step-copy";
+      appendFormattedBlocks(copy, line.replace(/^-+\s*/i, ""));
+
+      item.appendChild(marker);
+      item.appendChild(copy);
+      trail.appendChild(item);
+    });
+    wrapper.appendChild(trail);
+  }
+
+  if (noteLines.length) {
+    const notes = document.createElement("div");
+    notes.className = "route-notes";
+    const heading = document.createElement("strong");
+    heading.textContent = "Notes";
+    notes.appendChild(heading);
+    noteLines.forEach((line) => {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = line.replace(/^Note:\s*/i, "");
+      notes.appendChild(paragraph);
+    });
+    wrapper.appendChild(notes);
+  }
+
+  return wrapper;
+}
+
+function appendFormattedBlocks(container, text) {
+  const normalized = String(text || "").replace(/\r\n/g, "\n");
+  const codePattern = /```([\w.+-]*)\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codePattern.exec(normalized)) !== null) {
+    const plainText = normalized.slice(lastIndex, match.index);
+    appendTextBlocks(container, plainText);
+    container.appendChild(buildCodeBlock(match[2], match[1]));
+    lastIndex = match.index + match[0].length;
+  }
+
+  appendTextBlocks(container, normalized.slice(lastIndex));
+}
+
+function appendTextBlocks(container, text) {
+  const blocks = String(text || "")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  blocks.forEach((block) => {
+    const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) return;
+
+    if (lines.every((line) => /^-\s+/.test(line))) {
+      const list = document.createElement("ul");
+      list.className = "message-list-block";
+      lines.forEach((line) => {
+        const item = document.createElement("li");
+        appendInlineNodes(item, line.replace(/^-\s+/, ""));
+        list.appendChild(item);
+      });
+      container.appendChild(list);
+      return;
+    }
+
+    if (lines.every((line) => /^\d+\.\s+/.test(line))) {
+      const list = document.createElement("ol");
+      list.className = "message-list-block ordered";
+      lines.forEach((line) => {
+        const item = document.createElement("li");
+        appendInlineNodes(item, line.replace(/^\d+\.\s+/, ""));
+        list.appendChild(item);
+      });
+      container.appendChild(list);
+      return;
+    }
+
+    if (/^#{1,4}\s+/.test(lines[0])) {
+      const level = Math.min(4, (lines[0].match(/^#+/) || ["#"])[0].length);
+      const heading = document.createElement(`h${Math.min(6, level + 2)}`);
+      heading.className = "message-heading";
+      appendInlineNodes(heading, lines[0].replace(/^#{1,4}\s+/, ""));
+      container.appendChild(heading);
+      const rest = lines.slice(1);
+      if (rest.length) {
+        const paragraph = document.createElement("p");
+        paragraph.className = "message-paragraph";
+        appendLinesWithBreaks(paragraph, rest);
+        container.appendChild(paragraph);
+      }
+      return;
+    }
+
+    const paragraph = document.createElement("p");
+    paragraph.className = "message-paragraph";
+    appendLinesWithBreaks(paragraph, lines);
+    container.appendChild(paragraph);
+  });
+}
+
+function appendLinesWithBreaks(parent, lines) {
+  lines.forEach((line, index) => {
+    if (index > 0) parent.appendChild(document.createElement("br"));
+    appendInlineNodes(parent, line);
+  });
+}
+
+function appendInlineNodes(parent, text) {
+  const tokenPattern = /(\*\*[^*]+?\*\*|`[^`]+`|https?:\/\/[^\s<]+|\/transit-live[^\s<]*)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = tokenPattern.exec(text)) !== null) {
+    const plain = text.slice(lastIndex, match.index);
+    if (plain) parent.appendChild(document.createTextNode(plain));
+
+    const token = match[0];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      const strong = document.createElement("strong");
+      strong.textContent = token.slice(2, -2);
+      parent.appendChild(strong);
+    } else if (token.startsWith("`") && token.endsWith("`")) {
+      const code = document.createElement("code");
+      code.className = "inline-code";
+      code.textContent = token.slice(1, -1);
+      parent.appendChild(code);
+    } else {
+      const link = document.createElement("a");
+      link.href = token;
+      if (/^https?:/i.test(token)) {
+        link.target = "_blank";
+        link.rel = "noreferrer";
+      }
+      link.textContent = token;
+      parent.appendChild(link);
+    }
+
+    lastIndex = match.index + token.length;
+  }
+
+  const tail = text.slice(lastIndex);
+  if (tail) parent.appendChild(document.createTextNode(tail));
+}
+
+function buildCodeBlock(codeText, language) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "code-block";
+
+  const header = document.createElement("div");
+  header.className = "code-block-head";
+
+  const label = document.createElement("span");
+  label.className = "code-language";
+  label.textContent = language || "code";
+
+  const copyButton = document.createElement("button");
+  copyButton.type = "button";
+  copyButton.className = "copy-code-button";
+  copyButton.textContent = "Copy";
+  copyButton.addEventListener("click", () => void copyCodeBlock(codeText, copyButton));
+
+  header.appendChild(label);
+  header.appendChild(copyButton);
+
+  const pre = document.createElement("pre");
+  const code = document.createElement("code");
+  code.textContent = codeText.replace(/\n$/, "");
+  pre.appendChild(code);
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(pre);
+  return wrapper;
+}
+
+async function copyCodeBlock(codeText, button) {
+  const original = button.textContent;
+  try {
+    await navigator.clipboard.writeText(codeText);
+    button.textContent = "Copied";
+  } catch (error) {
+    console.error("Copy failed", error);
+    button.textContent = "Copy failed";
+  } finally {
+    window.setTimeout(() => {
+      button.textContent = original;
+    }, 1500);
+  }
+}
+
 function scrollMessagesToBottom() {
   requestAnimationFrame(() => {
     dom.messageScroll.scrollTop = dom.messageScroll.scrollHeight;
@@ -1191,13 +1606,130 @@ function autoResizeTextarea() {
   dom.messageInput.style.height = `${Math.min(dom.messageInput.scrollHeight, 192)}px`;
 }
 
+function onComposerFocus() {
+  state.composerFocused = true;
+  document.body.classList.add("keyboard-open");
+  closeAllDrawers();
+  syncVisualViewport();
+  scrollComposerIntoView();
+}
+
+function onComposerBlur() {
+  state.composerFocused = false;
+  window.setTimeout(() => {
+    if (document.activeElement !== dom.messageInput) {
+      document.body.classList.remove("keyboard-open");
+      syncVisualViewport();
+    }
+  }, 120);
+}
+
+function syncVisualViewport() {
+  const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const keyboardInset = window.visualViewport
+    ? Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop)
+    : 0;
+
+  document.documentElement.style.setProperty("--vvh", `${viewportHeight}px`);
+  document.documentElement.style.setProperty("--keyboard-inset", `${keyboardInset}px`);
+
+  if (state.composerFocused) {
+    document.body.classList.add("keyboard-open");
+    scrollComposerIntoView();
+  }
+}
+
+function scrollComposerIntoView() {
+  requestAnimationFrame(() => {
+    dom.composerWrap?.scrollIntoView({ block: "end", inline: "nearest" });
+    scrollMessagesToBottom();
+  });
+}
+
 /* ─── PWA ─── */
 async function installApp() {
-  if (!state.installPrompt) return;
-  await state.installPrompt.prompt();
-  await state.installPrompt.userChoice;
-  state.installPrompt = null;
+  if (state.installPrompt) {
+    await state.installPrompt.prompt();
+    await state.installPrompt.userChoice;
+    state.installPrompt = null;
+    state.installContext = getInstallContext();
+    updateInstallButtonVisibility();
+    return;
+  }
+
+  if (state.installContext === "ios-manual") {
+    showInstallHelpModal();
+  }
+}
+
+function getInstallContext() {
+  if (isStandaloneMode()) {
+    return "installed";
+  }
+  if (state.installPrompt) {
+    return "prompt";
+  }
+  if (isIOSDevice()) {
+    return "ios-manual";
+  }
+  return "none";
+}
+
+function updateInstallButtonVisibility() {
+  state.installContext = getInstallContext();
+
+  if (state.installContext === "prompt") {
+    dom.installButton.hidden = false;
+    dom.installButton.textContent = "Install app";
+    return;
+  }
+
+  if (state.installContext === "ios-manual") {
+    dom.installButton.hidden = false;
+    dom.installButton.textContent = "Add to Home Screen";
+    return;
+  }
+
   dom.installButton.hidden = true;
+}
+
+function showInstallHelpModal() {
+  const inSafari = isSafariBrowser();
+  dom.installHelpTitle.textContent = inSafari ? "Add this app to your Home Screen" : "Open in Safari to install";
+  dom.installHelpText.textContent = inSafari
+    ? "On iPhone and iPad, Safari does not show an automatic install popup. Use the Share menu to add this app to your Home Screen."
+    : "This browser on iPhone does not expose a direct install popup here. Open this page in Safari, then use Share > Add to Home Screen.";
+  dom.installHelpSteps.innerHTML = inSafari
+    ? [
+        "<li>Tap the Share button in Safari.</li>",
+        "<li>Scroll down and choose Add to Home Screen.</li>",
+        "<li>Tap Add to finish installing FitClaw.</li>",
+      ].join("")
+    : [
+        "<li>Open this same page in Safari.</li>",
+        "<li>Tap the Share button.</li>",
+        "<li>Choose Add to Home Screen, then tap Add.</li>",
+      ].join("");
+
+  dom.installHelpModal.hidden = false;
+}
+
+function hideInstallHelpModal() {
+  dom.installHelpModal.hidden = true;
+}
+
+function isStandaloneMode() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+
+function isIOSDevice() {
+  const ua = window.navigator.userAgent || "";
+  return /iPhone|iPad|iPod/i.test(ua) || (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
+}
+
+function isSafariBrowser() {
+  const ua = window.navigator.userAgent || "";
+  return /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|YaBrowser/i.test(ua);
 }
 
 function registerPWA() {
@@ -1336,6 +1868,21 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function beautifyLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const mostlyUppercase = raw === raw.toUpperCase();
+  if (!mostlyUppercase) return raw;
+  return raw
+    .toLowerCase()
+    .split(/(\s+|-|\/)/)
+    .map((part) => {
+      if (/^\s+$/.test(part) || part === "-" || part === "/") return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join("");
 }
 
 function linkifyText(value) {

@@ -26,10 +26,10 @@ def launcher_command() -> list[str]:
     return [sys.executable, str(script_path), "run-agent", "--background"]
 
 
-def test_connection(config: AgentConfig) -> None:
+def test_connection(config: AgentConfig, progress_callback=None) -> None:
     logger = configure_logging(background=False)
     runner = AgentRunner(config, logger=logger)
-    runner.test_connectivity()
+    runner.test_connectivity(progress_callback=progress_callback)
 
 
 def remove_agent(config: AgentConfig, remove_remote: bool = True, purge_related: bool = True) -> str:
@@ -71,14 +71,22 @@ def save_config(config: AgentConfig) -> None:
     config.save()
 
 
-def install_agent(config: AgentConfig, start_now: bool = True) -> str:
+def install_agent(config: AgentConfig, start_now: bool = True, progress_callback=None) -> str:
+    if progress_callback:
+        progress_callback("Saving the desktop agent configuration...")
     save_config(config)
-    test_connection(config)
+    if progress_callback:
+        progress_callback("Validating the server connection...")
+    test_connection(config, progress_callback=progress_callback)
 
     if config.auto_start:
+        if progress_callback:
+            progress_callback("Enabling auto-start for this desktop agent...")
         install_autostart(launcher_command())
 
     if start_now:
+        if progress_callback:
+            progress_callback("Launching the background desktop agent...")
         start_background_process(launcher_command())
 
     return (

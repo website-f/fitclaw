@@ -37,15 +37,11 @@ jobs:
           Set-ExecutionPolicy Bypass -Scope Process -Force
           powershell -ExecutionPolicy Bypass -File agent_daemon\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}"
 
-      - name: Upload EXE Artifact
+      - name: Upload Windows dist Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PersonalAIOpsAgent-windows-x64
-          path: agent_daemon/dist/PersonalAIOpsAgent-*-windows-x64.exe
-
-      - name: Upload Installer Artifact
-        if: hashFiles('agent_daemon/dist/PersonalAIOpsAgent-*-windows-x64-setup.exe') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: PersonalAIOpsAgent-windows-x64-setup
-          path: agent_daemon/dist/PersonalAIOpsAgent-*-windows-x64-setup.exe
+          name: PersonalAIOpsAgent-dist-windows
+          path: |
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-windows-x64.exe
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-windows-x64-setup.exe
+          if-no-files-found: error

@@ -53,12 +53,21 @@ class AgentConfig:
     def validate(self) -> list[str]:
         self.normalized()
         errors: list[str] = []
+        placeholder_keys = {
+            "change-me-now",
+            "put_a_long_random_secret_here",
+            "put-a-long-random-secret-here",
+            "replace-me",
+            "your-shared-key",
+        }
         if not self.api_base_url.startswith(("http://", "https://")):
             errors.append("Server URL must start with http:// or https://")
         if not self.agent_name:
             errors.append("Agent name is required")
         if not self.shared_key:
             errors.append("Shared key is required")
+        elif self.shared_key.strip().lower() in placeholder_keys:
+            errors.append("Shared key is still a placeholder. Paste the real AGENT_API_SHARED_KEY from the server `.env`.")
         if self.poll_interval_seconds <= 0:
             errors.append("Poll interval must be greater than 0")
         if self.heartbeat_interval_seconds <= 0:
@@ -102,4 +111,3 @@ class AgentConfig:
             task_timeout_seconds=int(os.getenv("AGENT_TASK_TIMEOUT_SECONDS", "1800")),
             auto_start=_parse_bool(os.getenv("AGENT_AUTO_START", "true")),
         ).normalized()
-

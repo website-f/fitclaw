@@ -1,0 +1,55 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.personalaiops.agent.debug"
+4    android:versionCode="1"
+5    android:versionName="0.3.8" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="24"
+9        android:targetSdkVersion="36" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:5:5-67
+11-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:5:22-64
+12    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+12-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:6:5-79
+12-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:6:22-76
+13
+14    <application
+14-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:8:5-25:19
+15        android:allowBackup="true"
+15-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:9:9-35
+16        android:debuggable="true"
+17        android:extractNativeLibs="false"
+18        android:label="@string/app_name"
+18-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:10:9-41
+19        android:supportsRtl="true"
+19-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:12:9-35
+20        android:theme="@style/AppTheme"
+20-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:11:9-40
+21        android:usesCleartextTraffic="true" >
+21-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:13:9-44
+22        <activity
+22-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:15:9-24:20
+23            android:name="com.personalaiops.agent.MainActivity"
+23-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:16:13-41
+24            android:configChanges="orientation|screenSize|keyboardHidden"
+24-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:18:13-74
+25            android:exported="true"
+25-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:17:13-36
+26            android:windowSoftInputMode="adjustResize" >
+26-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:19:13-55
+27            <intent-filter>
+27-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:20:13-23:29
+28                <action android:name="android.intent.action.MAIN" />
+28-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:21:17-69
+28-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:21:25-66
+29
+30                <category android:name="android.intent.category.LAUNCHER" />
+30-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:22:17-77
+30-->C:\Users\admin\Desktop\FitriClaw\personal-ai-ops-platform\agent_daemon\packaging\android\app\src\main\AndroidManifest.xml:22:27-74
+31            </intent-filter>
+32        </activity>
+33    </application>
+34
+35</manifest>

@@ -43,6 +43,7 @@ Push-Location $agentRoot
   --collect-data pyscreeze `
   --collect-data mouseinfo `
   --collect-data PIL `
+  --collect-data customtkinter `
   --distpath dist `
   --workpath build-output\\pyinstaller `
   --specpath build-output\\spec `

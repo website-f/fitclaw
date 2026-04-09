@@ -52,6 +52,9 @@ body {
   overflow-x: hidden;
 }
 
+[hidden] { display: none !important; }
+body.modal-open { overflow: hidden; }
+
 h1, h2, h3, h4, p { margin: 0; }
 h1, h2, h3, h4 { font-family: var(--display); font-weight: 700; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -115,7 +118,6 @@ a { text-decoration: none; }
   min-height: 100vh;
   min-height: 100dvh;
   position: relative;
-  z-index: 1;
 }
 
 /* ── Sidebar ── */
@@ -747,6 +749,43 @@ tr:hover td { background: rgba(56, 189, 248, 0.03); }
   z-index: 20;
 }
 
+.permission-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(8, 12, 24, 0.74);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.permission-modal-card {
+  width: min(100%, 28rem);
+  padding: 1.2rem;
+  display: grid;
+  gap: 0.8rem;
+  box-shadow: var(--shadow);
+}
+
+.permission-modal-card h3 {
+  font-size: 1.1rem;
+}
+
+.permission-modal-copy {
+  color: var(--muted-strong);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.permission-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -871,6 +910,24 @@ tr:hover td { background: rgba(56, 189, 248, 0.03); }
 
   .sub-tab { padding: 0.4rem 0.7rem; font-size: 0.8rem; }
   .sub-tab svg { display: none; }
+
+  .permission-modal {
+    padding: 1rem;
+    align-items: end;
+  }
+
+  .permission-modal-card {
+    width: 100%;
+    border-radius: 22px;
+  }
+
+  .permission-modal-actions {
+    flex-direction: column;
+  }
+
+  .permission-modal-actions .button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 520px) {

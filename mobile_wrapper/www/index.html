@@ -3,32 +3,117 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="refresh" content="0; url=/app" />
-  <title>FitClaw AI Ops</title>
-  <style>
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      background: #080507;
-      color: #f8eff5;
-      font-family: Aptos, "Segoe UI Variable", sans-serif;
-      display: grid;
-      place-items: center;
-    }
-    .card {
-      padding: 1.4rem 1.6rem;
-      border-radius: 24px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.08);
-      text-align: center;
-      max-width: 24rem;
-    }
-  </style>
+  <title>FitClaw Agent</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div class="card">
-    <h1>FitClaw AI Ops</h1>
-    <p>If the app does not redirect automatically, point the Capacitor server URL at your hosted PWA endpoint.</p>
-  </div>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">Mobile Agent Companion</p>
+      <h1>FitClaw Agent</h1>
+      <p class="lede">
+        Connect this phone to your AI ops server, register it as a trusted mobile agent, and keep a lightweight
+        heartbeat running while the app is open.
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>Connection</h2>
+        <span id="statusBadge" class="badge badge-idle">Not connected</span>
+      </div>
+
+      <label class="field">
+        <span>Server URL</span>
+        <input id="serverUrl" type="url" placeholder="https://your-server.example.com" />
+      </label>
+
+      <div class="grid two-up">
+        <label class="field">
+          <span>Auth username</span>
+          <input id="authUsername" type="text" placeholder="agent" />
+        </label>
+
+        <label class="field">
+          <span>Shared key</span>
+          <input id="sharedKey" type="password" placeholder="Agent shared key" />
+        </label>
+      </div>
+
+      <div class="grid two-up">
+        <label class="field">
+          <span>Agent name</span>
+          <input id="agentName" type="text" placeholder="mobile-agent-phone" />
+        </label>
+
+        <label class="field">
+          <span>Label</span>
+          <input id="displayLabel" type="text" placeholder="Admin iPhone" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Capabilities</span>
+        <div class="chips" id="capabilities">
+          <label class="chip"><input type="checkbox" value="mobile_companion" checked /> mobile companion</label>
+          <label class="chip"><input type="checkbox" value="location" checked /> location</label>
+          <label class="chip"><input type="checkbox" value="camera_uploads" checked /> camera uploads</label>
+          <label class="chip"><input type="checkbox" value="notifications" checked /> notifications</label>
+          <label class="chip"><input type="checkbox" value="calendar_handoff" checked /> calendar handoff</label>
+        </div>
+      </label>
+
+      <label class="toggle">
+        <input id="autoHeartbeat" type="checkbox" checked />
+        <span>Send heartbeat every 60 seconds while the app stays open</span>
+      </label>
+
+      <div class="actions">
+        <button id="saveConfig" class="button button-secondary" type="button">Save</button>
+        <button id="testServer" class="button button-secondary" type="button">Test Server</button>
+        <button id="registerAgent" class="button" type="button">Register Agent</button>
+        <button id="sendHeartbeat" class="button button-secondary" type="button">Send Heartbeat</button>
+      </div>
+
+      <div class="actions">
+        <button id="openWebApp" class="button button-secondary" type="button">Open Full Web App</button>
+        <button id="removeAgent" class="button button-danger" type="button">Remove Agent</button>
+      </div>
+    </section>
+
+    <section class="grid telemetry">
+      <article class="card metric">
+        <span class="metric-label">Last action</span>
+        <strong id="lastAction">None yet</strong>
+      </article>
+      <article class="card metric">
+        <span class="metric-label">Last heartbeat</span>
+        <strong id="lastHeartbeat">Never</strong>
+      </article>
+      <article class="card metric">
+        <span class="metric-label">Server health</span>
+        <strong id="healthState">Unknown</strong>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>Activity</h2>
+        <button id="clearLog" class="text-button" type="button">Clear</button>
+      </div>
+      <pre id="activityLog" class="log">Agent companion ready.</pre>
+    </section>
+
+    <section class="card muted-card">
+      <h2>What this wrapper gives you</h2>
+      <ul class="facts">
+        <li>A separate mobile packaging lane for the agent app.</li>
+        <li>Simple server registration and heartbeat testing on Android/iOS.</li>
+        <li>A clean base for adding native background, push, and sensor plugins later.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
 </body>
 </html>

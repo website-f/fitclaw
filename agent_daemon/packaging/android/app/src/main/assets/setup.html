@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#0b1120"/>
+<title>FitClaw Agent Setup</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b1120;--card:#111b2d;--card-edge:#1e3050;
+  --field:#17243a;--field-edge:#2a426a;
+  --txt:#f5f8ff;--txt2:#c2d0e7;--txt3:#8096b8;
+  --accent:#38bdf8;--accent-h:#60ccff;
+  --green:#34d399;--red:#f87171;
+  --sec:#1c2941;--sec-h:#274066;
+  --radius:14px;--radius-sm:10px;
+}
+html{font-family:'Segoe UI',Inter,-apple-system,BlinkMacSystemFont,sans-serif;font-size:15px;line-height:1.5;color:var(--txt);background:var(--bg);-webkit-tap-highlight-color:transparent}
+body{min-height:100vh;min-height:100dvh;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.shell{max-width:600px;margin:0 auto;padding:20px 0 40px}
+
+/* ── Header ── */
+.eyebrow{font-size:.75rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em}
+h1{font-size:1.45rem;font-weight:700;margin:4px 0 0}
+.subtitle{font-size:.85rem;color:var(--txt2);margin:4px 0 18px}
+
+/* ── Card ── */
+.card{background:var(--card);border:1px solid var(--card-edge);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px}
+.card-title{font-size:.85rem;font-weight:700;margin-bottom:10px}
+
+/* ── Form ── */
+.label{display:block;font-size:.7rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em;margin:8px 0 3px}
+.input{width:100%;padding:10px 14px;font-size:.9rem;color:var(--txt);background:var(--field);border:1px solid var(--field-edge);border-radius:var(--radius-sm);outline:none;transition:border-color .2s}
+.input:focus{border-color:var(--accent)}
+.input::placeholder{color:var(--txt3)}
+.row{display:grid;gap:10px}
+.row-2{grid-template-columns:1fr 1fr}
+.row-3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:420px){.row-2,.row-3{grid-template-columns:1fr}}
+
+/* ── Checkbox ── */
+.check-row{display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;font-size:.85rem}
+.check-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+
+/* ── Hint ── */
+.hint{font-size:.72rem;color:var(--txt3);margin-top:6px}
+
+/* ── Status ── */
+.status-title{font-size:.95rem;font-weight:700;color:var(--green)}
+.status-detail{font-size:.78rem;color:var(--txt2);margin:4px 0 8px}
+.progress-bar{width:100%;height:4px;border-radius:2px;background:var(--field);overflow:hidden}
+.progress-fill{width:0;height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
+.progress-bar.busy .progress-fill{width:100%;animation:indeterminate 1.4s ease-in-out infinite}
+@keyframes indeterminate{0%{transform:translateX(-100%)}50%{transform:translateX(0)}100%{transform:translateX(100%)}}
+
+/* ── Buttons ── */
+.btn-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+@media(max-width:420px){.btn-grid{grid-template-columns:1fr 1fr}}
+.btn{padding:10px 8px;font-size:.8rem;font-weight:600;border:none;border-radius:var(--radius-sm);cursor:pointer;transition:background .2s,opacity .2s;text-align:center}
+.btn:active{opacity:.8}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#082028}
+.btn-secondary{background:var(--sec);color:var(--txt)}
+.btn-danger{background:#7f1d1d;color:#fca5a5}
+.btn-ghost{background:transparent;color:var(--txt3);border:1px solid var(--card-edge)}
+
+/* ── Paths ── */
+.path-text{font-size:.7rem;color:var(--txt3);word-break:break-all;margin:2px 0}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 20px;border-radius:12px;font-size:.82rem;font-weight:600;z-index:100;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.success{background:var(--green);color:#042f2e}
+.toast.error{background:var(--red);color:#1a0505}
+</style>
+</head>
+<body>
+<div class="shell">
+  <p class="eyebrow">FitClaw Agent</p>
+  <h1>Agent Setup</h1>
+  <p class="subtitle">Configure connection, runtime settings, and install the agent on your device.</p>
+
+  <!-- Connection -->
+  <div class="card">
+    <div class="card-title">Connection &amp; Identity</div>
+    <label class="label" for="server">Server URL</label>
+    <input class="input" id="server" type="url" placeholder="https://your-server.com"/>
+    <div class="row row-2">
+      <div><label class="label" for="agentName">Agent Name</label><input class="input" id="agentName" placeholder="my-agent"/></div>
+      <div><label class="label" for="username">Auth Username</label><input class="input" id="username" placeholder="agent"/></div>
+    </div>
+    <div class="row row-2">
+      <div>
+        <label class="label" for="sharedKey">Shared Key</label>
+        <input class="input" id="sharedKey" type="password" placeholder="••••••••"/>
+        <label class="check-row" style="margin-top:4px"><input type="checkbox" id="showKey"/><span>Show key</span></label>
+      </div>
+      <div><label class="label" for="capabilities">Capabilities</label><input class="input" id="capabilities" placeholder="shell,screenshot,storage"/></div>
+    </div>
+    <p class="hint">Comma-separated capabilities. Agent auto-detects extras at runtime.</p>
+  </div>
+
+  <!-- Settings -->
+  <div class="card">
+    <div class="card-title">Settings &amp; Behavior</div>
+    <div class="row row-3">
+      <div><label class="label" for="poll">Poll (s)</label><input class="input" id="poll" type="number" value="5"/></div>
+      <div><label class="label" for="heartbeat">Heartbeat (s)</label><input class="input" id="heartbeat" type="number" value="60"/></div>
+      <div><label class="label" for="timeout">Timeout (s)</label><input class="input" id="timeout" type="number" value="120"/></div>
+    </div>
+    <label class="check-row"><input type="checkbox" id="allowUnassigned"/><span>Allow unassigned tasks</span></label>
+    <label class="check-row"><input type="checkbox" id="autoStart" checked/><span>Start automatically on boot</span></label>
+  </div>
+
+  <!-- Status -->
+  <div class="card">
+    <div class="card-title">Status</div>
+    <div class="status-title" id="statusTitle">Ready</div>
+    <div class="status-detail" id="statusDetail">Enter your server details and tap Test Connection.</div>
+    <div class="progress-bar" id="progressBar"><div class="progress-fill"></div></div>
+  </div>
+
+  <!-- Actions -->
+  <div class="card">
+    <div class="card-title">Actions</div>
+    <div class="btn-grid">
+      <button class="btn btn-secondary" id="btnTest" onclick="doTest()">Test Connection</button>
+      <button class="btn btn-secondary" id="btnSave" onclick="doSave()">Save Config</button>
+      <button class="btn btn-primary" id="btnInstall" onclick="doInstall()">Install &amp; Start</button>
+      <button class="btn btn-danger" id="btnRemove" onclick="doRemove()">Remove Agent</button>
+      <button class="btn btn-secondary" id="btnRemoveAuto" onclick="doRemoveAuto()">Remove Auto-Start</button>
+      <button class="btn btn-ghost" id="btnExit" onclick="doExit()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Show/hide shared key
+$('showKey').addEventListener('change', e => {
+  $('sharedKey').type = e.target.checked ? 'text' : 'password';
+});
+
+function getConfig() {
+  return {
+    api_base_url: $('server').value.trim(),
+    agent_name: $('agentName').value.trim(),
+    username: $('username').value.trim() || 'agent',
+    shared_key: $('sharedKey').value.trim(),
+    capabilities: $('capabilities').value.split(',').map(s => s.trim()).filter(Boolean),
+    poll_interval_seconds: parseFloat($('poll').value) || 5,
+    heartbeat_interval_seconds: parseFloat($('heartbeat').value) || 60,
+    task_timeout_seconds: parseInt($('timeout').value) || 120,
+    allow_unassigned: $('allowUnassigned').checked,
+    auto_start: $('autoStart').checked,
+  };
+}
+
+function setStatus(title, detail, tone) {
+  $('statusTitle').textContent = title;
+  $('statusDetail').textContent = detail || '';
+  const colors = { info: '#38bdf8', success: '#34d399', error: '#f87171' };
+  $('statusTitle').style.color = colors[tone] || colors.info;
+}
+
+function setBusy(busy) {
+  $('progressBar').classList.toggle('busy', busy);
+  document.querySelectorAll('.btn').forEach(b => b.disabled = busy && b.id !== 'btnExit');
+}
+
+function toast(msg, type) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Bridge to Android (or standalone HTTP) ──
+function callNative(action, config) {
+  if (window.AgentBridge) {
+    return window.AgentBridge[action](JSON.stringify(config || getConfig()));
+  }
+  return null;
+}
+
+async function callAPI(endpoint, config) {
+  const cfg = config || getConfig();
+  const base = cfg.api_base_url.replace(/\/+$/, '');
+  try {
+    const res = await fetch(base + endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Basic ' + btoa(cfg.username + ':' + cfg.shared_key),
+      },
+      body: JSON.stringify(cfg),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status + ': ' + (await res.text()));
+    return await res.json();
+  } catch (e) {
+    throw e;
+  }
+}
+
+async function doTest() {
+  const cfg = getConfig();
+  if (!cfg.api_base_url) { toast('Enter a server URL first', 'error'); return; }
+  setBusy(true);
+  setStatus('Testing connection...', 'Checking server health and authentication.', 'info');
+  try {
+    const native = callNative('testConnection');
+    if (native !== null) {
+      setStatus('Connection succeeded', native || 'Server reachable.', 'success');
+      toast('Connected!', 'success');
+    } else {
+      const base = cfg.api_base_url.replace(/\/+$/, '');
+      const res = await fetch(base + '/health', { signal: AbortSignal.timeout(10000) });
+      if (res.ok) {
+        setStatus('Connection succeeded', 'Server is reachable at ' + base, 'success');
+        toast('Connected!', 'success');
+      } else {
+        throw new Error('Server returned HTTP ' + res.status);
+      }
+    }
+  } catch (e) {
+    setStatus('Connection failed', e.message, 'error');
+    toast('Connection failed', 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function doSave() {
+  setBusy(true);
+  setStatus('Saving...', 'Writing configuration.', 'info');
+  try {
+    const native = callNative('saveConfig');
+    if (native !== null) {
+      setStatus('Configuration saved', native || 'Settings stored locally.', 'success');
+    } else {
+      localStorage.setItem('agent_config', JSON.stringify(getConfig()));
+      setStatus('Configuration saved', 'Stored in local browser storage.', 'success');
+    }
+    toast('Config saved', 'success');
+  } catch (e) {
+    setStatus('Save failed', e.message, 'error');
+    toast('Save failed', 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function doInstall() {
+  const cfg = getConfig();
+  if (!cfg.api_base_url) { toast('Enter a server URL first', 'error'); return; }
+  setBusy(true);
+  setStatus('Installing...', 'Saving config, validating, launching agent.', 'info');
+  try {
+    const native = callNative('installAndStart');
+    if (native !== null) {
+      setStatus('Agent installed & started', native || 'Background agent launched.', 'success');
+      toast('Agent started!', 'success');
+    } else {
+      localStorage.setItem('agent_config', JSON.stringify(cfg));
+      setStatus('Config saved', 'Native install requires the Android agent service. Config stored locally.', 'info');
+      toast('Config saved locally', 'success');
+    }
+  } catch (e) {
+    setStatus('Install failed', e.message, 'error');
+    toast('Install failed', 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function doRemove() {
+  if (!confirm('Remove the agent? This will unregister and delete local config.')) return;
+  setBusy(true);
+  setStatus('Removing...', 'Cleaning up.', 'info');
+  try {
+    const native = callNative('removeAgent');
+    if (native !== null) {
+      setStatus('Agent removed', native || 'Cleaned up.', 'success');
+    } else {
+      localStorage.removeItem('agent_config');
+      setStatus('Config removed', 'Local storage cleared.', 'success');
+    }
+    toast('Agent removed', 'success');
+  } catch (e) {
+    setStatus('Removal failed', e.message, 'error');
+    toast('Failed', 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function doRemoveAuto() {
+  setBusy(true);
+  setStatus('Removing auto-start...', 'Cleaning up.', 'info');
+  try {
+    const native = callNative('removeAutoStart');
+    setStatus('Auto-start removed', 'Agent will not start on boot.', 'success');
+    toast('Auto-start removed', 'success');
+  } catch (e) {
+    setStatus('Failed', e.message, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
+function doExit() {
+  if (window.AgentBridge) window.AgentBridge.exit();
+  else window.close();
+}
+
+// Restore saved config on load
+(function loadSaved() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('agent_config') || '{}');
+    if (saved.api_base_url) $('server').value = saved.api_base_url;
+    if (saved.agent_name) $('agentName').value = saved.agent_name;
+    if (saved.username) $('username').value = saved.username;
+    if (saved.shared_key) $('sharedKey').value = saved.shared_key;
+    if (saved.capabilities) $('capabilities').value = saved.capabilities.join(',');
+    if (saved.poll_interval_seconds) $('poll').value = saved.poll_interval_seconds;
+    if (saved.heartbeat_interval_seconds) $('heartbeat').value = saved.heartbeat_interval_seconds;
+    if (saved.task_timeout_seconds) $('timeout').value = saved.task_timeout_seconds;
+    if (saved.allow_unassigned) $('allowUnassigned').checked = true;
+    if (saved.auto_start !== undefined) $('autoStart').checked = saved.auto_start;
+  } catch (_) {}
+})();
+</script>
+</body>
+</html>

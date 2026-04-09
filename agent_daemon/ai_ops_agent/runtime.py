@@ -4,7 +4,7 @@ import logging
 import platform
 import socket
 import time
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote
 
 import certifi
@@ -20,22 +20,26 @@ class AgentRunner:
         self.config = config.normalized()
         self.logger = logger
 
-    def build_client(self) -> httpx.Client:
+    def build_client(self, timeout: httpx.Timeout | float | None = None) -> httpx.Client:
         verify: bool | str = certifi.where()
         if self.config.api_base_url.lower().startswith("http://"):
             verify = False
+
+        client_timeout = timeout if timeout is not None else httpx.Timeout(60.0)
 
         return httpx.Client(
             base_url=self.config.api_base_url,
             auth=(self.config.username, self.config.shared_key),
             headers={"Content-Type": "application/json"},
-            timeout=60,
+            timeout=client_timeout,
             verify=verify,
             trust_env=False,
         )
 
-    def agent_metadata(self) -> dict[str, Any]:
-        capabilities = available_capabilities(self.config)
+    def agent_metadata(self, probe_capabilities: bool = True) -> dict[str, Any]:
+        capabilities = available_capabilities(self.config) if probe_capabilities else sorted(
+            set(self.config.capabilities or ["shell"])
+        )
         return {
             "hostname": socket.gethostname(),
             "platform": platform.platform(),
@@ -44,13 +48,21 @@ class AgentRunner:
             "capabilities": capabilities,
         }
 
-    def test_connectivity(self) -> None:
+    def test_connectivity(self, progress_callback: Callable[[str], None] | None = None) -> None:
+        def report(message: str) -> None:
+            if progress_callback is not None:
+                progress_callback(message)
+
         try:
-            with self.build_client() as client:
+            report("Checking API health...")
+            with self.build_client(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
                 live = client.get("/health/live")
                 live.raise_for_status()
-                self.register_agent(client)
-                self.send_heartbeat(client)
+                report("Registering this agent...")
+                self.register_agent(client, probe_capabilities=False)
+                report("Sending a validation heartbeat...")
+                self.send_heartbeat(client, metadata_json=self.agent_metadata(probe_capabilities=False))
+                report("Connection check completed.")
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 401:
                 raise RuntimeError(
@@ -60,6 +72,11 @@ class AgentRunner:
             raise RuntimeError(
                 f"The server responded with {exc.response.status_code} while validating the agent connection."
             ) from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError(
+                "The server did not respond quickly enough while validating the agent connection. "
+                "Check that the URL is correct, the API is up, and the VPS is not overloaded."
+            ) from exc
         except httpx.ConnectError as exc:
             raise RuntimeError(
                 "The agent could not reach the server URL. Check that the API is running and that the Server URL is correct."
@@ -67,14 +84,14 @@ class AgentRunner:
         except httpx.HTTPError as exc:
             raise RuntimeError(f"Connection test failed: {exc}") from exc
 
-    def register_agent(self, client: httpx.Client) -> None:
-        capabilities = available_capabilities(self.config)
+    def register_agent(self, client: httpx.Client, probe_capabilities: bool = True) -> None:
+        metadata = self.agent_metadata(probe_capabilities=probe_capabilities)
         response = client.post(
             "/api/v1/agents/register",
             json={
                 "name": self.config.agent_name,
-                "capabilities_json": capabilities,
-                "metadata_json": self.agent_metadata(),
+                "capabilities_json": list(metadata.get("capabilities", [])),
+                "metadata_json": metadata,
             },
         )
         response.raise_for_status()
@@ -86,14 +103,20 @@ class AgentRunner:
         response.raise_for_status()
         self.logger.info("Unregistered agent %s", self.config.agent_name)
 
-    def send_heartbeat(self, client: httpx.Client, status: str = "online", current_task_id: str | None = None) -> None:
+    def send_heartbeat(
+        self,
+        client: httpx.Client,
+        status: str = "online",
+        current_task_id: str | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> None:
         response = client.post(
             "/api/v1/agents/heartbeat",
             json={
                 "name": self.config.agent_name,
                 "status": status,
                 "current_task_id": current_task_id,
-                "metadata_json": self.agent_metadata(),
+                "metadata_json": metadata_json or self.agent_metadata(),
             },
         )
         response.raise_for_status()

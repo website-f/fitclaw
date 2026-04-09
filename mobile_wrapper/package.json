@@ -1,19 +1,19 @@
 {
-  "name": "fitclaw-aiops-mobile-wrapper",
-  "version": "0.3.6",
+  "name": "fitclaw-aiops-agent-mobile-wrapper",
+  "version": "0.3.7",
   "private": true,
-  "description": "Capacitor wrapper for the FitClaw AI Ops PWA.",
+  "description": "Capacitor wrapper for the FitClaw mobile agent companion app.",
   "scripts": {
-    "cap:add:android": "npx cap add android",
-    "cap:add:ios": "npx cap add ios",
+    "cap:add:android": "npx --no-install cap add android",
+    "cap:add:ios": "npx --no-install cap add ios",
     "cap:ensure:android": "node scripts/ensure-platform.mjs android",
     "cap:ensure:ios": "node scripts/ensure-platform.mjs ios",
-    "cap:sync": "npx cap sync",
-    "cap:sync:android": "npx cap sync android",
-    "cap:sync:ios": "npx cap sync ios",
-    "cap:copy": "npx cap copy",
-    "cap:open:android": "npx cap open android",
-    "cap:open:ios": "npx cap open ios"
+    "cap:sync": "npx --no-install cap sync",
+    "cap:sync:android": "npx --no-install cap sync android",
+    "cap:sync:ios": "npx --no-install cap sync ios",
+    "cap:copy": "npx --no-install cap copy",
+    "cap:open:android": "npx --no-install cap open android",
+    "cap:open:ios": "npx --no-install cap open ios"
   },
   "dependencies": {
     "@capacitor/core": "^7.4.2"

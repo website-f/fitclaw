@@ -1,0 +1,2 @@
+com.personalaiops.agent.debug:style/AppTheme = 0x7f020000
+com.personalaiops.agent.debug:string/app_name = 0x7f010000

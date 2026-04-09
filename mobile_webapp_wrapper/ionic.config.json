@@ -1,0 +1,7 @@
+{
+  "name": "fitclaw-aiops-mobile-webapp-wrapper",
+  "type": "custom",
+  "integrations": {
+    "capacitor": {}
+  }
+}

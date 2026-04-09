@@ -1,10 +1,10 @@
-name: Build Mobile iOS App
+name: Build Mobile Web App iOS App
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "mobile_wrapper/**"
+      - "mobile_webapp_wrapper/**"
       - ".github/workflows/build-mobile-ios.yml"
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
     runs-on: macos-latest
     defaults:
       run:
-        working-directory: mobile_wrapper
+        working-directory: mobile_webapp_wrapper
 
     steps:
       - name: Checkout
@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: mobile_wrapper/package-lock.json
+          cache-dependency-path: mobile_webapp_wrapper/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -52,5 +52,5 @@ jobs:
       - name: Upload iOS simulator app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FitClaw-AI-Ops-ios-simulator-app
-          path: mobile_wrapper/build/ios-sim/Build/Products/Debug-iphonesimulator/App.app
+          name: FitClaw-AI-Ops-webapp-ios-simulator-app
+          path: mobile_webapp_wrapper/build/ios-sim/Build/Products/Debug-iphonesimulator/App.app

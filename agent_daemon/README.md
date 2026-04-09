@@ -37,6 +37,31 @@ The repository includes automated builds:
 
 - `.github/workflows/build-agent-windows.yml`
 - `.github/workflows/build-agent-macos.yml`
+- `.github/workflows/build-mobile-agent-android.yml`
+- `.github/workflows/build-mobile-agent-ios.yml`
+- `.github/workflows/build-agent-all-platforms.yml`
+
+All agent workflows now stage their outputs into `agent_daemon/dist` on the GitHub runner before uploading artifacts.
+
+Important:
+
+- GitHub Actions cannot directly place files into your local machine folder by itself
+- after the workflow finishes, download the artifact and extract it
+- the extracted artifact preserves the `agent_daemon/dist` layout
+
+If you want one-click packaging for every agent platform in a single run, use:
+
+- `.github/workflows/build-agent-all-platforms.yml`
+
+That workflow bundles:
+
+- Windows `.exe`
+- Windows setup installer
+- macOS `.app`
+- macOS `.pkg`
+- macOS `.dmg`
+- Android `.apk`
+- iOS simulator `.zip`
 
 ## Build Windows
 

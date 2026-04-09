@@ -1,10 +1,10 @@
-name: Build Mobile Android APK
+name: Build Mobile Web App Android APK
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - "mobile_wrapper/**"
+      - "mobile_webapp_wrapper/**"
       - ".github/workflows/build-mobile-android.yml"
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: mobile_wrapper
+        working-directory: mobile_webapp_wrapper
 
     steps:
       - name: Checkout
@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: mobile_wrapper/package-lock.json
+          cache-dependency-path: mobile_webapp_wrapper/package-lock.json
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -49,5 +49,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FitClaw-AI-Ops-android-apk
-          path: mobile_wrapper/android/app/build/outputs/apk/debug/app-debug.apk
+          name: FitClaw-AI-Ops-webapp-android-apk
+          path: mobile_webapp_wrapper/android/app/build/outputs/apk/debug/app-debug.apk

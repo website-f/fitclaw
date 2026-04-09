@@ -34,14 +34,12 @@ jobs:
           chmod +x agent_daemon/packaging/macos/create-dmg.sh
           bash agent_daemon/packaging/macos/create-dmg.sh
 
-      - name: Upload PKG Artifact
+      - name: Upload macOS dist Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PersonalAIOpsAgent-macos-pkg
-          path: agent_daemon/dist/PersonalAIOpsAgent-*-macos.pkg
-
-      - name: Upload DMG Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PersonalAIOpsAgent-macos-dmg
-          path: agent_daemon/dist/PersonalAIOpsAgent-*-macos.dmg
+          name: PersonalAIOpsAgent-dist-macos
+          path: |
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-macos.app
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-macos.pkg
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-macos.dmg
+          if-no-files-found: error

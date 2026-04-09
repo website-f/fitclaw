@@ -1,0 +1,63 @@
+name: Build Mobile Agent Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "mobile_wrapper/**"
+      - ".github/workflows/build-mobile-agent-android.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile_wrapper
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < ../agent_daemon/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: mobile_wrapper/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure Android platform
+        run: npm run cap:ensure:android
+
+      - name: Build debug APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug
+
+      - name: Stage APK in agent dist
+        run: |
+          mkdir -p ../agent_daemon/dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk ../agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-android.apk
+
+      - name: Upload Android dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-android
+          path: agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-android.apk
+          if-no-files-found: error

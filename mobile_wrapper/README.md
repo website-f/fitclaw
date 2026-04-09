@@ -1,27 +1,25 @@
-# Mobile Wrapper
+# Mobile Agent Wrapper
 
-This folder is a Capacitor wrapper around the hosted FitClaw AI Ops PWA.
+This folder is the Capacitor wrapper for the FitClaw mobile agent companion app.
 
-## What it does
+Full build guide:
 
-- loads the live web app from your server
-- gives you a native Android and iOS project structure later
-- keeps the web UI as the single source of truth
+- [`../deploy/mobile-build-guide.md`](../deploy/mobile-build-guide.md)
 
-## Set the hosted URL
+## What it is for
 
-Before syncing Capacitor, point it at your deployed web app:
+- package a mobile agent companion into Android and iOS projects
+- store the server URL, agent name, and shared key on-device
+- test agent connectivity from the phone
+- register, heartbeat, and remove a mobile agent from your server
 
-```bash
-cd mobile_wrapper
-export FITCLAW_PWA_URL=http://84.46.249.133:8000/app
-```
+## What it is not yet
 
-On Windows PowerShell:
+- not a full hidden background mobile daemon yet
+- not a silent always-on Android service or iOS background runner yet
+- not the full chat app shell
 
-```powershell
-$env:FITCLAW_PWA_URL="http://84.46.249.133:8000/app"
-```
+The full chat and automation app wrapper lives in [`../mobile_webapp_wrapper/`](../mobile_webapp_wrapper/).
 
 ## Install dependencies
 
@@ -44,19 +42,22 @@ npm run cap:ensure:android
 npm run cap:ensure:ios
 ```
 
-## Sync and open native projects
+## Open native projects
 
 ```bash
-npm run cap:sync
 npm run cap:open:android
 npm run cap:open:ios
 ```
 
+## GitHub Actions
+
+The repository includes separate workflows for this mobile agent shell:
+
+- `.github/workflows/build-mobile-agent-android.yml`
+- `.github/workflows/build-mobile-agent-ios.yml`
+
 ## Notes
 
-- For App Store and Play Store release, HTTPS plus a domain is strongly recommended.
-- If you want the wrapper to bundle local web assets instead of loading the remote server URL, you can switch the Capacitor config later to a compiled local build.
-- The repository now includes GitHub Actions for:
-  - Android debug APK: `.github/workflows/build-mobile-android.yml`
-  - iOS unsigned simulator app: `.github/workflows/build-mobile-ios.yml`
-- The iOS workflow builds a simulator `.app` without signing. For a real App Store `.ipa`, add Apple signing secrets later and extend that workflow.
+- The app bundles a local setup UI and talks to your hosted API directly.
+- You still need the same agent shared key as your server `.env`.
+- Native plugins for push, camera, file access, location, and deeper background work can be layered in later without changing the folder structure.

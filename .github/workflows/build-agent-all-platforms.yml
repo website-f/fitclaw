@@ -1,0 +1,242 @@
+name: Build Agent All Platforms Dist Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "agent_daemon/**"
+      - "mobile_wrapper/**"
+      - ".github/workflows/build-agent-all-platforms.yml"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: powershell
+        run: |
+          $value = (Get-Content agent_daemon\VERSION -Raw).Trim()
+          "value=$value" >> $env:GITHUB_OUTPUT
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup -y
+
+      - name: Build Windows Agent
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          powershell -ExecutionPolicy Bypass -File agent_daemon\packaging\windows\build.ps1 -Version "${{ steps.version.outputs.value }}"
+
+      - name: Upload Windows dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-windows-bundle
+          path: |
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-windows-x64.exe
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-windows-x64-setup.exe
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < agent_daemon/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build macOS App and PKG
+        run: |
+          chmod +x agent_daemon/packaging/macos/build.sh
+          bash agent_daemon/packaging/macos/build.sh
+
+      - name: Build DMG
+        run: |
+          chmod +x agent_daemon/packaging/macos/create-dmg.sh
+          bash agent_daemon/packaging/macos/create-dmg.sh
+
+      - name: Upload macOS dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-macos-bundle
+          path: |
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-macos.app
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-macos.pkg
+            agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-macos.dmg
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile_wrapper
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < ../agent_daemon/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: mobile_wrapper/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure Android platform
+        run: npm run cap:ensure:android
+
+      - name: Build debug APK
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug
+
+      - name: Stage APK in agent dist
+        run: |
+          mkdir -p ../agent_daemon/dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk ../agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-android.apk
+
+      - name: Upload Android dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-android-bundle
+          path: agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-android.apk
+          if-no-files-found: error
+
+  ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile_wrapper
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < ../agent_daemon/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: mobile_wrapper/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Ensure iOS platform
+        run: npm run cap:ensure:ios
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios/App
+          pod install
+
+      - name: Build unsigned iOS simulator app
+        run: |
+          cd ios/App
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ../../build/ios-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Stage iOS simulator app in agent dist
+        run: |
+          mkdir -p ../agent_daemon/dist
+          ditto -c -k --sequesterRsrc --keepParent build/ios-sim/Build/Products/Debug-iphonesimulator/App.app ../agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-ios-simulator-app.zip
+
+      - name: Upload iOS dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-ios-bundle
+          path: agent_daemon/dist/PersonalAIOpsAgent-${{ steps.version.outputs.value }}-ios-simulator-app.zip
+          if-no-files-found: error
+
+  bundle:
+    runs-on: ubuntu-latest
+    needs:
+      - windows
+      - macos
+      - android
+      - ios
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < agent_daemon/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-windows-bundle
+          path: agent_daemon/dist
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-macos-bundle
+          path: agent_daemon/dist
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-android-bundle
+          path: agent_daemon/dist
+
+      - name: Download iOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-ios-bundle
+          path: agent_daemon/dist
+
+      - name: Upload combined dist bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalAIOpsAgent-dist-bundle-${{ steps.version.outputs.value }}
+          path: agent_daemon/dist
+          if-no-files-found: error

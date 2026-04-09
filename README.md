@@ -521,17 +521,28 @@ python agent_daemon/agent_daemon.py
 
 That opens the same setup UI.
 
-## Mobile wrapper
+## Mobile wrappers
 
-A Capacitor wrapper is scaffolded in [`mobile_wrapper/`](mobile_wrapper/) so you can later open Android and iOS native projects for store publishing.
+There are now two separate mobile packaging lanes:
+
+- [`mobile_wrapper/`](mobile_wrapper/) for the mobile agent companion app
+- [`mobile_webapp_wrapper/`](mobile_webapp_wrapper/) for the full chat and automation web app
+
+Unified build guide:
+
+- [`deploy/mobile-build-guide.md`](deploy/mobile-build-guide.md)
 
 Key files:
 
 - [`mobile_wrapper/capacitor.config.ts`](mobile_wrapper/capacitor.config.ts)
 - [`mobile_wrapper/package.json`](mobile_wrapper/package.json)
 - [`mobile_wrapper/README.md`](mobile_wrapper/README.md)
+- [`mobile_webapp_wrapper/capacitor.config.ts`](mobile_webapp_wrapper/capacitor.config.ts)
+- [`mobile_webapp_wrapper/package.json`](mobile_webapp_wrapper/package.json)
+- [`mobile_webapp_wrapper/README.md`](mobile_webapp_wrapper/README.md)
 
-The wrapper is set up to point at your hosted PWA endpoint, which keeps the web app as the main UI while still giving you a native shell later.
+The mobile agent wrapper ships a local setup UI for registration and heartbeat testing.
+The mobile web app wrapper points at your hosted `/app` endpoint so the main UI stays on the server.
 
 ## Helpful commands
 

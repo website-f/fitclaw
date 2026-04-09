@@ -1,0 +1,268 @@
+:root {
+  color-scheme: dark;
+  --bg: #07060a;
+  --panel: rgba(23, 19, 29, 0.82);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --text: #f7f1f7;
+  --muted: #b9afba;
+  --accent: #5de6d2;
+  --accent-2: #f25fa7;
+  --danger: #ff7d7d;
+  --shadow: 0 28px 60px rgba(0, 0, 0, 0.34);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(242, 95, 167, 0.2), transparent 24rem),
+    radial-gradient(circle at top right, rgba(93, 230, 210, 0.16), transparent 28rem),
+    linear-gradient(180deg, #07060a, #0c111a 55%, #0d1620);
+  color: var(--text);
+  font-family: Aptos, "Segoe UI Variable", "SF Pro Display", sans-serif;
+}
+
+body {
+  padding: 1.2rem;
+}
+
+.shell {
+  width: min(100%, 56rem);
+  margin: 0 auto;
+  display: grid;
+  gap: 1rem;
+}
+
+.hero,
+.card {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+}
+
+.hero {
+  padding: 1.4rem 1.35rem;
+}
+
+.card {
+  padding: 1.1rem;
+}
+
+.eyebrow,
+.metric-label {
+  margin: 0 0 0.45rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.72rem;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2rem, 6vw, 3rem);
+}
+
+.lede {
+  margin-top: 0.7rem;
+  max-width: 38rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.section-head,
+.actions,
+.grid,
+.chips {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.section-head {
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.grid {
+  flex-wrap: wrap;
+}
+
+.two-up > * {
+  flex: 1 1 16rem;
+}
+
+.telemetry {
+  flex-wrap: wrap;
+}
+
+.metric {
+  flex: 1 1 12rem;
+}
+
+.field,
+.toggle {
+  display: grid;
+  gap: 0.42rem;
+  margin-bottom: 0.9rem;
+}
+
+.field span,
+.toggle span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(10, 11, 18, 0.75);
+  color: var(--text);
+  padding: 0.95rem 1rem;
+  font: inherit;
+}
+
+input:focus {
+  outline: 2px solid rgba(93, 230, 210, 0.38);
+  border-color: rgba(93, 230, 210, 0.45);
+}
+
+.toggle {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.toggle input {
+  width: auto;
+  margin: 0;
+}
+
+.chips {
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.68rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.chip input {
+  width: auto;
+  padding: 0;
+}
+
+.actions {
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.button,
+.text-button {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.button {
+  padding: 0.85rem 1.1rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), #58a6ff);
+  color: #041318;
+  font-weight: 700;
+}
+
+.button-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.button-danger {
+  background: linear-gradient(135deg, #ff8b8b, var(--danger));
+  color: #240909;
+}
+
+.text-button {
+  background: transparent;
+  color: var(--accent);
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.84rem;
+}
+
+.badge-idle {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.badge-success {
+  background: rgba(93, 230, 210, 0.18);
+  color: var(--accent);
+}
+
+.badge-danger {
+  background: rgba(255, 125, 125, 0.15);
+  color: var(--danger);
+}
+
+.log {
+  min-height: 12rem;
+  max-height: 22rem;
+  overflow: auto;
+  margin: 0;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(8, 10, 16, 0.76);
+  color: #dbf8f4;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.facts {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.muted-card {
+  background: rgba(18, 21, 29, 0.74);
+}
+
+@media (max-width: 700px) {
+  body {
+    padding: 0.8rem;
+  }
+
+  .card,
+  .hero {
+    border-radius: 1.2rem;
+  }
+
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

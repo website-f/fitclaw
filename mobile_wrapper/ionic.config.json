@@ -1,5 +1,5 @@
 {
-  "name": "fitclaw-aiops-mobile-wrapper",
+  "name": "fitclaw-aiops-agent-mobile-wrapper",
   "type": "custom",
   "integrations": {
     "capacitor": {}

@@ -280,6 +280,19 @@
   </div>
 
   <div class="backdrop" id="sidebarBackdrop" hidden></div>
+  <div class="permission-modal" id="locationPermissionModal" hidden aria-live="polite" aria-modal="true" role="dialog" aria-labelledby="locationPermissionTitle">
+    <div class="permission-modal-card card">
+      <p class="eyebrow">Location access</p>
+      <h3 id="locationPermissionTitle">Turn on location for nearby transit</h3>
+      <p class="permission-modal-copy" id="locationPermissionCopy">
+        Allow location access so FitClaw can detect buses and trains around you automatically.
+      </p>
+      <div class="permission-modal-actions">
+        <button class="button slim" id="locationPermissionPrimaryButton" type="button">Try again</button>
+        <button class="button slim ghost" id="locationPermissionDismissButton" type="button">Continue without location</button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="/app-assets/transit-live.js" defer></script>

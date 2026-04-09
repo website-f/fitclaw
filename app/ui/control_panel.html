@@ -356,12 +356,61 @@
       white-space: nowrap;
     }
 
-    /* ─── Workspace grid ─── */
-    .workspace {
-      display: grid;
-      grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.95fr);
-      gap: 18px;
-      align-items: start;
+    /* ─── Tab bar ─── */
+    .tab-bar {
+      display: flex;
+      gap: 6px;
+      padding: 6px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      flex: 1 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0.6rem 1.1rem;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.82rem;
+      white-space: nowrap;
+      border: 1px solid transparent;
+      transition: all 180ms ease;
+    }
+    .tab-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+    .tab-btn.active {
+      color: var(--accent);
+      background: rgba(56, 189, 248, 0.1);
+      border-color: rgba(56, 189, 248, 0.28);
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.08);
+    }
+    .tab-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ─── Section divider ─── */
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 18px 0;
+    }
+    .sub-heading {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
     }
 
     .panel { padding: 18px; background: var(--panel-2); }
@@ -560,7 +609,6 @@
        ═══════════════════════════════════════════ */
 
     @media (max-width: 1360px) {
-      .workspace { grid-template-columns: 1fr; }
       .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .grid-2, .grid-3 { grid-template-columns: 1fr; }
     }
@@ -698,310 +746,393 @@
         </div>
       </section>
 
-      <section class="workspace">
-        <div class="stack">
-          <section class="card panel">
-            <div class="panel-head">
-              <div>
-                <h3>Live Screen</h3>
-                <div class="panel-sub">Near-live screenshot polling with click-to-control and fullscreen viewing.</div>
-              </div>
-              <div class="toolbar-actions">
-                <select id="liveInterval" class="select" style="width:120px;">
-                  <option value="1500">1.5s</option>
-                  <option value="2200" selected>2.2s</option>
-                  <option value="3000">3.0s</option>
-                  <option value="5000">5.0s</option>
-                </select>
-                <button class="button secondary" id="captureBtn">Capture</button>
-                <button class="button" id="liveToggleBtn">Start Live View</button>
-                <button class="button ghost" id="fullscreenBtn">Fullscreen</button>
-              </div>
+      <!-- ── Tab bar ── -->
+      <nav class="tab-bar" id="tabBar">
+        <button class="tab-btn active" data-tab="screen" type="button">
+          <svg viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2" width="13" height="9.5" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M5 14h6M8 11.5V14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Screen
+        </button>
+        <button class="tab-btn" data-tab="storage" type="button">
+          <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 6h12M5 9.5h1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Storage
+        </button>
+        <button class="tab-btn" data-tab="input" type="button">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M6.5 2v4.5H2M9.5 14v-4.5H14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
+          Input
+        </button>
+        <button class="tab-btn" data-tab="files" type="button">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M2 4.5V13a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8.2L6.8 3.4A1 1 0 006 3H3a1 1 0 00-1 1v.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          Files
+        </button>
+        <button class="tab-btn" data-tab="apps" type="button">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 2l1.8 3.6L14 6.3l-3 2.9.7 4.1L8 11.4l-3.7 1.9.7-4.1-3-2.9 4.2-.7L8 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          Apps
+        </button>
+      </nav>
+
+      <!-- ═══ TAB: Screen ═══ -->
+      <div id="tab-screen" class="tab-panel active">
+        <section class="card panel">
+          <div class="panel-head">
+            <div>
+              <h3>Live Screen</h3>
+              <div class="panel-sub">Near-real-time screenshot feed with click-to-control. Click anywhere on the image to send a remote left-click at that position.</div>
+            </div>
+            <div class="toolbar-actions">
+              <select id="liveInterval" class="select" style="width:120px;">
+                <option value="1500">1.5 s</option>
+                <option value="2200" selected>2.2 s</option>
+                <option value="3000">3.0 s</option>
+                <option value="5000">5.0 s</option>
+              </select>
+              <button class="button secondary" id="captureBtn">Capture</button>
+              <button class="button" id="liveToggleBtn">Start Live View</button>
+              <button class="button ghost" id="fullscreenBtn">Fullscreen</button>
+            </div>
+          </div>
+
+          <div id="screenStage" class="screen-stage fullscreen-stage">
+            <img id="screenImage" alt="Agent screen view" hidden />
+            <div class="screen-empty" id="screenEmpty">
+              <strong>No screenshot yet</strong>
+              <div>Capture once or start live view to begin streaming the remote screen.</div>
+            </div>
+            <div class="screen-overlay">
+              <div id="screenMeta">Waiting for first frame</div>
+              <div class="screen-hint">Click the image to send a left-click to the remote device</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ═══ TAB: Storage ═══ -->
+      <div id="tab-storage" class="tab-panel">
+        <section class="card panel">
+          <div class="panel-head">
+            <div>
+              <h3>Storage Pressure</h3>
+              <div class="panel-sub">Scan a drive or folder to see what's eating space. Identify the largest apps, folders, and files so you can reclaim disk capacity.</div>
+            </div>
+            <div class="toolbar-actions">
+              <button class="button" id="inspectStorageBtn">Inspect Storage</button>
+            </div>
+          </div>
+
+          <div class="sub-heading">Scan settings</div>
+          <div class="grid-3">
+            <div>
+              <label class="label" for="storagePath">Root Path</label>
+              <input id="storagePath" class="input" value="C:\" />
+            </div>
+            <div>
+              <label class="label" for="storageTopN">Results per table</label>
+              <select id="storageTopN" class="select">
+                <option value="5">5 rows</option>
+                <option value="10" selected>10 rows</option>
+                <option value="15">15 rows</option>
+                <option value="20">20 rows</option>
+              </select>
+            </div>
+            <div>
+              <label class="label" for="deleteTargetPath">Delete Target</label>
+              <input id="deleteTargetPath" class="input" placeholder="Paste a file or folder path to delete" />
+            </div>
+          </div>
+
+          <div class="inline-actions" style="margin-top:12px;">
+            <label class="checkbox"><input id="deleteUseTrash" type="checkbox" checked /> Move to recycle bin (safer)</label>
+            <button class="button warn" id="deletePathBtn">Delete Target Path</button>
+          </div>
+          <div class="panel-note">When "recycle bin" is checked, deleted items can be restored from Trash. Uncheck to permanently remove.</div>
+
+          <hr class="section-divider" />
+
+          <div class="sub-heading">Disk overview</div>
+          <div class="metrics">
+            <div class="metric">
+              <div class="metric-label">Used Space</div>
+              <div class="metric-value" id="metricUsed">--</div>
+              <div class="metric-sub" id="metricUsedSub">Waiting for inspection</div>
+              <div class="progress"><span id="usageProgress" style="width:0%;"></span></div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Free Space</div>
+              <div class="metric-value" id="metricFree">--</div>
+              <div class="metric-sub" id="metricFreeSub">Current free space</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Scanned</div>
+              <div class="metric-value" id="metricScanned">--</div>
+              <div class="metric-sub" id="metricScannedSub">Largest items from scan</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Skipped</div>
+              <div class="metric-value" id="metricSkipped">--</div>
+              <div class="metric-sub" id="metricSkippedSub">Permission or transient errors</div>
+            </div>
+          </div>
+
+          <hr class="section-divider" />
+
+          <div class="storage-tables">
+            <div class="sub-heading">Largest installed applications</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:22%;">Application</th>
+                    <th>Install Path</th>
+                    <th style="width:16%;">Size</th>
+                    <th style="width:20%;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="topAppsTable">
+                  <tr><td colspan="4" class="empty-state">Run an inspection to surface app install footprints.</td></tr>
+                </tbody>
+              </table>
             </div>
 
-            <div id="screenStage" class="screen-stage fullscreen-stage">
-              <img id="screenImage" alt="Agent screen view" hidden />
-              <div class="screen-empty" id="screenEmpty">
-                <strong>No screenshot yet</strong>
-                <div>Capture once or start live view to turn this into your remote operator surface.</div>
-              </div>
-              <div class="screen-overlay">
-                <div id="screenMeta">Waiting for first frame</div>
-                <div class="screen-hint">Click anywhere on the screenshot to send a left-click to the remote device.</div>
-              </div>
-            </div>
-          </section>
-
-          <section class="card panel">
-            <div class="panel-head">
-              <div>
-                <h3>Storage Pressure</h3>
-                <div class="panel-sub">Inspect current disk usage and break down the biggest apps, folders, and files on the chosen path.</div>
-              </div>
-              <div class="toolbar-actions">
-                <button class="button" id="inspectStorageBtn">Inspect Storage</button>
-              </div>
+            <div class="sub-heading">Heaviest directories</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:22%;">Folder</th>
+                    <th>Full Path</th>
+                    <th style="width:16%;">Size</th>
+                    <th style="width:20%;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="topFoldersTable">
+                  <tr><td colspan="4" class="empty-state">Folder usage will appear here after inspection.</td></tr>
+                </tbody>
+              </table>
             </div>
 
-            <div class="grid-3">
-              <div>
-                <label class="label" for="storagePath">Storage Path</label>
-                <input id="storagePath" class="input" value="C:\" />
-              </div>
-              <div>
-                <label class="label" for="storageTopN">Rows Per Section</label>
-                <select id="storageTopN" class="select">
-                  <option value="5">5</option>
-                  <option value="10" selected>10</option>
-                  <option value="15">15</option>
-                  <option value="20">20</option>
-                </select>
-              </div>
-              <div>
-                <label class="label" for="deleteTargetPath">Delete Path</label>
-                <input id="deleteTargetPath" class="input" placeholder="Paste a file or folder path" />
-              </div>
+            <div class="sub-heading">Biggest individual files</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:22%;">File</th>
+                    <th>Location</th>
+                    <th style="width:16%;">Size</th>
+                    <th style="width:20%;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="topFilesTable">
+                  <tr><td colspan="4" class="empty-state">File hotspots will appear here after inspection.</td></tr>
+                </tbody>
+              </table>
             </div>
+          </div>
+        </section>
+      </div>
 
-            <div class="inline-actions" style="margin-top:12px;">
-              <label class="checkbox"><input id="deleteUseTrash" type="checkbox" checked /> Send delete actions to recycle bin when supported</label>
-              <button class="button warn" id="deletePathBtn">Delete Target Path</button>
+      <!-- ═══ TAB: Input ═══ -->
+      <div id="tab-input" class="tab-panel">
+        <section class="card panel">
+          <div class="panel-head">
+            <div>
+              <h3>Pointer & Keyboard</h3>
+              <div class="panel-sub">Send mouse and keyboard commands to the remote device. Coordinates match the remote screen resolution shown in the Screen tab.</div>
             </div>
+          </div>
 
-            <div class="metrics">
-              <div class="metric">
-                <div class="metric-label">Drive Used</div>
-                <div class="metric-value" id="metricUsed">--</div>
-                <div class="metric-sub" id="metricUsedSub">Waiting for inspection</div>
-                <div class="progress"><span id="usageProgress" style="width:0%;"></span></div>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Drive Free</div>
-                <div class="metric-value" id="metricFree">--</div>
-                <div class="metric-sub" id="metricFreeSub">Current free space</div>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Scanned Content</div>
-                <div class="metric-value" id="metricScanned">--</div>
-                <div class="metric-sub" id="metricScannedSub">Largest items from scan</div>
-              </div>
-              <div class="metric">
-                <div class="metric-label">Skipped / Scope</div>
-                <div class="metric-value" id="metricSkipped">--</div>
-                <div class="metric-sub" id="metricSkippedSub">Permissions or transient errors</div>
-              </div>
+          <!-- Mouse control -->
+          <div class="sub-heading">Mouse control</div>
+          <div class="grid-3">
+            <div>
+              <label class="label" for="mouseX">X coordinate</label>
+              <input id="mouseX" class="input" type="number" value="200" />
             </div>
+            <div>
+              <label class="label" for="mouseY">Y coordinate</label>
+              <input id="mouseY" class="input" type="number" value="200" />
+            </div>
+            <div>
+              <label class="label" for="mouseButton">Mouse button</label>
+              <select id="mouseButton" class="select">
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+                <option value="middle">Middle</option>
+              </select>
+            </div>
+          </div>
+          <div class="inline-actions" style="margin-top:12px;">
+            <button class="button secondary" id="mouseMoveBtn">Move</button>
+            <button class="button" id="mouseClickBtn">Click</button>
+            <button class="button ghost" id="mouseDoubleClickBtn">Double Click</button>
+          </div>
 
-            <div class="storage-tables">
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style="width:22%;">Largest Apps</th>
-                      <th>Path</th>
-                      <th style="width:16%;">Size</th>
-                      <th style="width:20%;">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="topAppsTable">
-                    <tr><td colspan="4" class="empty-state">Run a storage inspection to surface app install footprints.</td></tr>
-                  </tbody>
-                </table>
-              </div>
+          <hr class="section-divider" />
 
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style="width:22%;">Largest Folders</th>
-                      <th>Path</th>
-                      <th style="width:16%;">Size</th>
-                      <th style="width:20%;">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="topFoldersTable">
-                    <tr><td colspan="4" class="empty-state">Folder usage will appear here after inspection.</td></tr>
-                  </tbody>
-                </table>
-              </div>
+          <!-- Drag operation -->
+          <div class="sub-heading">Drag operation</div>
+          <div class="grid-3">
+            <div>
+              <label class="label" for="dragX">Drag to X</label>
+              <input id="dragX" class="input" type="number" value="600" />
+            </div>
+            <div>
+              <label class="label" for="dragY">Drag to Y</label>
+              <input id="dragY" class="input" type="number" value="420" />
+            </div>
+            <div>
+              <label class="label" for="dragDuration">Duration (seconds)</label>
+              <input id="dragDuration" class="input" type="number" step="0.1" value="0.3" />
+            </div>
+          </div>
+          <div class="inline-actions" style="margin-top:12px;">
+            <button class="button ghost" id="mouseDragBtn">Drag from XY to target</button>
+          </div>
+          <div class="panel-note">Drags from the Mouse Control X/Y position to the Drag target. Adjust duration for slower movements.</div>
 
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style="width:22%;">Largest Files</th>
-                      <th>Path</th>
-                      <th style="width:16%;">Size</th>
-                      <th style="width:20%;">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="topFilesTable">
-                    <tr><td colspan="4" class="empty-state">File hotspots will appear here after inspection.</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-        </div>
+          <hr class="section-divider" />
 
-        <div class="stack">
-          <section class="card panel">
-            <div class="panel-head">
-              <div>
-                <h3>Pointer and Keyboard</h3>
-                <div class="panel-sub">Drive the selected machine with direct mouse and key commands.</div>
-              </div>
-            </div>
-            <div class="grid-3">
-              <div>
-                <label class="label" for="mouseX">X</label>
-                <input id="mouseX" class="input" type="number" value="200" />
-              </div>
-              <div>
-                <label class="label" for="mouseY">Y</label>
-                <input id="mouseY" class="input" type="number" value="200" />
-              </div>
-              <div>
-                <label class="label" for="mouseButton">Button</label>
-                <select id="mouseButton" class="select">
-                  <option value="left">Left</option>
-                  <option value="right">Right</option>
-                  <option value="middle">Middle</option>
-                </select>
-              </div>
-            </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="button secondary" id="mouseMoveBtn">Move</button>
-              <button class="button" id="mouseClickBtn">Click</button>
-              <button class="button ghost" id="mouseDoubleClickBtn">Double Click</button>
-            </div>
-            <div class="grid-3" style="margin-top:14px;">
-              <div>
-                <label class="label" for="dragX">Drag To X</label>
-                <input id="dragX" class="input" type="number" value="600" />
-              </div>
-              <div>
-                <label class="label" for="dragY">Drag To Y</label>
-                <input id="dragY" class="input" type="number" value="420" />
-              </div>
-              <div>
-                <label class="label" for="dragDuration">Duration (s)</label>
-                <input id="dragDuration" class="input" type="number" step="0.1" value="0.3" />
-              </div>
-            </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="button ghost" id="mouseDragBtn">Drag</button>
-            </div>
-            <div style="margin-top:14px;">
-              <label class="label" for="typeText">Text Input</label>
-              <textarea id="typeText" class="textarea" placeholder="Type on the remote machine"></textarea>
-            </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="button" id="keyboardTypeBtn">Type Text</button>
-            </div>
-            <div class="grid-2" style="margin-top:14px;">
-              <div>
-                <label class="label" for="hotkeyText">Hotkey</label>
-                <input id="hotkeyText" class="input" placeholder="ctrl,shift,esc" />
-              </div>
-              <div>
-                <label class="label" for="keypressText">Single Key</label>
-                <input id="keypressText" class="input" placeholder="enter" />
-              </div>
-            </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="button secondary" id="hotkeyBtn">Send Hotkey</button>
-              <button class="button ghost" id="keypressBtn">Press Key</button>
-            </div>
-          </section>
+          <!-- Keyboard -->
+          <div class="sub-heading">Keyboard input</div>
+          <div>
+            <label class="label" for="typeText">Text to type</label>
+            <textarea id="typeText" class="textarea" placeholder="Text will be typed character-by-character on the remote machine"></textarea>
+          </div>
+          <div class="inline-actions" style="margin-top:12px;">
+            <button class="button" id="keyboardTypeBtn">Type Text</button>
+          </div>
 
-          <section class="card panel">
-            <div class="panel-head">
-              <div>
-                <h3>Files and Processes</h3>
-                <div class="panel-sub">Browse directories, open files, inspect running processes, and focus windows.</div>
-              </div>
+          <div class="grid-2" style="margin-top:14px;">
+            <div>
+              <label class="label" for="hotkeyText">Hotkey combo</label>
+              <input id="hotkeyText" class="input" placeholder="ctrl,shift,esc" />
             </div>
-            <div class="grid-2">
-              <div>
-                <label class="label" for="filePath">Path</label>
-                <input id="filePath" class="input" value="C:\" />
-              </div>
-              <div>
-                <label class="label" for="readMaxBytes">Read Limit</label>
-                <input id="readMaxBytes" class="input" type="number" value="50000" />
-              </div>
+            <div>
+              <label class="label" for="keypressText">Single key press</label>
+              <input id="keypressText" class="input" placeholder="enter" />
             </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="button secondary" id="listFilesBtn">List Directory</button>
-              <button class="button ghost" id="readFileBtn">Read File</button>
-            </div>
-            <div class="grid-2" style="margin-top:14px;">
-              <div>
-                <label class="label" for="killPid">Kill PID</label>
-                <input id="killPid" class="input" placeholder="1234" />
-              </div>
-              <div>
-                <label class="label" for="focusTitle">Focus Window Title Contains</label>
-                <input id="focusTitle" class="input" placeholder="Visual Studio Code" />
-              </div>
-            </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="button secondary" id="listProcessesBtn">List Processes</button>
-              <button class="button secondary" id="listWindowsBtn">List Windows</button>
-              <button class="button ghost" id="killProcessBtn">Kill Process</button>
-              <button class="button ghost" id="focusWindowBtn">Focus Window</button>
-            </div>
-            <div class="output" id="opsOutput">Operational output will show here.</div>
-          </section>
+          </div>
+          <div class="inline-actions" style="margin-top:12px;">
+            <button class="button secondary" id="hotkeyBtn">Send Hotkey</button>
+            <button class="button ghost" id="keypressBtn">Press Key</button>
+          </div>
+          <div class="panel-note">Hotkeys use comma-separated keys (e.g. ctrl,c). Single key sends one keypress event.</div>
+        </section>
+      </div>
 
-          <section class="card panel">
-            <div class="panel-head">
-              <div>
-                <h3>Launch and App Actions</h3>
-                <div class="panel-sub">Open applications, reveal folders, browse URLs, and send VS Code actions.</div>
+      <!-- ═══ TAB: Files ═══ -->
+      <div id="tab-files" class="tab-panel">
+        <section class="card panel">
+          <div class="panel-head">
+            <div>
+              <h3>Files & Processes</h3>
+              <div class="panel-sub">Browse the remote file system, read file contents, manage running processes, and focus application windows.</div>
+            </div>
+          </div>
+
+          <!-- File browser -->
+          <div class="sub-heading">File browser</div>
+          <div class="grid-2">
+            <div>
+              <label class="label" for="filePath">Directory or file path</label>
+              <input id="filePath" class="input" value="C:\" />
+            </div>
+            <div>
+              <label class="label" for="readMaxBytes">Max bytes to read</label>
+              <input id="readMaxBytes" class="input" type="number" value="50000" />
+            </div>
+          </div>
+          <div class="inline-actions" style="margin-top:12px;">
+            <button class="button secondary" id="listFilesBtn">List Directory</button>
+            <button class="button ghost" id="readFileBtn">Read File</button>
+          </div>
+
+          <hr class="section-divider" />
+
+          <!-- Process manager -->
+          <div class="sub-heading">Process & window manager</div>
+          <div class="grid-2">
+            <div>
+              <label class="label" for="killPid">Process ID to kill</label>
+              <input id="killPid" class="input" placeholder="1234" />
+            </div>
+            <div>
+              <label class="label" for="focusTitle">Window title contains</label>
+              <input id="focusTitle" class="input" placeholder="Visual Studio Code" />
+            </div>
+          </div>
+          <div class="inline-actions" style="margin-top:12px;">
+            <button class="button secondary" id="listProcessesBtn">List Processes</button>
+            <button class="button secondary" id="listWindowsBtn">List Windows</button>
+            <button class="button ghost" id="killProcessBtn">Kill Process</button>
+            <button class="button ghost" id="focusWindowBtn">Focus Window</button>
+          </div>
+
+          <hr class="section-divider" />
+
+          <div class="sub-heading">Output</div>
+          <div class="output" id="opsOutput">File and process output will appear here.</div>
+        </section>
+      </div>
+
+      <!-- ═══ TAB: Apps ═══ -->
+      <div id="tab-apps" class="tab-panel">
+        <section class="card panel">
+          <div class="panel-head">
+            <div>
+              <h3>Launch & App Actions</h3>
+              <div class="panel-sub">Start applications, open URLs in the default browser, reveal files in the file manager, or open paths in VS Code on the remote machine.</div>
+            </div>
+          </div>
+
+          <!-- Launch application -->
+          <div class="sub-heading">Launch application</div>
+          <div class="grid-2">
+            <div>
+              <label class="label" for="appCommand">Executable or command</label>
+              <input id="appCommand" class="input" placeholder="notepad.exe" />
+            </div>
+            <div>
+              <label class="label" for="appArgs">Arguments (comma-separated)</label>
+              <input id="appArgs" class="input" placeholder="file.txt,--flag" />
+            </div>
+          </div>
+          <div class="inline-actions" style="margin-top:12px;">
+            <button class="button" id="launchAppBtn">Launch App</button>
+          </div>
+
+          <hr class="section-divider" />
+
+          <!-- Quick actions -->
+          <div class="sub-heading">Quick actions</div>
+          <div class="grid-2">
+            <div>
+              <label class="label" for="appUrl">URL to open</label>
+              <input id="appUrl" class="input" placeholder="https://example.com" />
+            </div>
+            <div>
+              <label class="label" for="revealPath">Path to reveal in explorer</label>
+              <input id="revealPath" class="input" placeholder="C:\Users\admin\Desktop" />
+            </div>
+          </div>
+          <div class="grid-2" style="margin-top:14px;">
+            <div>
+              <label class="label" for="vscodePath">Open in VS Code</label>
+              <input id="vscodePath" class="input" placeholder="C:\projects\repo" />
+            </div>
+            <div style="display:flex; align-items:end;">
+              <div class="inline-actions" style="width:100%;">
+                <button class="button secondary" id="openUrlBtn">Open URL</button>
+                <button class="button ghost" id="revealPathBtn">Reveal</button>
+                <button class="button ghost" id="openVSCodeBtn">VS Code</button>
               </div>
             </div>
-            <div class="grid-2">
-              <div>
-                <label class="label" for="appCommand">Command</label>
-                <input id="appCommand" class="input" placeholder="notepad.exe" />
-              </div>
-              <div>
-                <label class="label" for="appArgs">Arguments</label>
-                <input id="appArgs" class="input" placeholder="comma,separated,args" />
-              </div>
-            </div>
-            <div class="inline-actions" style="margin-top:12px;">
-              <button class="button" id="launchAppBtn">Launch App</button>
-            </div>
-            <div class="grid-2" style="margin-top:14px;">
-              <div>
-                <label class="label" for="appUrl">Open URL</label>
-                <input id="appUrl" class="input" placeholder="https://example.com" />
-              </div>
-              <div>
-                <label class="label" for="revealPath">Reveal Path</label>
-                <input id="revealPath" class="input" placeholder="C:\Users\admin\Desktop" />
-              </div>
-            </div>
-            <div class="grid-2" style="margin-top:14px;">
-              <div>
-                <label class="label" for="vscodePath">VS Code Path</label>
-                <input id="vscodePath" class="input" placeholder="C:\projects\repo" />
-              </div>
-              <div style="display:flex; align-items:end;">
-                <div class="inline-actions" style="width:100%;">
-                  <button class="button secondary" id="openUrlBtn">Open URL</button>
-                  <button class="button ghost" id="revealPathBtn">Reveal</button>
-                  <button class="button ghost" id="openVSCodeBtn">Open in VS Code</button>
-                </div>
-              </div>
-            </div>
-            <div class="output" id="appOutput">App actions and launch responses will show here.</div>
-          </section>
-        </div>
-      </section>
+          </div>
+
+          <hr class="section-divider" />
+
+          <div class="sub-heading">Output</div>
+          <div class="output" id="appOutput">App launch and action responses will appear here.</div>
+        </section>
+      </div>
     </main>
   </div>
 
@@ -1106,6 +1237,12 @@
         throw new Error(`${agent.name} is currently ${agent.status}. Wait for it to come back online.`);
       }
       return agent;
+    }
+
+    /* ─── Tab switching ─── */
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
+      document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.id === 'tab-' + tabId));
     }
 
     /* ─── Sidebar toggle (mobile) ─── */
@@ -1619,6 +1756,11 @@
     }
 
     function attachHandlers() {
+      // Tab switching
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+      });
+
       $("agentSelect").addEventListener("change", () => setCurrentAgent($("agentSelect").value));
       $("refreshAgentsBtn").addEventListener("click", () => refreshAgents().catch(handleError));
       $("refreshCommandsBtn").addEventListener("click", () => refreshCommandLog().catch(handleError));

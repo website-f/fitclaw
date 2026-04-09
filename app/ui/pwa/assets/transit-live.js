@@ -26,6 +26,11 @@ const dom = {
   /* location */
   locationDot:         document.getElementById("locationDot"),
   locationText:        document.getElementById("locationText"),
+  locationPermissionModal:         document.getElementById("locationPermissionModal"),
+  locationPermissionTitle:         document.getElementById("locationPermissionTitle"),
+  locationPermissionCopy:          document.getElementById("locationPermissionCopy"),
+  locationPermissionPrimaryButton: document.getElementById("locationPermissionPrimaryButton"),
+  locationPermissionDismissButton: document.getElementById("locationPermissionDismissButton"),
 
   /* hero stats */
   feedLabel:           document.getElementById("feedLabel"),
@@ -68,6 +73,8 @@ const state = {
   nextRefreshAt:          0,
   filterDebounceTimer:    null,
   userLocation:           null,
+  locationPermissionState:"unknown",
+  locationModalReason:    "",
   activeTab:              "live",
   activeSubTab:           "vehicles",
 };
@@ -80,6 +87,7 @@ const MARKER_ANIMATION_MS = 14_000;
    ════════════════════════════════════════ */
 
 window.addEventListener("load", () => {
+  registerPWA();
   bindEvents();
   initMap();           // map is always in the live tab — init immediately
   void boot();
@@ -90,7 +98,7 @@ async function boot() {
   chooseInitialProvider();
   await Promise.all([loadRoute(), loadLiveFeed()]);
   scheduleRefresh();
-  requestUserLocation({ forcePrompt: false });
+  void requestUserLocation({ forcePrompt: false });
 }
 
 /* ════════════════════════════════════════
@@ -116,9 +124,11 @@ function bindEvents() {
   dom.filterInput.addEventListener("input", onFilterChanged);
   dom.radiusSelect.addEventListener("change", () => void loadNearby());
   dom.refreshLiveButton.addEventListener("click", () => void refreshAll());
-  dom.useLocationButton.addEventListener("click", () => requestUserLocation({ forcePrompt: true }));
+  dom.useLocationButton.addEventListener("click", () => void requestUserLocation({ forcePrompt: true }));
   if (dom.centerMapButton)  dom.centerMapButton.addEventListener("click",  centerMapOnBestTarget);
   if (dom.centerMapButton2) dom.centerMapButton2.addEventListener("click", centerMapOnBestTarget);
+  dom.locationPermissionPrimaryButton?.addEventListener("click", onLocationPermissionPrimaryClick);
+  dom.locationPermissionDismissButton?.addEventListener("click", hideLocationPermissionModal);
 
   /* route planner */
   dom.routeForm.addEventListener("submit", onPlanRoute);
@@ -518,7 +528,7 @@ function fitMapToCurrentContext(vehicleBounds = []) {
    User location
    ════════════════════════════════════════ */
 
-function requestUserLocation({ forcePrompt }) {
+function legacyRequestUserLocation({ forcePrompt }) {
   if (!("geolocation" in navigator)) {
     setLocationStatus("Geolocation not supported by this browser.", false);
     return;
@@ -605,6 +615,143 @@ function centerMapOnBestTarget() {
       );
     }
   });
+}
+
+async function requestUserLocation({ forcePrompt }) {
+  if (!("geolocation" in navigator)) {
+    setLocationStatus("Geolocation is not supported by this browser.", false);
+    showLocationPermissionModal("unsupported");
+    return;
+  }
+
+  if (!window.isSecureContext) {
+    setLocationStatus("Location needs HTTPS or localhost in this browser.", false);
+    showLocationPermissionModal("insecure");
+    return;
+  }
+
+  const permissionState = await getLocationPermissionState();
+  state.locationPermissionState = permissionState;
+
+  if (permissionState === "denied") {
+    setLocationStatus("Location is blocked for this site.", false);
+    showLocationPermissionModal("denied");
+    return;
+  }
+
+  hideLocationPermissionModal();
+  setLocationStatus(forcePrompt ? "Requesting location access..." : "Detecting your location...", false);
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      state.userLocation = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      };
+      state.locationPermissionState = "granted";
+      setLocationStatus(`Near ${state.userLocation.latitude.toFixed(4)}, ${state.userLocation.longitude.toFixed(4)}`, true);
+      hideLocationPermissionModal();
+      if (!dom.originInput.value.trim()) {
+        dom.originInput.value = `${state.userLocation.latitude.toFixed(5)}, ${state.userLocation.longitude.toFixed(5)}`;
+      }
+      renderUserLocation();
+      void loadNearby();
+    },
+    (error) => {
+      const denied = error.code === error.PERMISSION_DENIED;
+      if (denied) {
+        state.locationPermissionState = "denied";
+      }
+      setLocationStatus(
+        denied && !forcePrompt
+          ? "Location is off. Tap 'Use Location' to enable it."
+          : `Unavailable: ${error.message || "permission denied"}`,
+        false
+      );
+      if (denied) {
+        showLocationPermissionModal("denied");
+      } else if (error.code === error.TIMEOUT && forcePrompt) {
+        showLocationPermissionModal("timeout");
+      }
+    },
+    { enableHighAccuracy: true, timeout: forcePrompt ? 10_000 : 7_000, maximumAge: 60_000 }
+  );
+}
+
+async function getLocationPermissionState() {
+  if (!navigator.permissions?.query) {
+    return "unknown";
+  }
+  try {
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    return status?.state || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+function onLocationPermissionPrimaryClick() {
+  if (state.locationModalReason === "denied" || state.locationModalReason === "timeout") {
+    hideLocationPermissionModal();
+    void requestUserLocation({ forcePrompt: true });
+    return;
+  }
+  hideLocationPermissionModal();
+}
+
+function showLocationPermissionModal(reason) {
+  if (!dom.locationPermissionModal) return;
+
+  state.locationModalReason = reason;
+  const config = getLocationPermissionCopy(reason);
+
+  dom.locationPermissionTitle.textContent = config.title;
+  dom.locationPermissionCopy.textContent = config.copy;
+  dom.locationPermissionPrimaryButton.textContent = config.primaryLabel;
+  dom.locationPermissionDismissButton.textContent = config.dismissLabel;
+  dom.locationPermissionModal.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function hideLocationPermissionModal() {
+  if (!dom.locationPermissionModal) return;
+  dom.locationPermissionModal.hidden = true;
+  state.locationModalReason = "";
+  document.body.classList.remove("modal-open");
+}
+
+function getLocationPermissionCopy(reason) {
+  if (reason === "insecure") {
+    return {
+      title: "Location needs HTTPS",
+      copy: "This page is running on plain HTTP, so the browser will not show the location popup. Open the HTTPS version of this site, or use localhost on the same device, then try again.",
+      primaryLabel: "Got it",
+      dismissLabel: "Continue without location",
+    };
+  }
+  if (reason === "denied") {
+    return {
+      title: "Location is blocked",
+      copy: "Location access is currently denied for this site. Allow location in your browser site settings, then tap Try again to load nearby buses and trains.",
+      primaryLabel: "Try again",
+      dismissLabel: "Continue without location",
+    };
+  }
+  if (reason === "timeout") {
+    return {
+      title: "Location timed out",
+      copy: "The browser did not return your location in time. Make sure GPS or location services are on, then try again.",
+      primaryLabel: "Try again",
+      dismissLabel: "Continue without location",
+    };
+  }
+  return {
+    title: "Location is unavailable",
+    copy: "This browser does not expose geolocation here, so nearby transit cannot be detected automatically on this device.",
+    primaryLabel: "Got it",
+    dismissLabel: "Continue without location",
+  };
 }
 
 /* ════════════════════════════════════════
@@ -781,4 +928,12 @@ function formatMeters(value) {
 function shortenLabel(value, max) {
   const t = String(value || "").trim();
   return t.length <= max ? t : `${t.slice(0, max - 1)}\u2026`;
+}
+
+function registerPWA() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/app-sw.js", { scope: "/" }).catch((error) => {
+      console.error("Service worker registration failed", error);
+    });
+  }
 }
