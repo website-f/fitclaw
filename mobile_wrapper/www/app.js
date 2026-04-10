@@ -53,6 +53,28 @@ function normalizeBaseUrl(rawValue) {
   return rawValue.trim().replace(/\/+$/, "");
 }
 
+function isAndroidShell() {
+  const platform = window.Capacitor?.getPlatform?.();
+  return platform === "android" || /android/i.test(navigator.userAgent || "");
+}
+
+function describeNetworkFailure(error, config, label) {
+  const message = error instanceof Error ? error.message : String(error);
+  const baseUrl = String(config?.serverUrl || "").trim();
+
+  if (/failed to fetch/i.test(message)) {
+    if (/^http:\/\/localhost(?::\d+)?$/i.test(baseUrl) || /^http:\/\/127\.0\.0\.1(?::\d+)?$/i.test(baseUrl)) {
+      return `${label} failed: this phone cannot use \`${baseUrl}\` to reach your server. Use your VPS or LAN IP instead of localhost.`;
+    }
+    if (isAndroidShell() && /^http:\/\//i.test(baseUrl)) {
+      return `${label} failed: this APK could not reach \`${baseUrl}\`. Older Android builds often block plain http traffic. Use the rebuilt APK with the cleartext fix, or switch the server URL to https.`;
+    }
+    return `${label} failed: the app could not reach \`${baseUrl}\`. Check that the phone can open that URL in its browser and that port 8000 is reachable from the phone's network.`;
+  }
+
+  return `${label} failed: ${message}`;
+}
+
 function loadConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
@@ -464,10 +486,11 @@ async function runAction(action, label) {
   try {
     await action();
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const config = readConfig();
+    const message = describeNetworkFailure(error, config, label);
     els.lastAction.textContent = `${label} failed`;
     setStatus("badge-danger", "Needs attention");
-    log(`${label} failed: ${message}`);
+    log(message);
   }
 }
 

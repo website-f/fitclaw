@@ -8,14 +8,14 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.middleware.agent_auth import AgentBasicAuthMiddleware
-from app.routers import agent_control, agent_tasks, agents, calendar, chat, device_control, health, models, tasks, transit, uploads, weather, web_app
+from app.routers import agent_control, agent_tasks, agents, calendar, chat, device_control, health, memorycore, models, tasks, transit, uploads, weather, web_app
 from app.services.runtime_config_service import RuntimeConfigService
 
 settings = get_settings()
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.21",
+    version="0.3.26",
     description="Self-hosted personal AI ops platform with Telegram, agent APIs, and background workers.",
 )
 
@@ -39,6 +39,7 @@ app.include_router(chat.router)
 app.include_router(calendar.router)
 app.include_router(weather.router)
 app.include_router(transit.router)
+app.include_router(memorycore.router)
 app.include_router(models.router)
 app.include_router(tasks.router)
 app.include_router(agents.router)
@@ -87,5 +88,5 @@ def read_root() -> dict[str, str]:
         "control": "/control",
         "app": "/app",
         "transit_live": "/transit-live",
-        "version": "0.3.21",
+        "version": "0.3.26",
     }

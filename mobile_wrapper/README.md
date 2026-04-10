@@ -56,8 +56,14 @@ The repository includes separate workflows for this mobile agent shell:
 - `.github/workflows/build-mobile-agent-android.yml`
 - `.github/workflows/build-mobile-agent-ios.yml`
 
+The Android workflow now uploads a versioned artifact and stages a versioned APK into `agent_daemon/dist`, for example:
+
+- `PersonalAIOpsAgent-mobile-agent-android-0.3.13`
+- `PersonalAIOpsAgent-0.3.13-mobile-agent-android.apk`
+
 ## Notes
 
 - The app bundles a local setup UI and talks to your hosted API directly.
 - You still need the same agent shared key as your server `.env`.
+- `https://` is still the best server URL for phones. The Android wrapper now also permits plain `http://` for VPS setups that are not behind TLS yet.
 - Native plugins for push, camera, file access, location, and deeper background work can be layered in later without changing the folder structure.

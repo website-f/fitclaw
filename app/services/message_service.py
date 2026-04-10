@@ -11,6 +11,7 @@ from app.services.command_service import TaskCommandService
 from app.services.command_result import MessageAttachment
 from app.services.llm_service import LLMService, LLMServiceError
 from app.services.memory_service import MemoryService
+from app.services.memorycore_service import MemoryCoreService
 from app.services.runtime_config_service import RuntimeConfigService
 from app.services.transit_service import TransitService
 from app.services.upload_service import UploadService
@@ -31,6 +32,13 @@ class ProcessedMessage:
 
 
 class MessageService:
+    @staticmethod
+    def _build_system_prompt(db: Session, user_id: str) -> str:
+        memory_context = MemoryCoreService.build_assistant_context(db, user_id=user_id)
+        if not memory_context:
+            return settings.system_prompt
+        return f"{settings.system_prompt}\n\nMemoryCore context:\n{memory_context}"
+
     @staticmethod
     def process_user_message(
         db: Session,
@@ -68,7 +76,7 @@ class MessageService:
         command_result = None
         if assets:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-            prompt_messages = [{"role": "system", "content": settings.system_prompt}] + MemoryService.to_llm_messages(history)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = AttachmentService.try_handle(
                 db=db,
@@ -106,7 +114,7 @@ class MessageService:
             command_result = TransitService.try_handle(normalized_text)
         if command_result is None:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-            prompt_messages = [{"role": "system", "content": settings.system_prompt}] + MemoryService.to_llm_messages(history)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = WebContentService.try_handle(
                 text=normalized_text,
@@ -138,7 +146,7 @@ class MessageService:
             )
 
         history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-        prompt_messages = [{"role": "system", "content": settings.system_prompt}] + MemoryService.to_llm_messages(history)
+        prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id)}] + MemoryService.to_llm_messages(history)
         active_llm = RuntimeConfigService.get_active_llm(db)
         try:
             reply, provider = LLMService.generate_reply(

@@ -1,0 +1,104 @@
+name: Build MemoryCore Installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: MemoryCore server URL to bake into the installers
+        required: true
+        type: string
+      user_id:
+        description: MemoryCore user/profile id
+        required: true
+        type: string
+      wake_name:
+        description: Wake name for the friendly command alias
+        required: true
+        default: jarvis
+        type: string
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: powershell
+        run: |
+          $match = Select-String -Path app\main.py -Pattern 'version="([^"]+)"' | Select-Object -First 1
+          if (-not $match) { throw "Could not read version from app/main.py" }
+          "value=$($match.Matches[0].Groups[1].Value)" >> $env:GITHUB_OUTPUT
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup -y
+
+      - name: Build MemoryCore Windows installer
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File memorycore_cli\packaging\windows\build.ps1 `
+            -Version "${{ steps.version.outputs.value }}" `
+            -ServerUrl "${{ inputs.server_url }}" `
+            -UserId "${{ inputs.user_id }}" `
+            -WakeName "${{ inputs.wake_name }}"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MemoryCore-dist-windows-${{ steps.version.outputs.value }}
+          path: |
+            memorycore_cli/dist/MemoryCore-${{ steps.version.outputs.value }}-windows-x64-setup.exe
+            memorycore_cli/dist/MemoryCore-${{ steps.version.outputs.value }}-windows-x64-portable.zip
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "value=$(grep -Eo 'version=\"[^\"]+\"' app/main.py | head -n1 | cut -d'\"' -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build MemoryCore macOS installer
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          SERVER_URL: ${{ inputs.server_url }}
+          USER_ID: ${{ inputs.user_id }}
+          WAKE_NAME: ${{ inputs.wake_name }}
+        run: |
+          chmod +x memorycore_cli/packaging/macos/build.sh
+          bash memorycore_cli/packaging/macos/build.sh
+
+      - name: Build macOS DMG
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          chmod +x memorycore_cli/packaging/macos/create-dmg.sh
+          bash memorycore_cli/packaging/macos/create-dmg.sh
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MemoryCore-dist-macos-${{ steps.version.outputs.value }}
+          path: |
+            memorycore_cli/dist/MemoryCore-${{ steps.version.outputs.value }}-macos.pkg
+            memorycore_cli/dist/MemoryCore-${{ steps.version.outputs.value }}-macos.dmg
+            memorycore_cli/dist/MemoryCore-${{ steps.version.outputs.value }}-macos-portable.zip
+          if-no-files-found: error

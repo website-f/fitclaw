@@ -487,8 +487,9 @@ body::before {
   transition: background 160ms ease, color 160ms ease;
 }
 .nav-section-link:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.nav-button-link { text-align: left; }
 .nav-link-icon { flex-shrink: 0; color: var(--accent); }
-.nav-section-link > span { flex: 1; }
+.nav-section-link > span:first-of-type { flex: 1; }
 .nav-link-arrow { flex-shrink: 0; color: var(--muted); }
 
 /* Profile nav body */
@@ -1397,6 +1398,212 @@ select option {
   display: none !important;
 }
 
+.memorycore-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 12, 24, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.memorycore-modal[hidden] {
+  display: none !important;
+}
+
+.memorycore-panel {
+  width: min(1120px, 100%);
+  max-height: min(90vh, 840px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.memorycore-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.memorycore-head-actions,
+.memorycore-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.danger-button {
+  color: var(--danger);
+  border-color: rgba(251, 113, 133, 0.24);
+}
+
+.danger-button:hover {
+  background: rgba(251, 113, 133, 0.1);
+  border-color: rgba(251, 113, 133, 0.35);
+}
+
+.memorycore-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.memorycore-sidebar,
+.memorycore-viewer {
+  min-height: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.memorycore-profile-card,
+.memorycore-projects-card,
+.memorycore-launcher-card,
+.memorycore-viewer {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.memorycore-profile-card,
+.memorycore-projects-card,
+.memorycore-launcher-card {
+  padding: 0.9rem;
+}
+
+.memorycore-launcher-card {
+  align-content: start;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.memorycore-profile-card {
+  align-content: start;
+}
+
+.memorycore-profile-card strong,
+.memorycore-section-head strong,
+.memorycore-viewer-head strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.memorycore-profile-copy {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.memorycore-profile-copy p,
+.memorycore-launcher-copy,
+.memorycore-project-summary,
+.memorycore-viewer-head p,
+.memorycore-empty {
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.memorycore-launcher-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.memorycore-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.memorycore-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  color: var(--accent);
+  font-size: 0.7rem;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.memorycore-section-head,
+.memorycore-viewer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.memorycore-projects-card {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.memorycore-project-list {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-right: 0.15rem;
+}
+
+.memorycore-project-item {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.memorycore-project-item.active {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.memorycore-project-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.memorycore-project-item time,
+.memorycore-project-item small {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.memorycore-viewer {
+  padding: 0.95rem;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.memorycore-viewer-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.memorycore-markdown {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .loading-modal-card {
   width: min(100%, 26rem);
   display: grid;
@@ -1619,6 +1826,36 @@ select option {
   .install-help-actions .primary-button,
   .install-help-actions .ghost-button {
     width: 100%;
+  }
+
+  .memorycore-panel {
+    max-height: min(92vh, 880px);
+    padding: 0.85rem;
+  }
+
+  .memorycore-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .memorycore-head,
+  .memorycore-section-head,
+  .memorycore-viewer-head {
+    grid-template-columns: 1fr;
+  }
+
+  .memorycore-head,
+  .memorycore-viewer-head {
+    display: grid;
+  }
+
+  .memorycore-head-actions,
+  .memorycore-viewer-actions {
+    width: 100%;
+  }
+
+  .memorycore-head-actions .small-button,
+  .memorycore-viewer-actions .small-button {
+    flex: 1 1 0;
   }
 }
 

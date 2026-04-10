@@ -263,7 +263,7 @@ These workflows are already in the repo.
 
 Artifacts:
 
-- `PersonalAIOpsAgent-dist-android`
+- `PersonalAIOpsAgent-mobile-agent-android-<version>`
 - `PersonalAIOpsAgent-dist-ios`
 - `PersonalAIOpsAgent-dist-bundle-<version>` from the all-platform workflow
 
@@ -345,6 +345,7 @@ This means:
 
 - the artifact already matches your `agent_daemon/dist` structure
 - after downloading and extracting, your files are already organized the same way
+- the Android mobile agent APK is now named like `PersonalAIOpsAgent-<version>-mobile-agent-android.apk`
 
 If you want one run that collects Windows, macOS, Android, and iOS agent outputs into a single downloadable bundle, run:
 

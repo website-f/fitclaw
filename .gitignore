@@ -12,3 +12,6 @@ data/*
 !data/.gitkeep
 agent_daemon/dist/
 agent_daemon/build-output/
+memorycore_cli/dist/
+memorycore_cli/build-output/
+memorycore_cli/*.exe
