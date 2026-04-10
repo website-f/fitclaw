@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,26 @@ from app.services.agent_service import AgentService
 
 
 class TaskService:
+    @staticmethod
+    def _parse_not_before(task: Task) -> datetime | None:
+        raw = str((task.metadata_json or {}).get("not_before_at", "")).strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    @staticmethod
+    def _is_ready_to_run(task: Task, now: datetime) -> bool:
+        not_before = TaskService._parse_not_before(task)
+        if not_before is None:
+            return True
+        return not_before <= now
+
     @staticmethod
     def build_title_from_text(text: str) -> str:
         cleaned = " ".join(text.strip().split())
@@ -90,10 +112,12 @@ class TaskService:
         else:
             filters.append(Task.assigned_agent_name == agent_name)
 
-        candidates = list(db.scalars(select(Task).where(*filters).order_by(Task.created_at.asc()).limit(10)).all())
+        candidates = list(db.scalars(select(Task).where(*filters).order_by(Task.created_at.asc()).limit(25)).all())
         now = utcnow()
 
         for candidate in candidates:
+            if not TaskService._is_ready_to_run(candidate, now):
+                continue
             result = db.execute(
                 update(Task)
                 .where(Task.id == candidate.id)

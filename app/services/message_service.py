@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.conversation import MessageRole
+from app.services.agent_automation_service import AgentAutomationService
 from app.services.agent_command_service import AgentCommandService
 from app.services.attachment_service import AttachmentService
 from app.services.calendar_service import CalendarService
@@ -144,6 +145,13 @@ class MessageService:
             command_result = AgentCommandService.try_handle(
                 db=db,
                 user_id=user_id,
+                text=normalized_text,
+            )
+        if command_result is None:
+            command_result = AgentAutomationService.try_handle(
+                db=db,
+                user_id=user_id,
+                session_id=resolved_session_id,
                 text=normalized_text,
             )
         if command_result is None:

@@ -3,17 +3,22 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timedelta, timezone
 import heapq
+from html import unescape
+from html.parser import HTMLParser
 from io import BytesIO
 import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
 import time as time_module
 from typing import Any
-from urllib.parse import urlencode
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urljoin
+from urllib.request import Request, urlopen
 import webbrowser
 from zoneinfo import ZoneInfo
 
@@ -108,9 +113,88 @@ def _find_codex_cli() -> str | None:
     return shutil.which("codex")
 
 
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        lowered = tag.lower()
+        if lowered in {"script", "style", "noscript"}:
+            self._skip_depth += 1
+        elif lowered in {"p", "div", "section", "article", "li", "br", "h1", "h2", "h3", "h4"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.lower()
+        if lowered in {"script", "style", "noscript"} and self._skip_depth:
+            self._skip_depth -= 1
+        elif lowered in {"p", "div", "section", "article", "li", "br", "h1", "h2", "h3", "h4"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        text = " ".join(data.split())
+        if text:
+            self.parts.append(text)
+
+    def get_text(self) -> str:
+        collapsed = " ".join(" ".join(self.parts).split())
+        collapsed = re.sub(r"(?:\s*\n\s*)+", "\n", collapsed)
+        return collapsed.strip()
+
+
+def _extract_page_title(html: str) -> str:
+    match = re.search(r"(?is)<title[^>]*>(.*?)</title>", html)
+    if not match:
+        return ""
+    title = unescape(re.sub(r"\s+", " ", match.group(1))).strip()
+    return _truncate_text(title, 180)
+
+
+def _extract_meta_description(html: str) -> str:
+    patterns = [
+        r'(?is)<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
+        r'(?is)<meta[^>]+content=["\'](.*?)["\'][^>]+name=["\']description["\']',
+        r'(?is)<meta[^>]+property=["\']og:description["\'][^>]+content=["\'](.*?)["\']',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html)
+        if match:
+            value = unescape(re.sub(r"\s+", " ", match.group(1))).strip()
+            if value:
+                return _truncate_text(value, 320)
+    return ""
+
+
+def _extract_visible_text(html: str, max_chars: int) -> str:
+    extractor = _HTMLTextExtractor()
+    extractor.feed(html)
+    return _truncate_text(extractor.get_text(), max_chars)
+
+
+def _extract_links(html: str, base_url: str, max_links: int) -> list[dict[str, str]]:
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    anchor_pattern = re.compile(r'(?is)<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>')
+    for href, raw_label in anchor_pattern.findall(html):
+        label = unescape(re.sub(r"(?is)<[^>]+>", " ", raw_label))
+        label = re.sub(r"\s+", " ", label).strip()
+        absolute = urljoin(base_url, href.strip())
+        if not absolute or absolute in seen:
+            continue
+        seen.add(absolute)
+        results.append({"url": absolute, "text": _truncate_text(label or absolute, 120)})
+        if len(results) >= max_links:
+            break
+    return results
+
+
 def available_capabilities(config: AgentConfig) -> list[str]:
     capabilities = set(config.capabilities or [])
-    capabilities.update({"shell", "file_system", "processes", "storage", "calendar"})
+    capabilities.update({"shell", "file_system", "processes", "storage", "calendar", "browser"})
     if _has_screenshot_backend():
         capabilities.add("screenshot")
     if _has_pyautogui():
@@ -209,6 +293,54 @@ def _top_app_like_folders(target: Path, top_n: int) -> list[dict[str, Any]]:
             )
     results.sort(key=lambda item: item["size_bytes"], reverse=True)
     return results[:top_n]
+
+
+def _browser_crawl(payload: dict[str, Any]) -> dict[str, Any]:
+    url = str(payload.get("url", "")).strip()
+    if not url:
+        raise ValueError("No URL was provided for browser crawl.")
+
+    timeout_seconds = max(int(payload.get("timeout_seconds", 20)), 5)
+    max_bytes = min(max(int(payload.get("max_bytes", 400000)), 20000), 1000000)
+    max_chars = min(max(int(payload.get("max_chars", 3200)), 500), 12000)
+    max_links = min(max(int(payload.get("max_links", 10)), 0), 25)
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "FitClaw-AgentBrowserCrawler/1.0 (+self-hosted desktop agent)",
+            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            raw_bytes = response.read(max_bytes)
+            final_url = response.geturl()
+            content_type = str(response.headers.get("Content-Type", ""))
+            encoding = response.headers.get_content_charset() or "utf-8"
+    except HTTPError as exc:
+        raise RuntimeError(f"Website crawl failed with HTTP {exc.code} for {url}.") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Website crawl could not reach {url}: {exc.reason}") from exc
+
+    html_text = raw_bytes.decode(encoding, errors="replace")
+    title = _extract_page_title(html_text)
+    meta_description = _extract_meta_description(html_text)
+    text_excerpt = _extract_visible_text(html_text, max_chars=max_chars)
+    top_links = _extract_links(html_text, final_url, max_links=max_links)
+
+    return {
+        "ok": True,
+        "url": url,
+        "final_url": final_url,
+        "goal": str(payload.get("goal", "")).strip(),
+        "content_type": content_type,
+        "title": title,
+        "meta_description": meta_description,
+        "text_excerpt": text_excerpt,
+        "top_links": top_links,
+        "fetched_at": _utcnow_iso(),
+    }
 
 
 def _screenshot(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1450,6 +1582,7 @@ def _window_focus(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 COMMAND_HANDLERS = {
+    "browser_crawl": _browser_crawl,
     "screenshot": _screenshot,
     "mouse_move": _mouse_move,
     "mouse_click": _mouse_click,

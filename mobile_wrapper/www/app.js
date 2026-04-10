@@ -28,6 +28,16 @@ let heartbeatTimer = null;
 let controlTimer = null;
 let commandLoopBusy = false;
 
+function stripHtml(raw) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(raw, "text/html");
+  const nodes = Array.from(doc.querySelectorAll("script,style,noscript"));
+  nodes.forEach((node) => node.remove());
+  return (doc.body?.textContent || doc.documentElement?.textContent || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function nowLabel() {
   return new Date().toLocaleString();
 }
@@ -165,7 +175,7 @@ async function buildMetadata() {
     display_label: config.displayLabel || config.agentName,
     user_agent: navigator.userAgent,
     registered_from: "mobile_wrapper",
-    control_actions: ["calendar_probe", "calendar_create", "browser_open_url"],
+    control_actions: ["calendar_probe", "calendar_create", "browser_open_url", "browser_crawl"],
   };
 
   if ("geolocation" in navigator) {
@@ -353,6 +363,42 @@ async function handleControlCommand(command) {
       action,
       url,
       mobile_agent: true,
+    };
+  }
+
+  if (action === "browser_crawl") {
+    const url = String(payload.url || "").trim();
+    if (!url) {
+      throw new Error("No URL was provided.");
+    }
+    const response = await fetch(url, { method: "GET" });
+    if (!response.ok) {
+      throw new Error(`Website crawl failed with HTTP ${response.status}.`);
+    }
+    const html = await response.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const title = (doc.querySelector("title")?.textContent || "").trim();
+    const metaDescription =
+      (doc.querySelector('meta[name="description"]')?.getAttribute("content") || "").trim() ||
+      (doc.querySelector('meta[property="og:description"]')?.getAttribute("content") || "").trim();
+    const links = Array.from(doc.querySelectorAll("a[href]"))
+      .map((node) => ({
+        url: new URL(node.getAttribute("href"), response.url).toString(),
+        text: (node.textContent || "").replace(/\s+/g, " ").trim(),
+      }))
+      .filter((item) => item.url)
+      .slice(0, 10);
+    const textExcerpt = stripHtml(html).slice(0, Number(payload.max_chars || 3200));
+    return {
+      ok: true,
+      url,
+      final_url: response.url,
+      title,
+      meta_description: metaDescription,
+      text_excerpt: textExcerpt,
+      top_links: links,
+      mobile_agent: true,
+      fetched_at: new Date().toISOString(),
     };
   }
 
