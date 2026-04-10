@@ -33,11 +33,56 @@ class ProcessedMessage:
 
 class MessageService:
     @staticmethod
-    def _build_system_prompt(db: Session, user_id: str) -> str:
-        memory_context = MemoryCoreService.build_assistant_context(db, user_id=user_id)
+    def _build_system_prompt(db: Session, user_id: str, session_id: str | None = None) -> str:
+        linked_project_key = None
+        if session_id:
+            linked_project_key = MemoryCoreService.get_linked_project_key(db, user_id=user_id, session_id=session_id)
+        memory_context = MemoryCoreService.build_assistant_context(
+            db,
+            user_id=user_id,
+            project_key=linked_project_key,
+        )
         if not memory_context:
             return settings.system_prompt
         return f"{settings.system_prompt}\n\nMemoryCore context:\n{memory_context}"
+
+    @staticmethod
+    def _sync_memorycore_session_context(db: Session, user_id: str, session_id: str) -> None:
+        project_key = MemoryCoreService.get_linked_project_key(db, user_id=user_id, session_id=session_id)
+        if not project_key:
+            return
+        try:
+            MemoryCoreService.capture_session_context(
+                db,
+                user_id=user_id,
+                project_key=project_key,
+                session_id=session_id,
+            )
+        except Exception:
+            return
+
+    @staticmethod
+    def _store_assistant_message(
+        db: Session,
+        *,
+        user_id: str,
+        session_id: str,
+        content: str,
+        username: str | None = None,
+        provider: str | None = None,
+        metadata_json: dict | None = None,
+    ) -> None:
+        MemoryService.add_message(
+            db=db,
+            session_id=session_id,
+            platform_user_id=user_id,
+            role=MessageRole.assistant,
+            content=content,
+            username=username,
+            provider=provider,
+            metadata_json=metadata_json,
+        )
+        MessageService._sync_memorycore_session_context(db, user_id=user_id, session_id=session_id)
 
     @staticmethod
     def process_user_message(
@@ -76,7 +121,7 @@ class MessageService:
         command_result = None
         if assets:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id)}] + MemoryService.to_llm_messages(history)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = AttachmentService.try_handle(
                 db=db,
@@ -114,7 +159,7 @@ class MessageService:
             command_result = TransitService.try_handle(normalized_text)
         if command_result is None:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id)}] + MemoryService.to_llm_messages(history)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = WebContentService.try_handle(
                 text=normalized_text,
@@ -126,11 +171,10 @@ class MessageService:
             metadata_json = dict(command_result.metadata_json or {})
             if command_result.attachments:
                 metadata_json["attachments"] = [attachment.to_metadata() for attachment in command_result.attachments]
-            MemoryService.add_message(
+            MessageService._store_assistant_message(
                 db=db,
                 session_id=resolved_session_id,
-                platform_user_id=user_id,
-                role=MessageRole.assistant,
+                user_id=user_id,
                 content=command_result.reply,
                 username=username,
                 provider=command_result.provider,
@@ -146,7 +190,7 @@ class MessageService:
             )
 
         history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-        prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id)}] + MemoryService.to_llm_messages(history)
+        prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
         active_llm = RuntimeConfigService.get_active_llm(db)
         try:
             reply, provider = LLMService.generate_reply(
@@ -169,11 +213,10 @@ class MessageService:
             )
             provider = "llm-error"
 
-        MemoryService.add_message(
+        MessageService._store_assistant_message(
             db=db,
             session_id=resolved_session_id,
-            platform_user_id=user_id,
-            role=MessageRole.assistant,
+            user_id=user_id,
             content=reply,
             username=username,
             provider=provider,

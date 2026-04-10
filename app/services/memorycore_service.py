@@ -17,6 +17,7 @@ from app.models.setting import AppSetting
 class MemoryCoreService:
     PROFILE_PREFIX = "memorycore:profile"
     PROJECT_PREFIX = "memorycore:project"
+    SESSION_LINK_PREFIX = "memorycore:session-link"
     CONTEXT_CHAR_LIMIT = 1800
     ACTIVITY_LOG_LIMIT = 24
     PROJECT_STATUSES = {"active", "archived"}
@@ -294,12 +295,28 @@ class MemoryCoreService:
         return count
 
     @staticmethod
+    def delete_all_session_links(db: Session, user_id: str) -> int:
+        prefix = MemoryCoreService._session_link_prefix(user_id)
+        records = list(
+            db.scalars(
+                select(AppSetting).where(AppSetting.key.like(f"{prefix}%"))
+            ).all()
+        )
+        count = len(records)
+        for record in records:
+            db.delete(record)
+        db.commit()
+        return count
+
+    @staticmethod
     def clear_all(db: Session, user_id: str) -> dict[str, int]:
         deleted_profile = 1 if MemoryCoreService.delete_profile(db, user_id) else 0
         deleted_projects = MemoryCoreService.delete_all_projects(db, user_id)
+        deleted_session_links = MemoryCoreService.delete_all_session_links(db, user_id)
         return {
             "deleted_profile": deleted_profile,
             "deleted_projects": deleted_projects,
+            "deleted_session_links": deleted_session_links,
         }
 
     @staticmethod
@@ -364,6 +381,96 @@ class MemoryCoreService:
             project_key=project["project_key"],
             kind="template",
             detail=f"Applied Memory Core template `{template['title']}`.",
+        ) or updated
+        return updated
+
+    @staticmethod
+    def link_session_to_project(db: Session, user_id: str, session_id: str, project_key: str) -> None:
+        normalized_project_key = MemoryCoreService.normalize_project_key(project_key)
+        key = MemoryCoreService._session_link_key(user_id, session_id)
+        record = db.scalar(select(AppSetting).where(AppSetting.key == key))
+        payload = {
+            "session_id": session_id,
+            "project_key": normalized_project_key,
+            "linked_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if record is None:
+            record = AppSetting(key=key, value_json=payload)
+            db.add(record)
+        else:
+            record.value_json = payload
+        db.commit()
+
+    @staticmethod
+    def get_linked_project_key(db: Session, user_id: str, session_id: str) -> str | None:
+        key = MemoryCoreService._session_link_key(user_id, session_id)
+        record = db.scalar(select(AppSetting).where(AppSetting.key == key))
+        if record is None:
+            return None
+        project_key = str((record.value_json or {}).get("project_key", "")).strip()
+        return project_key or None
+
+    @staticmethod
+    def capture_session_context(
+        db: Session,
+        *,
+        user_id: str,
+        project_key: str,
+        session_id: str,
+        limit: int = 80,
+    ) -> dict | None:
+        from app.services.memory_service import MemoryService
+
+        project = MemoryCoreService.get_project(db, user_id=user_id, project_key=project_key)
+        if project is None:
+            return None
+
+        messages = MemoryService.list_session_messages(
+            db,
+            session_id=session_id,
+            platform_user_id=user_id,
+            limit=max(limit, 12),
+        )
+        if not messages:
+            MemoryCoreService.link_session_to_project(db, user_id=user_id, session_id=session_id, project_key=project_key)
+            return project
+
+        extracted = MemoryCoreService._extract_conversation_memory(messages)
+        payload: dict[str, Any] = {
+            "conversation_summary": extracted["conversation_summary"],
+            "conversation_memory": extracted["conversation_memory"],
+            "linked_sessions": MemoryCoreService._merge_unique_lists(project.get("linked_sessions", []), [session_id]),
+        }
+
+        for field in (
+            "decisions",
+            "next_steps",
+            "open_questions",
+            "recent_changes",
+            "observations",
+            "important_files",
+            "commands",
+        ):
+            payload[field] = MemoryCoreService._merge_unique_lists(project.get(field, []), extracted.get(field, []))
+
+        if extracted.get("current_focus"):
+            payload["current_focus"] = extracted["current_focus"]
+        if extracted.get("conversation_summary"):
+            payload["session_brief"] = extracted["conversation_summary"]
+
+        updated = MemoryCoreService.upsert_project(
+            db,
+            user_id=user_id,
+            project_key=project["project_key"],
+            payload=payload,
+        )
+        MemoryCoreService.link_session_to_project(db, user_id=user_id, session_id=session_id, project_key=project_key)
+        updated = MemoryCoreService._append_project_activity(
+            db,
+            user_id=user_id,
+            project_key=project["project_key"],
+            kind="conversation",
+            detail=f"Captured chat context from session `{session_id}`.",
         ) or updated
         return updated
 
@@ -518,12 +625,15 @@ class MemoryCoreService:
             lines.extend(["", "## Session Briefing", "", project["session_brief"]])
         if project.get("current_focus"):
             lines.extend(["", "## Current Focus", "", project["current_focus"]])
+        if project.get("conversation_summary"):
+            lines.extend(["", "## Conversation Summary", "", project["conversation_summary"]])
 
         lines.extend(MemoryCoreService._render_section("Goals", project.get("goals", [])))
         lines.extend(MemoryCoreService._render_section("Next Steps", project.get("next_steps", [])))
         lines.extend(MemoryCoreService._render_section("Reminders", project.get("reminders", [])))
         lines.extend(MemoryCoreService._render_section("Decision Log", project.get("decisions", [])))
         lines.extend(MemoryCoreService._render_section("Open Questions", project.get("open_questions", [])))
+        lines.extend(MemoryCoreService._render_section("Conversation Memory", project.get("conversation_memory", [])))
         lines.extend(MemoryCoreService._render_section("Recent Changes", project.get("recent_changes", [])))
         lines.extend(MemoryCoreService._render_section("Observations", project.get("observations", [])))
         lines.extend(MemoryCoreService._render_section("Library Items", project.get("library_items", [])))
@@ -608,11 +718,14 @@ class MemoryCoreService:
                 lines.append(f"- Briefing: {project['session_brief']}")
             if project.get("current_focus"):
                 lines.append(f"- Current focus: {project['current_focus']}")
+            if project.get("conversation_summary"):
+                lines.append(f"- Conversation summary: {project['conversation_summary']}")
             lines.extend(MemoryCoreService._render_section("Goals", project.get("goals", [])))
             lines.extend(MemoryCoreService._render_section("Next Steps", project.get("next_steps", [])))
             lines.extend(MemoryCoreService._render_section("Reminders", project.get("reminders", [])))
             lines.extend(MemoryCoreService._render_section("Decision Log", project.get("decisions", [])))
             lines.extend(MemoryCoreService._render_section("Open Questions", project.get("open_questions", [])))
+            lines.extend(MemoryCoreService._render_section("Conversation Memory", project.get("conversation_memory", [])))
             lines.extend(MemoryCoreService._render_section("Observations", project.get("observations", [])))
             lines.extend(MemoryCoreService._render_section("Library Items", project.get("library_items", [])))
             lines.extend(MemoryCoreService._render_section("Important Files", project.get("important_files", []), code=True))
@@ -647,6 +760,10 @@ class MemoryCoreService:
             lines.append("")
         if project.get("current_focus"):
             lines.append(f"- Current focus: {project['current_focus']}")
+        if project.get("conversation_summary"):
+            lines.append(f"- Conversation memory: {project['conversation_summary']}")
+        for item in project.get("conversation_memory", [])[:4]:
+            lines.append(f"- Context: {item}")
         for item in project.get("next_steps", [])[:4]:
             lines.append(f"- Next: {item}")
         for item in project.get("reminders", [])[:3]:
@@ -712,11 +829,13 @@ class MemoryCoreService:
             "title": title,
             "summary": find_prefixed("- Briefing") or "",
             "current_focus": find_prefixed("- Current focus"),
+            "conversation_summary": find_prefixed("- Conversation summary"),
             "goals": extract_bullets("Goals"),
             "next_steps": extract_bullets("Next Steps"),
             "reminders": extract_bullets("Reminders"),
             "decisions": extract_bullets("Decision Log"),
             "open_questions": extract_bullets("Open Questions"),
+            "conversation_memory": extract_bullets("Conversation Memory"),
             "observations": extract_bullets("Observations"),
             "library_items": extract_bullets("Library Items"),
         }
@@ -766,6 +885,10 @@ class MemoryCoreService:
                 sections.append(f"- Briefing: {project['session_brief']}")
             if project.get("current_focus"):
                 sections.append(f"- Focus: {project['current_focus']}")
+            if project.get("conversation_summary"):
+                sections.append(f"- Conversation summary: {project['conversation_summary']}")
+            for item in project.get("conversation_memory", [])[:5]:
+                sections.append(f"- Conversation context: {item}")
             for item in project.get("stack", [])[:6]:
                 sections.append(f"- Stack: {item}")
             for item in project.get("preferences", [])[:6]:
@@ -786,6 +909,10 @@ class MemoryCoreService:
                 sections.append(f"- {label} [{status}]")
                 if item.get("current_focus"):
                     sections.append(f"  Focus: {item['current_focus']}")
+                elif item.get("conversation_summary"):
+                    sections.append(f"  Conversation: {item['conversation_summary']}")
+                elif item.get("conversation_memory"):
+                    sections.append(f"  Context: {item['conversation_memory'][0]}")
                 elif item.get("session_brief"):
                     sections.append(f"  Briefing: {item['session_brief']}")
                 elif item.get("summary"):
@@ -800,6 +927,322 @@ class MemoryCoreService:
     def normalize_project_key(value: str) -> str:
         slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
         return slug or "project"
+
+    @staticmethod
+    def _extract_conversation_memory(messages: list[Any]) -> dict[str, Any]:
+        relevant_messages: list[dict[str, str]] = []
+        for item in messages:
+            content = str(getattr(item, "content", "") or "").strip()
+            if not content:
+                continue
+            metadata = getattr(item, "metadata_json", {}) or {}
+            provider = str(getattr(item, "provider", "") or "").strip().lower()
+            if isinstance(metadata, dict) and metadata.get("memorycore_briefing"):
+                continue
+            if provider == "memorycore-briefing":
+                continue
+            role = MemoryCoreService._message_role(item)
+            if role not in {"user", "assistant"}:
+                continue
+            relevant_messages.append({"role": role, "content": content})
+
+        if not relevant_messages:
+            return {
+                "conversation_summary": "",
+                "conversation_memory": [],
+                "current_focus": None,
+                "decisions": [],
+                "next_steps": [],
+                "open_questions": [],
+                "recent_changes": [],
+                "observations": [],
+                "important_files": [],
+                "commands": [],
+            }
+
+        recent_messages = relevant_messages[-24:]
+        user_messages = [item["content"] for item in recent_messages if item["role"] == "user"]
+        assistant_messages = [item["content"] for item in recent_messages if item["role"] == "assistant"]
+        latest_user = user_messages[-1] if user_messages else ""
+        latest_assistant = assistant_messages[-1] if assistant_messages else ""
+
+        current_focus = MemoryCoreService._summarize_focus_from_text(latest_user)
+        latest_outcome = MemoryCoreService._summarize_outcome_from_text(latest_assistant)
+        summary_parts: list[str] = []
+        if current_focus:
+            summary_parts.append(f"Current objective: {current_focus}")
+        if latest_outcome:
+            summary_parts.append(f"Latest progress: {latest_outcome}")
+        if not summary_parts and latest_user:
+            summary_parts.append(MemoryCoreService._shorten_text(MemoryCoreService._clean_sentence(latest_user), 220))
+        conversation_summary = " ".join(part for part in summary_parts if part).strip()
+
+        conversation_memory: list[str] = []
+        for content in user_messages[-3:]:
+            focus = MemoryCoreService._summarize_focus_from_text(content)
+            bullet = focus or MemoryCoreService._shorten_text(MemoryCoreService._clean_sentence(content), 170)
+            if bullet:
+                conversation_memory.append(f"User asked: {bullet}")
+        for content in assistant_messages[-2:]:
+            outcome = MemoryCoreService._summarize_outcome_from_text(content)
+            bullet = outcome or MemoryCoreService._shorten_text(MemoryCoreService._clean_sentence(content), 170)
+            if bullet:
+                conversation_memory.append(f"Assistant concluded: {bullet}")
+
+        decisions: list[str] = []
+        next_steps: list[str] = []
+        open_questions: list[str] = []
+        recent_changes: list[str] = []
+        observations: list[str] = []
+        important_files: list[str] = []
+        commands: list[str] = []
+
+        for item in recent_messages:
+            role = item["role"]
+            content = item["content"]
+            if role == "assistant":
+                important_files.extend(MemoryCoreService._extract_file_references(content))
+                commands.extend(MemoryCoreService._extract_command_lines(content))
+
+            for line in MemoryCoreService._iter_message_lines(content):
+                if role == "user":
+                    open_questions.extend(MemoryCoreService._extract_questions(line))
+                if role != "assistant":
+                    continue
+                if MemoryCoreService._looks_like_decision_line(line):
+                    decisions.append(line)
+                if MemoryCoreService._looks_like_next_step(line):
+                    next_steps.append(line)
+                if MemoryCoreService._looks_like_recent_change(line):
+                    recent_changes.append(line)
+                if MemoryCoreService._looks_like_observation(line):
+                    observations.append(line)
+
+        return {
+            "conversation_summary": MemoryCoreService._shorten_text(conversation_summary, 360),
+            "conversation_memory": MemoryCoreService._dedupe_preserve_order(conversation_memory, limit=8),
+            "current_focus": current_focus,
+            "decisions": MemoryCoreService._dedupe_preserve_order(decisions, limit=8),
+            "next_steps": MemoryCoreService._dedupe_preserve_order(next_steps, limit=8),
+            "open_questions": MemoryCoreService._dedupe_preserve_order(open_questions, limit=8),
+            "recent_changes": MemoryCoreService._dedupe_preserve_order(recent_changes, limit=8),
+            "observations": MemoryCoreService._dedupe_preserve_order(observations, limit=8),
+            "important_files": MemoryCoreService._dedupe_preserve_order(important_files, limit=10),
+            "commands": MemoryCoreService._dedupe_preserve_order(commands, limit=8),
+        }
+
+    @staticmethod
+    def _message_role(message: Any) -> str:
+        role = getattr(message, "role", "")
+        if hasattr(role, "value"):
+            return str(role.value).strip().lower()
+        return str(role).strip().lower()
+
+    @staticmethod
+    def _iter_message_lines(content: str) -> list[str]:
+        plain = re.sub(r"```[\s\S]*?```", "\n", str(content or ""))
+        plain = re.sub(r"`([^`\n]+)`", r"\1", plain)
+        plain = re.sub(r"\[[^\]]+\]\(([^)]+)\)", r"\1", plain)
+        candidates: list[str] = []
+        for raw_line in re.split(r"\n+", plain):
+            stripped_line = raw_line.strip()
+            if not stripped_line:
+                continue
+            segments = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", stripped_line)
+            for segment in segments:
+                cleaned = MemoryCoreService._clean_sentence(segment)
+                if cleaned:
+                    candidates.append(cleaned)
+        return candidates
+
+    @staticmethod
+    def _clean_sentence(value: str) -> str:
+        text = str(value or "").strip()
+        text = re.sub(r"^\s*(?:[-*]|\d+\.)\s*", "", text)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip(" -")
+
+    @staticmethod
+    def _shorten_text(value: str, limit: int = 180) -> str:
+        text = str(value or "").strip()
+        if len(text) <= limit:
+            return text
+        shortened = text[: max(limit - 3, 1)].rstrip(" ,.;:")
+        return f"{shortened}..."
+
+    @staticmethod
+    def _summarize_focus_from_text(text: str) -> str | None:
+        cleaned = MemoryCoreService._clean_sentence(text)
+        if not cleaned:
+            return None
+        lowered = cleaned.lower()
+        prefixes = (
+            "can you ",
+            "could you ",
+            "please ",
+            "i want you to ",
+            "i need you to ",
+            "help me ",
+            "now ",
+        )
+        for prefix in prefixes:
+            if lowered.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+                lowered = cleaned.lower()
+        cleaned = re.sub(r"\b(?:for me|please)\b", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+        if not cleaned:
+            return None
+        if len(cleaned.split()) > 18:
+            cleaned = " ".join(cleaned.split()[:18]).strip()
+        return MemoryCoreService._shorten_text(cleaned[:1].upper() + cleaned[1:], 170)
+
+    @staticmethod
+    def _summarize_outcome_from_text(text: str) -> str | None:
+        lines = MemoryCoreService._iter_message_lines(text)
+        if not lines:
+            return None
+        preferred = []
+        for line in lines:
+            lowered = line.lower()
+            if any(
+                token in lowered
+                for token in (
+                    "fixed",
+                    "updated",
+                    "added",
+                    "wired",
+                    "patched",
+                    "rebuilt",
+                    "implemented",
+                    "now",
+                    "verified",
+                    "deployed",
+                )
+            ):
+                preferred.append(line)
+        chosen = preferred[0] if preferred else lines[0]
+        return MemoryCoreService._shorten_text(chosen, 190)
+
+    @staticmethod
+    def _looks_like_decision_line(line: str) -> bool:
+        lowered = line.lower()
+        if "?" in lowered:
+            return False
+        return bool(
+            re.search(
+                r"\b(use|prefer|keep|set|switch|default|route|treat|choose|standardize|store|save)\b",
+                lowered,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_next_step(line: str) -> bool:
+        lowered = line.lower()
+        if "?" in lowered:
+            return False
+        return bool(
+            re.match(
+                r"^(run|restart|deploy|rebuild|pull|update|replace|verify|open|try|use|set|download|install|hard refresh|refresh)\b",
+                lowered,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_recent_change(line: str) -> bool:
+        lowered = line.lower()
+        return bool(
+            re.search(
+                r"\b(i fixed|i updated|i changed|i added|i wired|i patched|i rebuilt|i upgraded|i implemented|the app is now|is now|now)\b",
+                lowered,
+            )
+        )
+
+    @staticmethod
+    def _looks_like_observation(line: str) -> bool:
+        lowered = line.lower()
+        return any(
+            token in lowered
+            for token in (
+                "important",
+                "note:",
+                "limit",
+                "warning",
+                "currently",
+                "right now",
+                "blocked",
+                "offline",
+                "online",
+                "issue",
+                "problem",
+            )
+        )
+
+    @staticmethod
+    def _extract_questions(line: str) -> list[str]:
+        cleaned = MemoryCoreService._clean_sentence(line)
+        if not cleaned:
+            return []
+        lowered = cleaned.lower()
+        if "?" in cleaned or re.match(r"^(can|could|should|would|what|why|how|when|where|is|are|do|does)\b", lowered):
+            return [MemoryCoreService._shorten_text(cleaned.rstrip("?") + "?", 170)]
+        return []
+
+    @staticmethod
+    def _extract_file_references(text: str) -> list[str]:
+        candidates: list[str] = []
+        for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", str(text or "")):
+            stripped = str(target).strip()
+            if re.search(r"\.[a-z0-9]{1,8}(?::\d+)?(?:[#:].*)?$", stripped, flags=re.IGNORECASE):
+                candidates.append(stripped)
+        for target in re.findall(r"`([^`\n]+)`", str(text or "")):
+            stripped = str(target).strip()
+            if any(sep in stripped for sep in ("\\", "/")) and re.search(r"\.[a-z0-9]{1,8}", stripped, flags=re.IGNORECASE):
+                candidates.append(stripped)
+        return candidates
+
+    @staticmethod
+    def _extract_command_lines(text: str) -> list[str]:
+        commands: list[str] = []
+        raw_text = str(text or "")
+        for block in re.findall(r"```(?:[\w.+-]+)?\n([\s\S]*?)```", raw_text):
+            for line in block.splitlines():
+                candidate = line.strip()
+                if MemoryCoreService._looks_like_command(candidate):
+                    commands.append(candidate)
+        for inline in re.findall(r"`([^`\n]+)`", raw_text):
+            candidate = inline.strip()
+            if MemoryCoreService._looks_like_command(candidate):
+                commands.append(candidate)
+        return commands
+
+    @staticmethod
+    def _looks_like_command(text: str) -> bool:
+        candidate = str(text or "").strip()
+        if not candidate or len(candidate) > 180:
+            return False
+        return bool(
+            re.match(
+                r"^(docker(?:-compose)?|git|python|py|pip|npm|pnpm|yarn|curl|uv|ollama|powershell|pwsh|\.\\|/|cd\s+)",
+                candidate,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    @staticmethod
+    def _dedupe_preserve_order(items: list[str], *, limit: int = 8) -> list[str]:
+        results: list[str] = []
+        seen: set[str] = set()
+        for item in items:
+            cleaned = MemoryCoreService._shorten_text(MemoryCoreService._clean_sentence(item), 220)
+            lowered = cleaned.lower()
+            if not cleaned or lowered in seen:
+                continue
+            seen.add(lowered)
+            results.append(cleaned)
+            if len(results) >= limit:
+                break
+        return results
 
     @staticmethod
     def _render_section(title: str, items: list[str], *, code: bool = False) -> list[str]:
@@ -869,10 +1312,13 @@ class MemoryCoreService:
         open_questions = MemoryCoreService._clean_list(payload.get("open_questions"))
         recent_changes = MemoryCoreService._clean_list(payload.get("recent_changes"))
         skills = MemoryCoreService._clean_list(payload.get("skills"))
+        conversation_summary = MemoryCoreService._clean_text(payload.get("conversation_summary")) or ""
+        conversation_memory = MemoryCoreService._clean_list(payload.get("conversation_memory"))
+        linked_sessions = MemoryCoreService._clean_list(payload.get("linked_sessions"))
         activity_log = MemoryCoreService._normalize_activity_log(payload.get("activity_log"))
         session_brief = MemoryCoreService._clean_text(payload.get("session_brief")) or MemoryCoreService._auto_session_brief(
             title=title,
-            summary=summary,
+            summary=conversation_summary or summary,
             stack=stack,
             current_focus=MemoryCoreService._clean_text(payload.get("current_focus")),
             next_steps=next_steps,
@@ -894,8 +1340,11 @@ class MemoryCoreService:
             "observations": observations,
             "library_items": library_items,
             "open_questions": open_questions,
+            "conversation_summary": conversation_summary,
+            "conversation_memory": conversation_memory,
             "recent_changes": recent_changes,
             "skills": skills,
+            "linked_sessions": linked_sessions,
             "activity_log": activity_log,
             "important_files": MemoryCoreService._clean_list(payload.get("important_files")),
             "commands": MemoryCoreService._clean_list(payload.get("commands")),
@@ -1085,6 +1534,14 @@ class MemoryCoreService:
     def _project_key(user_id: str, project_key: str) -> str:
         normalized = MemoryCoreService.normalize_project_key(project_key)
         return f"{MemoryCoreService._project_prefix(user_id)}{MemoryCoreService._project_token(normalized)}"
+
+    @staticmethod
+    def _session_link_prefix(user_id: str) -> str:
+        return f"{MemoryCoreService.SESSION_LINK_PREFIX}:{MemoryCoreService._user_token(user_id)}:"
+
+    @staticmethod
+    def _session_link_key(user_id: str, session_id: str) -> str:
+        return f"{MemoryCoreService._session_link_prefix(user_id)}{MemoryCoreService._project_token(session_id)}"
 
     @staticmethod
     def _user_token(user_id: str) -> str:

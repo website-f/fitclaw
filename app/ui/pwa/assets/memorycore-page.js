@@ -52,6 +52,7 @@ const dom = {
   memoryCoreProjectMeta: document.getElementById("memoryCoreProjectMeta"),
   memoryCoreViewerBody: document.getElementById("memoryCoreViewerBody"),
   startMemoryCoreBriefingButton: document.getElementById("startMemoryCoreBriefingButton"),
+  captureMemoryCoreSessionButton: document.getElementById("captureMemoryCoreSessionButton"),
   archiveMemoryCoreProjectButton: document.getElementById("archiveMemoryCoreProjectButton"),
   copyMemoryCoreButton: document.getElementById("copyMemoryCoreButton"),
   deleteMemoryCoreProjectButton: document.getElementById("deleteMemoryCoreProjectButton"),
@@ -84,6 +85,7 @@ function bindEvents() {
   dom.memoryCoreFilterActiveButton.addEventListener("click", () => setMemoryCoreFilter("active"));
   dom.memoryCoreFilterArchivedButton.addEventListener("click", () => setMemoryCoreFilter("archived"));
   dom.startMemoryCoreBriefingButton.addEventListener("click", () => void startMemoryCoreBriefingChat());
+  dom.captureMemoryCoreSessionButton.addEventListener("click", () => void captureCurrentChatToMemoryCore());
   dom.archiveMemoryCoreProjectButton.addEventListener("click", () => void toggleArchiveSelectedMemoryCoreProject());
   dom.copyMemoryCoreButton.addEventListener("click", () => void copyMemoryCoreMarkdown());
   dom.deleteMemoryCoreProjectButton.addEventListener("click", () => void deleteSelectedMemoryCoreProject());
@@ -424,6 +426,7 @@ function renderViewer() {
   const hasProject = Boolean(viewerProject);
 
   dom.startMemoryCoreBriefingButton.disabled = !hasProject;
+  dom.captureMemoryCoreSessionButton.disabled = !hasProject || !localStorage.getItem(storageKeys.sessionId);
   dom.archiveMemoryCoreProjectButton.disabled = !hasProject;
   dom.copyMemoryCoreButton.disabled = !state.selectedMarkdown;
   dom.deleteMemoryCoreProjectButton.disabled = !hasProject;
@@ -470,6 +473,8 @@ function renderViewer() {
   detailGrid.className = "memorycore-detail-grid";
   detailGrid.appendChild(renderMemoryCoreMetricCard("Session briefing", viewerProject.session_brief || "No briefing saved yet."));
   detailGrid.appendChild(renderMemoryCoreMetricCard("Current focus", viewerProject.current_focus || "No focus saved yet."));
+  detailGrid.appendChild(renderMemoryCoreMetricCard("Conversation summary", viewerProject.conversation_summary || "No chat context saved yet."));
+  detailGrid.appendChild(renderMemoryCoreMetricCard("Linked sessions", viewerProject.linked_sessions?.length ? `${viewerProject.linked_sessions.length} linked` : "None yet"));
   detailGrid.appendChild(renderMemoryCoreMetricCard("Open count", viewerProject.open_count ? `${viewerProject.open_count} total opens` : "Not opened from Memory Core yet."));
   detailGrid.appendChild(renderMemoryCoreMetricCard("Project status", viewerProject.status || "active"));
   dom.memoryCoreViewerBody.appendChild(detailGrid);
@@ -477,6 +482,7 @@ function renderViewer() {
   if (viewerProject.summary) {
     dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Project summary", [viewerProject.summary]));
   }
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Conversation memory", viewerProject.conversation_memory));
   dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Next steps", viewerProject.next_steps));
   dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Reminders", viewerProject.reminders));
   dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Decision log", viewerProject.decisions));
@@ -605,6 +611,39 @@ async function applyMemoryCoreTemplate(templateKey) {
     console.error("Failed to apply template", error);
     state.error = error.message || String(error);
     renderAll();
+  }
+}
+
+async function captureCurrentChatToMemoryCore() {
+  const project = state.selectedProject || state.projects.find((item) => item.project_key === state.selectedProjectKey);
+  const sessionId = localStorage.getItem(storageKeys.sessionId) || "";
+  if (!project || !sessionId) return;
+
+  const button = dom.captureMemoryCoreSessionButton;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Saving...";
+
+  try {
+    const updated = await fetchJson(
+      `/api/v1/memorycore/projects/${encodeURIComponent(project.project_key)}/capture-session?user_id=${encodeURIComponent(state.userId)}&session_id=${encodeURIComponent(sessionId)}`,
+      { method: "POST" }
+    );
+    state.projects = state.projects.map((item) => (item.project_key === updated.project_key ? { ...item, ...updated } : item));
+    state.selectedProject = updated;
+    state.selectedProjectKey = updated.project_key;
+    await loadMemoryCoreProject(updated.project_key);
+    button.textContent = "Saved";
+  } catch (error) {
+    console.error("Failed to capture chat into Memory Core", error);
+    state.error = error.message || String(error);
+    button.textContent = "Save failed";
+    renderAll();
+  } finally {
+    window.setTimeout(() => {
+      button.disabled = false;
+      button.textContent = original;
+    }, 1400);
   }
 }
 

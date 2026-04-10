@@ -157,6 +157,7 @@ def add_project_briefing_to_session(project_key: str, user_id: str, session_id: 
     briefing = MemoryCoreService.build_session_briefing(db, user_id=user_id, project_key=project_key)
     if briefing is None:
         raise HTTPException(status_code=404, detail="MemoryCore project memory not found.")
+    MemoryCoreService.link_session_to_project(db, user_id=user_id, session_id=session_id, project_key=briefing["project_key"])
     message = MemoryService.add_message(
         db=db,
         session_id=session_id,
@@ -177,6 +178,19 @@ def add_project_briefing_to_session(project_key: str, user_id: str, session_id: 
         "briefing": briefing["briefing"],
         "message_id": message.id,
     }
+
+
+@router.post("/projects/{project_key}/capture-session", response_model=MemoryCoreProjectResponse)
+def capture_project_session_context(project_key: str, user_id: str, session_id: str, db: Session = Depends(get_db)):
+    item = MemoryCoreService.capture_session_context(
+        db,
+        user_id=user_id,
+        project_key=project_key,
+        session_id=session_id,
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="MemoryCore project memory not found.")
+    return MemoryCoreProjectResponse(**item)
 
 
 @router.get("/projects/{project_key}/markdown", response_class=PlainTextResponse)

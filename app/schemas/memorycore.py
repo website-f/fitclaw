@@ -47,8 +47,11 @@ class MemoryCoreProjectUpsert(BaseModel):
     observations: list[str] | None = None
     library_items: list[str] | None = None
     open_questions: list[str] | None = None
+    conversation_summary: str | None = None
+    conversation_memory: list[str] | None = None
     recent_changes: list[str] | None = None
     skills: list[str] | None = None
+    linked_sessions: list[str] | None = None
     activity_log: list[dict[str, str]] | None = None
     important_files: list[str] | None = None
     commands: list[str] | None = None
@@ -76,8 +79,11 @@ class MemoryCoreProjectResponse(BaseModel):
     observations: list[str] = Field(default_factory=list)
     library_items: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
+    conversation_summary: str = ""
+    conversation_memory: list[str] = Field(default_factory=list)
     recent_changes: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
+    linked_sessions: list[str] = Field(default_factory=list)
     activity_log: list[dict[str, str]] = Field(default_factory=list)
     important_files: list[str] = Field(default_factory=list)
     commands: list[str] = Field(default_factory=list)
@@ -97,6 +103,7 @@ class MemoryCoreProjectSummaryResponse(BaseModel):
     status: str = "active"
     current_focus: str | None = None
     session_brief: str | None = None
+    conversation_summary: str = ""
     stack: list[str] = Field(default_factory=list)
     next_steps_count: int = 0
     reminders_count: int = 0
