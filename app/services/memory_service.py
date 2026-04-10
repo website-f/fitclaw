@@ -111,7 +111,16 @@ class MemoryService:
             latest = latest_by_session.get(session_id)
             first_user = first_user_by_session.get(session_id)
 
-            title_source = (first_user.content if first_user else latest.content if latest else session_id).strip()
+            metadata_title = str((latest.metadata_json or {}).get("session_title", "")).strip() if latest else ""
+            title_source = (
+                first_user.content
+                if first_user
+                else metadata_title
+                if metadata_title
+                else latest.content
+                if latest
+                else session_id
+            ).strip()
             title = title_source.replace("\n", " ")
             preview_source = (latest.content if latest else "").strip().replace("\n", " ")
             summaries.append(

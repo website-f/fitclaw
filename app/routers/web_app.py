@@ -15,6 +15,11 @@ def chat_app():
     return FileResponse(PWA_DIR / "chat_app.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
 
 
+@router.get("/memorycore", include_in_schema=False)
+def memorycore_app():
+    return FileResponse(PWA_DIR / "memorycore.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
 @router.get("/transit-live", include_in_schema=False)
 def transit_live_app():
     return FileResponse(PWA_DIR / "transit_live.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)

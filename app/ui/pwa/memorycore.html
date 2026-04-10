@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1120" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FitClaw Memory Core" />
+  <title>FitClaw Memory Core</title>
+  <meta name="description" content="Portable project memory, templates, timeline, and briefed chat launches for FitClaw." />
+  <link rel="manifest" href="/app-manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/app-assets/icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/app-assets/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/app-assets/chat-app.css" />
+  <link rel="stylesheet" href="/app-assets/memorycore-page.css" />
+</head>
+<body class="memorycore-page-body">
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <div class="ambient ambient-c"></div>
+
+  <main class="memorycore-page-shell">
+    <header class="memorycore-page-topbar glass-card">
+      <div class="memorycore-page-topbar-copy">
+        <p class="eyebrow">Portable project memory</p>
+        <h1>Memory Core Hub</h1>
+        <p class="memorycore-page-subcopy">
+          Save structured project memory, reuse template packs, review archived timelines, and launch a briefed chat without rebuilding context from scratch.
+        </p>
+      </div>
+      <div class="memorycore-page-topbar-actions">
+        <div class="status-pill" id="pageConnectionLabel">Loading...</div>
+        <a class="ghost-button small-button" href="/app">Back to Chat</a>
+      </div>
+    </header>
+
+    <section class="memorycore-page-hero">
+      <article class="memorycore-page-stat glass-card">
+        <span class="memorycore-page-stat-label">Projects</span>
+        <strong id="memoryCoreCount">0</strong>
+        <p>Saved portable memories</p>
+      </article>
+      <article class="memorycore-page-stat glass-card">
+        <span class="memorycore-page-stat-label">Active</span>
+        <strong id="activeProjectCount">0</strong>
+        <p>Hot-path project memories</p>
+      </article>
+      <article class="memorycore-page-stat glass-card">
+        <span class="memorycore-page-stat-label">Archived</span>
+        <strong id="archivedProjectCount">0</strong>
+        <p>Cold but preserved context</p>
+      </article>
+      <article class="memorycore-page-stat glass-card">
+        <span class="memorycore-page-stat-label">Templates</span>
+        <strong id="templateCount">0</strong>
+        <p>Reusable Memory Core packs</p>
+      </article>
+    </section>
+
+    <div class="memorycore-page-layout">
+      <aside class="memorycore-page-sidebar">
+        <section class="memorycore-page-card glass-card">
+          <div class="memorycore-page-card-head">
+            <div>
+              <p class="eyebrow">Identity Core</p>
+              <h2>Profile memory</h2>
+            </div>
+            <button class="ghost-button small-button" id="refreshMemoryCoreButton" type="button">Refresh</button>
+          </div>
+          <div id="memoryCoreProfile" class="memorycore-page-profile"></div>
+        </section>
+
+        <section class="memorycore-page-card glass-card">
+          <div class="memorycore-page-card-head">
+            <div>
+              <p class="eyebrow">Launchers</p>
+              <h2>Install Memory Core locally</h2>
+            </div>
+          </div>
+          <label class="field compact-field">
+            <span>Wake name</span>
+            <input id="memoryCoreWakeNameInput" type="text" maxlength="24" placeholder="jarvis" />
+          </label>
+          <label class="field compact-field">
+            <span>Platform</span>
+            <select id="memoryCorePlatformSelect">
+              <option value="windows-x64">Windows x64</option>
+              <option value="macos-arm64">macOS Apple Silicon</option>
+              <option value="macos-x64">macOS Intel</option>
+            </select>
+          </label>
+          <div class="memorycore-page-launcher-copy" id="memoryCoreLauncherCopy"></div>
+          <div class="memorycore-page-button-stack">
+            <button class="primary-button small-button" id="downloadMemoryCoreBundleButton" type="button">Download installable bundle</button>
+            <button class="ghost-button small-button" id="downloadMemoryCoreMarkdownButton" type="button">Download MEMORYCORE.md</button>
+            <button class="ghost-button small-button" id="downloadMasterMemoryButton" type="button">Download master-memory.md</button>
+            <button class="ghost-button small-button" id="importMasterMemoryButton" type="button">Import master-memory.md</button>
+          </div>
+          <input id="memoryCoreImportFile" type="file" accept=".md,text/markdown,text/plain" hidden />
+        </section>
+
+        <section class="memorycore-page-card glass-card">
+          <div class="memorycore-page-card-head">
+            <div>
+              <p class="eyebrow">Library packs</p>
+              <h2>Reusable templates</h2>
+            </div>
+            <span class="memorycore-page-mini-status" id="templateStatusLabel">Loading...</span>
+          </div>
+          <div class="memorycore-page-template-list" id="templateList"></div>
+        </section>
+      </aside>
+
+      <section class="memorycore-page-main">
+        <section class="memorycore-page-toolbar glass-card">
+          <div class="memorycore-page-toolbar-copy">
+            <p class="eyebrow">Project memory</p>
+            <h2>Archive, inspect, and relaunch with context</h2>
+            <p id="memoryCoreStatus" class="memorycore-page-toolbar-subcopy">Loading...</p>
+          </div>
+          <div class="memorycore-page-toolbar-actions">
+            <div class="memorycore-filter-row">
+              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterAllButton" type="button">All</button>
+              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterActiveButton" type="button">Active</button>
+              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterArchivedButton" type="button">Archived</button>
+            </div>
+            <button class="ghost-button small-button danger-button" id="clearAllMemoryCoreButton" type="button">Clear all</button>
+          </div>
+        </section>
+
+        <div class="memorycore-page-workspace">
+          <aside class="memorycore-page-projects glass-card">
+            <div class="memorycore-page-pane-head">
+              <div>
+                <p class="eyebrow">Project index</p>
+                <h3>Saved memories</h3>
+              </div>
+            </div>
+            <div class="memorycore-page-project-list" id="memoryCoreProjectList"></div>
+          </aside>
+
+          <section class="memorycore-page-viewer glass-card">
+            <div class="memorycore-page-pane-head memorycore-page-viewer-head">
+              <div>
+                <p class="eyebrow">Selected memory</p>
+                <h3 id="memoryCoreProjectTitle">Select a project</h3>
+                <p id="memoryCoreProjectMeta" class="memorycore-page-viewer-meta">Open one of your saved project memories to inspect the full snapshot.</p>
+              </div>
+              <div class="memorycore-page-viewer-actions">
+                <button class="primary-button small-button" id="startMemoryCoreBriefingButton" type="button">Start briefed chat</button>
+                <button class="ghost-button small-button" id="archiveMemoryCoreProjectButton" type="button">Archive</button>
+                <button class="ghost-button small-button" id="copyMemoryCoreButton" type="button">Copy</button>
+                <button class="ghost-button small-button danger-button" id="deleteMemoryCoreProjectButton" type="button">Delete</button>
+              </div>
+            </div>
+            <div class="memorycore-page-viewer-body" id="memoryCoreViewerBody"></div>
+          </section>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/app-assets/memorycore-page.js" defer></script>
+</body>
+</html>

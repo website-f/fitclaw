@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from io import BytesIO
 import hashlib
 from pathlib import Path
@@ -17,10 +18,149 @@ class MemoryCoreService:
     PROFILE_PREFIX = "memorycore:profile"
     PROJECT_PREFIX = "memorycore:project"
     CONTEXT_CHAR_LIMIT = 1800
+    ACTIVITY_LOG_LIMIT = 24
+    PROJECT_STATUSES = {"active", "archived"}
     STANDALONE_PLATFORMS = {
         "windows-x64": ("memorycore.exe", "exe"),
         "macos-arm64": ("memorycore", "unix"),
         "macos-x64": ("memorycore", "unix"),
+    }
+    LIBRARY_TEMPLATES = {
+        "project-kickoff": {
+            "title": "Project Kickoff",
+            "category": "planning",
+            "summary": "Sets up a clean kickoff layer with scope, constraints, milestones, and the first decision checkpoints.",
+            "current_focus": "Clarify the scope, success criteria, and first milestone before implementation accelerates.",
+            "session_brief": "Use this kickoff memory to keep the project grounded on scope, outcomes, and the next concrete milestone.",
+            "library_items": [
+                "Kickoff scope statement",
+                "Success criteria checklist",
+                "Known constraints and non-goals",
+                "First milestone and handoff definition",
+            ],
+            "next_steps": [
+                "Write a short scope statement for the project.",
+                "Capture fixed deadlines, constraints, and non-goals.",
+                "Define the first milestone and who signs it off.",
+            ],
+            "open_questions": [
+                "What does done look like for the first milestone?",
+                "Which assumptions still need validation?",
+                "Who are the decision-makers and reviewers for this project?",
+            ],
+            "observations": [
+                "Kickoff memories are most useful when they stay short and get updated after major scope decisions.",
+            ],
+            "skills": [
+                "Start new sessions by reviewing scope, milestone, and open questions before coding.",
+            ],
+        },
+        "session-briefing": {
+            "title": "Session Briefing",
+            "category": "workflow",
+            "summary": "Adds a compact briefing structure so every new session can restart quickly without re-scanning the whole repo.",
+            "current_focus": "Keep the next session restartable with a tight briefing, live focus, and a handoff-quality next-step list.",
+            "session_brief": "Begin by reading the current focus, top next steps, recent decisions, and any blockers before continuing work.",
+            "library_items": [
+                "Session-start briefing format",
+                "Handoff recap template",
+                "Blockers and assumptions tracker",
+            ],
+            "next_steps": [
+                "Summarize the current focus in one paragraph.",
+                "Keep the top three next steps updated after each work block.",
+                "Record blockers or assumptions when they appear.",
+            ],
+            "reminders": [
+                "Refresh the briefing whenever the project direction changes noticeably.",
+            ],
+            "decisions": [
+                "Use the Memory Core briefing as the first orientation layer for new chats.",
+            ],
+            "skills": [
+                "Start each session by reviewing briefing, next steps, reminders, and recent changes.",
+            ],
+        },
+        "debugging-incident": {
+            "title": "Debugging Incident",
+            "category": "engineering",
+            "summary": "Creates a reproducible debugging memory with hypotheses, evidence, failure scope, and rollback notes.",
+            "current_focus": "Pin down the failure scope, strongest hypothesis, and the smallest reproducible path.",
+            "session_brief": "Treat this as an incident log: keep the repro path, tested hypotheses, and confirmed evidence current.",
+            "library_items": [
+                "Minimal reproduction steps",
+                "Failure scope and impacted surfaces",
+                "Evidence log and hypothesis tracker",
+                "Rollback or mitigation notes",
+            ],
+            "next_steps": [
+                "Write the smallest reproducible path.",
+                "List the top hypotheses in descending confidence order.",
+                "Capture evidence that confirms or rejects each hypothesis.",
+            ],
+            "open_questions": [
+                "What changed shortly before the failure appeared?",
+                "What user-facing behavior is actually broken versus only degraded?",
+                "What is the safest rollback or mitigation if the fix slips?",
+            ],
+            "observations": [
+                "Debugging memories work best when hypothesis changes are logged explicitly instead of implied.",
+            ],
+            "skills": [
+                "Prefer evidence-driven debugging over broad speculative changes.",
+            ],
+        },
+        "ui-polish": {
+            "title": "UI Polish",
+            "category": "design",
+            "summary": "Focuses the memory on UX refinement, visual consistency, responsive behavior, and review loops.",
+            "current_focus": "Improve the interface with sharper hierarchy, stronger responsiveness, and more intentional visual polish.",
+            "session_brief": "Keep the UI review grounded on user flow, hierarchy, responsiveness, and finish quality instead of isolated tweaks.",
+            "library_items": [
+                "Primary user flow checkpoints",
+                "Responsive layout review checklist",
+                "Typography and spacing consistency notes",
+                "Interaction polish and edge-case states",
+            ],
+            "next_steps": [
+                "List the most important user flows to verify visually.",
+                "Record responsive issues on mobile and desktop separately.",
+                "Capture any weak states, loading screens, or empty states that still need polish.",
+            ],
+            "observations": [
+                "UI memory is stronger when it stores screenshots, edge cases, and exact interaction issues rather than vague taste notes.",
+            ],
+            "skills": [
+                "Review hierarchy, spacing, states, and responsive behavior before shipping design tweaks.",
+            ],
+        },
+        "handoff-readiness": {
+            "title": "Handoff Readiness",
+            "category": "delivery",
+            "summary": "Prepares a project for continuation by another session, teammate, or machine with clear runbooks and unresolved risks.",
+            "current_focus": "Make the project restartable by someone else with minimal hidden context.",
+            "session_brief": "Optimize this memory for continuation: what changed, what is left, how to run it, and where the risks still are.",
+            "library_items": [
+                "Run and verify checklist",
+                "Known risks and sharp edges",
+                "Deployment or release notes",
+                "Who owns the next decision",
+            ],
+            "next_steps": [
+                "Write the exact run and verification steps.",
+                "List unfinished work with clear ownership or next decision points.",
+                "Capture any risky areas that need extra review before release.",
+            ],
+            "reminders": [
+                "Update handoff notes before switching machines or ending a session.",
+            ],
+            "decisions": [
+                "Treat restartability as a first-class quality bar for long-running projects.",
+            ],
+            "skills": [
+                "Write handoff notes as if the next session has zero hidden context.",
+            ],
+        },
     }
 
     @staticmethod
@@ -52,10 +192,8 @@ class MemoryCoreService:
             .where(AppSetting.key.like(f"{prefix}%"))
             .order_by(AppSetting.updated_at.desc(), AppSetting.id.desc())
         )
-        results: list[dict] = []
-        for record in db.scalars(stmt).all():
-            results.append(MemoryCoreService._serialize_project(user_id, record))
-        return results
+        results = [MemoryCoreService._serialize_project(user_id, record) for record in db.scalars(stmt).all()]
+        return sorted(results, key=MemoryCoreService._project_sort_key)
 
     @staticmethod
     def get_project(db: Session, user_id: str, project_key: str) -> dict | None:
@@ -80,6 +218,12 @@ class MemoryCoreService:
                 **payload,
             },
         )
+        detail = MemoryCoreService._summarize_project_save(current=current, merged=merged, created=record is None)
+        merged["activity_log"] = MemoryCoreService._append_activity_event(
+            current.get("activity_log"),
+            kind="created" if record is None else "saved",
+            detail=detail,
+        )
         if record is None:
             record = AppSetting(
                 key=MemoryCoreService._project_key(user_id, normalized_key),
@@ -88,6 +232,29 @@ class MemoryCoreService:
             db.add(record)
         else:
             record.value_json = merged
+        db.commit()
+        db.refresh(record)
+        return MemoryCoreService._serialize_project(user_id, record)
+
+    @staticmethod
+    def touch_project(db: Session, user_id: str, project_key: str) -> dict | None:
+        record = db.scalar(
+            select(AppSetting).where(AppSetting.key == MemoryCoreService._project_key(user_id, project_key))
+        )
+        if record is None:
+            return None
+        payload = dict(record.value_json or {})
+        payload["last_opened_at"] = datetime.now(timezone.utc).isoformat()
+        payload["open_count"] = MemoryCoreService._clean_int(payload.get("open_count"), minimum=0) + 1
+        payload["activity_log"] = MemoryCoreService._append_activity_event(
+            payload.get("activity_log"),
+            kind="opened",
+            detail=f"Opened project memory ({payload['open_count']} total opens).",
+        )
+        record.value_json = MemoryCoreService._normalize_project_payload(
+            str(payload.get("project_key") or project_key),
+            payload,
+        )
         db.commit()
         db.refresh(record)
         return MemoryCoreService._serialize_project(user_id, record)
@@ -134,6 +301,71 @@ class MemoryCoreService:
             "deleted_profile": deleted_profile,
             "deleted_projects": deleted_projects,
         }
+
+    @staticmethod
+    def list_library_templates() -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for template_key, template in MemoryCoreService.LIBRARY_TEMPLATES.items():
+            results.append(
+                {
+                    "template_key": template_key,
+                    "title": template["title"],
+                    "category": template["category"],
+                    "summary": template["summary"],
+                    "current_focus": template.get("current_focus"),
+                    "session_brief": template.get("session_brief"),
+                    "library_items": list(template.get("library_items", [])),
+                    "next_steps": list(template.get("next_steps", [])),
+                    "reminders": list(template.get("reminders", [])),
+                    "decisions": list(template.get("decisions", [])),
+                    "observations": list(template.get("observations", [])),
+                    "open_questions": list(template.get("open_questions", [])),
+                    "skills": list(template.get("skills", [])),
+                }
+            )
+        return results
+
+    @staticmethod
+    def get_library_template(template_key: str) -> dict[str, Any] | None:
+        normalized = MemoryCoreService.normalize_project_key(template_key)
+        template = MemoryCoreService.LIBRARY_TEMPLATES.get(normalized)
+        if template is None:
+            return None
+        return next(
+            (item for item in MemoryCoreService.list_library_templates() if item["template_key"] == normalized),
+            None,
+        )
+
+    @staticmethod
+    def apply_library_template(db: Session, user_id: str, project_key: str, template_key: str) -> dict | None:
+        project = MemoryCoreService.get_project(db, user_id=user_id, project_key=project_key)
+        template = MemoryCoreService.get_library_template(template_key)
+        if project is None or template is None:
+            return None
+
+        payload: dict[str, Any] = {}
+        for field in ("library_items", "next_steps", "reminders", "decisions", "observations", "open_questions", "skills"):
+            payload[field] = MemoryCoreService._merge_unique_lists(project.get(field, []), template.get(field, []))
+
+        if not project.get("current_focus") and template.get("current_focus"):
+            payload["current_focus"] = template["current_focus"]
+        if not project.get("session_brief") and template.get("session_brief"):
+            payload["session_brief"] = template["session_brief"]
+
+        updated = MemoryCoreService.upsert_project(
+            db,
+            user_id=user_id,
+            project_key=project["project_key"],
+            payload=payload,
+        )
+        updated = MemoryCoreService._append_project_activity(
+            db,
+            user_id=user_id,
+            project_key=project["project_key"],
+            kind="template",
+            detail=f"Applied Memory Core template `{template['title']}`.",
+        ) or updated
+        return updated
 
     @staticmethod
     def build_launcher_bundle(*, server_url: str, user_id: str, wake_name: str, platform: str) -> tuple[str, bytes]:
@@ -268,8 +500,13 @@ class MemoryCoreService:
             f"# MemoryCore: {project['title']}",
             "",
             f"- Project key: `{project['project_key']}`",
+            f"- Status: {project.get('status', 'active')}",
             f"- Updated: {project['updated_at'].isoformat()}",
         ]
+        if project.get("last_opened_at"):
+            lines.append(f"- Last opened: {project['last_opened_at'].isoformat()}")
+        if project.get("open_count"):
+            lines.append(f"- Times opened: {project['open_count']}")
         if project.get("root_hint"):
             lines.append(f"- Local path hint: `{project['root_hint']}`")
         if project.get("repo_origin"):
@@ -277,17 +514,30 @@ class MemoryCoreService:
 
         if project.get("summary"):
             lines.extend(["", "## Project Summary", "", project["summary"]])
+        if project.get("session_brief"):
+            lines.extend(["", "## Session Briefing", "", project["session_brief"]])
+        if project.get("current_focus"):
+            lines.extend(["", "## Current Focus", "", project["current_focus"]])
 
         lines.extend(MemoryCoreService._render_section("Goals", project.get("goals", [])))
+        lines.extend(MemoryCoreService._render_section("Next Steps", project.get("next_steps", [])))
+        lines.extend(MemoryCoreService._render_section("Reminders", project.get("reminders", [])))
+        lines.extend(MemoryCoreService._render_section("Decision Log", project.get("decisions", [])))
+        lines.extend(MemoryCoreService._render_section("Open Questions", project.get("open_questions", [])))
+        lines.extend(MemoryCoreService._render_section("Recent Changes", project.get("recent_changes", [])))
+        lines.extend(MemoryCoreService._render_section("Observations", project.get("observations", [])))
+        lines.extend(MemoryCoreService._render_section("Library Items", project.get("library_items", [])))
+        lines.extend(MemoryCoreService._render_section("Skills & Behaviors", project.get("skills", [])))
         lines.extend(MemoryCoreService._render_section("Stack", project.get("stack", [])))
         lines.extend(MemoryCoreService._render_section("Important Files", project.get("important_files", []), code=True))
         lines.extend(MemoryCoreService._render_section("Useful Commands", project.get("commands", []), code=True))
         lines.extend(MemoryCoreService._render_section("Project Structure", project.get("structure", []), code=True))
         lines.extend(MemoryCoreService._render_section("Project Preferences", project.get("preferences", [])))
         lines.extend(MemoryCoreService._render_section("Project Notes", project.get("notes", [])))
+        lines.extend(MemoryCoreService._render_activity_section(project.get("activity_log", [])))
 
         if profile:
-            lines.extend(["", "## User Memory Profile", ""])
+            lines.extend(["", "## Identity Core", ""])
             if profile.get("display_name"):
                 lines.append(f"- Name: {profile['display_name']}")
             if profile.get("about"):
@@ -295,6 +545,9 @@ class MemoryCoreService:
             lines.extend(MemoryCoreService._render_section("General Preferences", profile.get("preferences", [])))
             lines.extend(MemoryCoreService._render_section("Coding Preferences", profile.get("coding_preferences", [])))
             lines.extend(MemoryCoreService._render_section("Workflow Preferences", profile.get("workflow_preferences", [])))
+            lines.extend(MemoryCoreService._render_section("Identity Notes", profile.get("identity_notes", [])))
+            lines.extend(MemoryCoreService._render_section("Relationship Memory", profile.get("relationship_notes", [])))
+            lines.extend(MemoryCoreService._render_section("Standing Instructions", profile.get("standing_instructions", [])))
             lines.extend(MemoryCoreService._render_section("Persistent Notes", profile.get("notes", [])))
 
         lines.extend(
@@ -303,6 +556,8 @@ class MemoryCoreService:
                 "## How To Use This",
                 "",
                 "- Use this file as standing context for new Codex or Claude Code sessions.",
+                "- Treat the session briefing, reminders, decisions, and open questions as the fastest orientation layer.",
+                "- Archive projects instead of deleting them when you want the memory to stay searchable but out of the hot path.",
                 "- Keep it concise and update it when the project structure or preferences change.",
                 "- The server copy is the source of truth; regenerate this file whenever you pull the latest memory.",
             ]
@@ -310,9 +565,184 @@ class MemoryCoreService:
         return "\n".join(lines).strip() + "\n"
 
     @staticmethod
+    def render_master_memory(profile: dict | None, project: dict | None) -> str:
+        lines = [
+            "# Master Memory",
+            "",
+            "## Loader",
+            "",
+            "- This file is a portable memory entrypoint for AI sessions.",
+            "- Load Identity Core, Relationship Memory, and Current Session before continuing work.",
+        ]
+
+        if profile:
+            lines.extend(
+                [
+                    "",
+                    "## Identity Core",
+                    "",
+                    f"- Name: {profile.get('display_name') or 'Unknown'}",
+                ]
+            )
+            if profile.get("about"):
+                lines.append(f"- About: {profile['about']}")
+            lines.extend(MemoryCoreService._render_section("Preferences", profile.get("preferences", [])))
+            lines.extend(MemoryCoreService._render_section("Coding Preferences", profile.get("coding_preferences", [])))
+            lines.extend(MemoryCoreService._render_section("Workflow Preferences", profile.get("workflow_preferences", [])))
+            lines.extend(MemoryCoreService._render_section("Identity Notes", profile.get("identity_notes", [])))
+            lines.extend(MemoryCoreService._render_section("Relationship Memory", profile.get("relationship_notes", [])))
+            lines.extend(MemoryCoreService._render_section("Standing Instructions", profile.get("standing_instructions", [])))
+
+        if project:
+            lines.extend(
+                [
+                    "",
+                    "## Current Session",
+                    "",
+                    f"- Project: {project['title']}",
+                    f"- Project key: {project['project_key']}",
+                    f"- Status: {project.get('status', 'active')}",
+                ]
+            )
+            if project.get("session_brief"):
+                lines.append(f"- Briefing: {project['session_brief']}")
+            if project.get("current_focus"):
+                lines.append(f"- Current focus: {project['current_focus']}")
+            lines.extend(MemoryCoreService._render_section("Goals", project.get("goals", [])))
+            lines.extend(MemoryCoreService._render_section("Next Steps", project.get("next_steps", [])))
+            lines.extend(MemoryCoreService._render_section("Reminders", project.get("reminders", [])))
+            lines.extend(MemoryCoreService._render_section("Decision Log", project.get("decisions", [])))
+            lines.extend(MemoryCoreService._render_section("Open Questions", project.get("open_questions", [])))
+            lines.extend(MemoryCoreService._render_section("Observations", project.get("observations", [])))
+            lines.extend(MemoryCoreService._render_section("Library Items", project.get("library_items", [])))
+            lines.extend(MemoryCoreService._render_section("Important Files", project.get("important_files", []), code=True))
+            lines.extend(MemoryCoreService._render_section("Useful Commands", project.get("commands", []), code=True))
+            lines.extend(MemoryCoreService._render_activity_section(project.get("activity_log", []), title="Project Timeline"))
+
+        lines.extend(
+            [
+                "",
+                "## Notes",
+                "",
+                "- This export is compatible with MemoryCore-style markdown workflows.",
+                "- The server-backed Memory Core remains the source of truth.",
+            ]
+        )
+        return "\n".join(lines).strip() + "\n"
+
+    @staticmethod
+    def build_session_briefing(db: Session, user_id: str, project_key: str | None = None) -> dict | None:
+        project = None
+        if project_key:
+            project = MemoryCoreService.get_project(db, user_id=user_id, project_key=project_key)
+        if project is None:
+            projects = MemoryCoreService.list_projects(db, user_id=user_id)
+            project = next((item for item in projects if item.get("status") != "archived"), projects[0] if projects else None)
+        if project is None:
+            return None
+
+        lines = [f"## Session briefing for {project['title']}", ""]
+        if project.get("session_brief"):
+            lines.append(project["session_brief"])
+            lines.append("")
+        if project.get("current_focus"):
+            lines.append(f"- Current focus: {project['current_focus']}")
+        for item in project.get("next_steps", [])[:4]:
+            lines.append(f"- Next: {item}")
+        for item in project.get("reminders", [])[:3]:
+            lines.append(f"- Reminder: {item}")
+        for item in project.get("decisions", [])[:3]:
+            lines.append(f"- Decision: {item}")
+        if project.get("important_files"):
+            lines.append(f"- Important files: {', '.join(project['important_files'][:4])}")
+        if project.get("commands"):
+            lines.append(f"- Useful commands: {', '.join(project['commands'][:3])}")
+
+        return {
+            "project_key": project["project_key"],
+            "title": project["title"],
+            "briefing": "\n".join(lines).strip(),
+        }
+
+    @staticmethod
+    def import_master_memory(
+        db: Session,
+        user_id: str,
+        content: str,
+        project_key: str | None = None,
+    ) -> dict:
+        lines = [line.rstrip() for line in str(content or "").splitlines()]
+
+        def extract_bullets(title: str) -> list[str]:
+            target = title.lower()
+            items: list[str] = []
+            active = False
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("## "):
+                    active = stripped[3:].strip().lower() == target
+                    continue
+                if active and stripped.startswith("- "):
+                    items.append(stripped[2:].strip())
+                elif active and stripped.startswith("## "):
+                    break
+            return items
+
+        def find_prefixed(prefix: str) -> str | None:
+            for line in lines:
+                stripped = line.strip()
+                if stripped.lower().startswith(prefix.lower()):
+                    return stripped.split(":", 1)[1].strip() if ":" in stripped else stripped[len(prefix):].strip()
+            return None
+
+        title = find_prefixed("- Project") or find_prefixed("- Name") or project_key or "Imported project"
+        normalized_project_key = MemoryCoreService.normalize_project_key(project_key or title)
+
+        profile_payload = {
+            "display_name": find_prefixed("- Name"),
+            "about": find_prefixed("- About"),
+            "preferences": extract_bullets("Preferences"),
+            "coding_preferences": extract_bullets("Coding Preferences"),
+            "workflow_preferences": extract_bullets("Workflow Preferences"),
+            "identity_notes": extract_bullets("Identity Notes"),
+            "relationship_notes": extract_bullets("Relationship Memory"),
+            "standing_instructions": extract_bullets("Standing Instructions"),
+        }
+        project_payload = {
+            "title": title,
+            "summary": find_prefixed("- Briefing") or "",
+            "current_focus": find_prefixed("- Current focus"),
+            "goals": extract_bullets("Goals"),
+            "next_steps": extract_bullets("Next Steps"),
+            "reminders": extract_bullets("Reminders"),
+            "decisions": extract_bullets("Decision Log"),
+            "open_questions": extract_bullets("Open Questions"),
+            "observations": extract_bullets("Observations"),
+            "library_items": extract_bullets("Library Items"),
+        }
+
+        MemoryCoreService.upsert_profile(db, user_id=user_id, payload=profile_payload)
+        project = MemoryCoreService.upsert_project(db, user_id=user_id, project_key=normalized_project_key, payload=project_payload)
+
+        imported_fields = [
+            key
+            for key, value in {
+                "profile": profile_payload,
+                "project": project_payload,
+            }.items()
+            if any(bool(item) for item in (value.values() if isinstance(value, dict) else []))
+        ]
+        return {
+            "project_key": project["project_key"],
+            "title": project["title"],
+            "imported_fields": imported_fields,
+        }
+
+    @staticmethod
     def build_assistant_context(db: Session, user_id: str, project_key: str | None = None) -> str:
         profile = MemoryCoreService.get_profile(db, user_id=user_id)
         project = MemoryCoreService.get_project(db, user_id=user_id, project_key=project_key) if project_key else None
+        recent_projects = [] if project else MemoryCoreService.list_projects(db, user_id=user_id)[:2]
 
         sections: list[str] = []
         if profile:
@@ -323,17 +753,43 @@ class MemoryCoreService:
                 sections.append(f"- Coding: {item}")
             for item in profile.get("workflow_preferences", [])[:4]:
                 sections.append(f"- Workflow: {item}")
+            for item in profile.get("standing_instructions", [])[:5]:
+                sections.append(f"- Standing instruction: {item}")
+            for item in profile.get("relationship_notes", [])[:4]:
+                sections.append(f"- Relationship memory: {item}")
 
         if project:
             sections.append(f"Current project: {project['title']} (`{project['project_key']}`)")
             if project.get("summary"):
                 sections.append(f"- Summary: {project['summary']}")
+            if project.get("session_brief"):
+                sections.append(f"- Briefing: {project['session_brief']}")
+            if project.get("current_focus"):
+                sections.append(f"- Focus: {project['current_focus']}")
             for item in project.get("stack", [])[:6]:
                 sections.append(f"- Stack: {item}")
             for item in project.get("preferences", [])[:6]:
                 sections.append(f"- Project pref: {item}")
+            for item in project.get("next_steps", [])[:4]:
+                sections.append(f"- Next: {item}")
+            for item in project.get("reminders", [])[:4]:
+                sections.append(f"- Reminder: {item}")
+            for item in project.get("decisions", [])[:4]:
+                sections.append(f"- Decision: {item}")
             for item in project.get("important_files", [])[:8]:
                 sections.append(f"- Important file: {item}")
+        elif recent_projects:
+            sections.append("Recent project memory:")
+            for item in recent_projects:
+                label = item.get("title") or item.get("project_key")
+                status = item.get("status", "active")
+                sections.append(f"- {label} [{status}]")
+                if item.get("current_focus"):
+                    sections.append(f"  Focus: {item['current_focus']}")
+                elif item.get("session_brief"):
+                    sections.append(f"  Briefing: {item['session_brief']}")
+                elif item.get("summary"):
+                    sections.append(f"  Summary: {item['summary']}")
 
         text = "\n".join(sections).strip()
         if len(text) > MemoryCoreService.CONTEXT_CHAR_LIMIT:
@@ -370,9 +826,16 @@ class MemoryCoreService:
             str((record.value_json or {}).get("project_key") or "project"),
             dict(record.value_json or {}),
         )
+        last_opened_at = MemoryCoreService._parse_datetime(payload.get("last_opened_at"))
         return {
             "user_id": user_id,
             **payload,
+            "next_steps_count": len(payload.get("next_steps", [])),
+            "reminders_count": len(payload.get("reminders", [])),
+            "decisions_count": len(payload.get("decisions", [])),
+            "library_items_count": len(payload.get("library_items", [])),
+            "open_questions_count": len(payload.get("open_questions", [])),
+            "last_opened_at": last_opened_at,
             "updated_at": record.updated_at,
         }
 
@@ -384,29 +847,65 @@ class MemoryCoreService:
             "preferences": MemoryCoreService._clean_list(payload.get("preferences")),
             "coding_preferences": MemoryCoreService._clean_list(payload.get("coding_preferences")),
             "workflow_preferences": MemoryCoreService._clean_list(payload.get("workflow_preferences")),
+            "identity_notes": MemoryCoreService._clean_list(payload.get("identity_notes")),
+            "relationship_notes": MemoryCoreService._clean_list(payload.get("relationship_notes")),
+            "standing_instructions": MemoryCoreService._clean_list(payload.get("standing_instructions")),
             "notes": MemoryCoreService._clean_list(payload.get("notes")),
             "tags": MemoryCoreService._clean_list(payload.get("tags")),
-            "schema_version": 1,
+            "schema_version": 2,
         }
 
     @staticmethod
     def _normalize_project_payload(project_key: str, payload: dict[str, Any]) -> dict[str, Any]:
         title = MemoryCoreService._clean_text(payload.get("title")) or project_key.replace("-", " ").title()
+        summary = MemoryCoreService._clean_text(payload.get("summary")) or ""
+        stack = MemoryCoreService._clean_list(payload.get("stack"))
+        goals = MemoryCoreService._clean_list(payload.get("goals"))
+        next_steps = MemoryCoreService._clean_list(payload.get("next_steps"))
+        reminders = MemoryCoreService._clean_list(payload.get("reminders"))
+        decisions = MemoryCoreService._clean_list(payload.get("decisions"))
+        observations = MemoryCoreService._clean_list(payload.get("observations"))
+        library_items = MemoryCoreService._clean_list(payload.get("library_items"))
+        open_questions = MemoryCoreService._clean_list(payload.get("open_questions"))
+        recent_changes = MemoryCoreService._clean_list(payload.get("recent_changes"))
+        skills = MemoryCoreService._clean_list(payload.get("skills"))
+        activity_log = MemoryCoreService._normalize_activity_log(payload.get("activity_log"))
+        session_brief = MemoryCoreService._clean_text(payload.get("session_brief")) or MemoryCoreService._auto_session_brief(
+            title=title,
+            summary=summary,
+            stack=stack,
+            current_focus=MemoryCoreService._clean_text(payload.get("current_focus")),
+            next_steps=next_steps,
+        )
         return {
             "project_key": MemoryCoreService.normalize_project_key(project_key),
             "title": title,
-            "summary": MemoryCoreService._clean_text(payload.get("summary")) or "",
+            "summary": summary,
+            "status": MemoryCoreService._normalize_status(payload.get("status")),
             "root_hint": MemoryCoreService._clean_text(payload.get("root_hint")),
             "repo_origin": MemoryCoreService._clean_text(payload.get("repo_origin")),
-            "stack": MemoryCoreService._clean_list(payload.get("stack")),
-            "goals": MemoryCoreService._clean_list(payload.get("goals")),
+            "current_focus": MemoryCoreService._clean_text(payload.get("current_focus")),
+            "session_brief": session_brief,
+            "stack": stack,
+            "goals": goals,
+            "next_steps": next_steps,
+            "reminders": reminders,
+            "decisions": decisions,
+            "observations": observations,
+            "library_items": library_items,
+            "open_questions": open_questions,
+            "recent_changes": recent_changes,
+            "skills": skills,
+            "activity_log": activity_log,
             "important_files": MemoryCoreService._clean_list(payload.get("important_files")),
             "commands": MemoryCoreService._clean_list(payload.get("commands")),
             "structure": MemoryCoreService._clean_list(payload.get("structure")),
             "preferences": MemoryCoreService._clean_list(payload.get("preferences")),
             "notes": MemoryCoreService._clean_list(payload.get("notes")),
             "tags": MemoryCoreService._clean_list(payload.get("tags")),
-            "schema_version": 1,
+            "last_opened_at": MemoryCoreService._clean_text(payload.get("last_opened_at")),
+            "open_count": MemoryCoreService._clean_int(payload.get("open_count"), minimum=0),
+            "schema_version": 2,
         }
 
     @staticmethod
@@ -428,6 +927,151 @@ class MemoryCoreService:
             seen.add(lowered)
             results.append(text)
         return results[:80]
+
+    @staticmethod
+    def _clean_int(value: Any, *, minimum: int = 0) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return minimum
+        return max(minimum, parsed)
+
+    @staticmethod
+    def _normalize_activity_log(value: Any) -> list[dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        results: list[dict[str, str]] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            kind = str(item.get("kind", "")).strip().lower() or "note"
+            detail = str(item.get("detail", "")).strip()
+            at = str(item.get("at", "")).strip()
+            if not detail:
+                continue
+            results.append({"kind": kind, "detail": detail, "at": at})
+        return results[: MemoryCoreService.ACTIVITY_LOG_LIMIT]
+
+    @staticmethod
+    def _normalize_status(value: Any) -> str:
+        text = str(value or "").strip().lower()
+        if text in MemoryCoreService.PROJECT_STATUSES:
+            return text
+        return "active"
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> datetime | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _project_sort_key(project: dict[str, Any]) -> tuple[int, float, float]:
+        status_rank = 0 if project.get("status") == "active" else 1
+        last_opened = project.get("last_opened_at")
+        updated_at = project.get("updated_at")
+        last_opened_ts = last_opened.timestamp() if isinstance(last_opened, datetime) else 0.0
+        updated_ts = updated_at.timestamp() if isinstance(updated_at, datetime) else 0.0
+        return (status_rank, -max(last_opened_ts, updated_ts), -updated_ts)
+
+    @staticmethod
+    def _append_activity_event(current_log: Any, *, kind: str, detail: str) -> list[dict[str, str]]:
+        normalized = MemoryCoreService._normalize_activity_log(current_log)
+        event = {
+            "kind": kind,
+            "detail": detail,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+        return [event, *normalized][: MemoryCoreService.ACTIVITY_LOG_LIMIT]
+
+    @staticmethod
+    def _append_project_activity(
+        db: Session,
+        *,
+        user_id: str,
+        project_key: str,
+        kind: str,
+        detail: str,
+    ) -> dict | None:
+        record = db.scalar(
+            select(AppSetting).where(AppSetting.key == MemoryCoreService._project_key(user_id, project_key))
+        )
+        if record is None:
+            return None
+        payload = dict(record.value_json or {})
+        payload["activity_log"] = MemoryCoreService._append_activity_event(payload.get("activity_log"), kind=kind, detail=detail)
+        record.value_json = MemoryCoreService._normalize_project_payload(
+            str(payload.get("project_key") or project_key),
+            payload,
+        )
+        db.commit()
+        db.refresh(record)
+        return MemoryCoreService._serialize_project(user_id, record)
+
+    @staticmethod
+    def _merge_unique_lists(existing: Any, additions: Any) -> list[str]:
+        items = MemoryCoreService._clean_list(existing)
+        seen = {item.lower() for item in items}
+        for item in MemoryCoreService._clean_list(additions):
+            lowered = item.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            items.append(item)
+        return items[:80]
+
+    @staticmethod
+    def _summarize_project_save(*, current: dict[str, Any], merged: dict[str, Any], created: bool) -> str:
+        if created:
+            return "Created project memory."
+        changes: list[str] = []
+        if current.get("current_focus") != merged.get("current_focus") and merged.get("current_focus"):
+            changes.append(f"Updated focus to {merged['current_focus']}.")
+        if current.get("status") != merged.get("status"):
+            changes.append(f"Status set to {merged['status']}.")
+        if not changes:
+            changes.append("Saved project memory snapshot.")
+        return " ".join(changes)
+
+    @staticmethod
+    def _render_activity_section(activity_log: list[dict[str, str]], *, title: str = "Activity Timeline") -> list[str]:
+        if not activity_log:
+            return []
+        lines = ["", f"## {title}", ""]
+        for item in activity_log:
+            detail = str(item.get("detail", "")).strip()
+            at = str(item.get("at", "")).strip()
+            if at:
+                lines.append(f"- [{at}] {detail}")
+            elif detail:
+                lines.append(f"- {detail}")
+        return lines
+
+    @staticmethod
+    def _auto_session_brief(
+        *,
+        title: str,
+        summary: str,
+        stack: list[str],
+        current_focus: str | None,
+        next_steps: list[str],
+    ) -> str:
+        parts: list[str] = []
+        if summary:
+            parts.append(summary.rstrip("."))
+        else:
+            parts.append(f"{title} is an actively tracked project")
+        if current_focus:
+            parts.append(f"Current focus: {current_focus.rstrip('.')}")
+        elif next_steps:
+            parts.append(f"Immediate next step: {next_steps[0].rstrip('.')}")
+        if stack:
+            parts.append(f"Main stack: {', '.join(stack[:4])}")
+        return ". ".join(part for part in parts if part).strip().rstrip(".") + "."
 
     @staticmethod
     def _profile_key(user_id: str) -> str:

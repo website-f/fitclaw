@@ -97,6 +97,7 @@
           <span>Memory Core</span>
           <span class="nav-badge" id="memoryCoreCount">0</span>
         </button>
+        <a class="nav-sub-link" href="/memorycore">Open full Memory Core page</a>
       </section>
 
       <!-- Nav: Profile (collapsible) -->
@@ -324,13 +325,21 @@
             <div class="memorycore-launcher-actions">
               <button class="primary-button small-button" id="downloadMemoryCoreBundleButton" type="button">Download installable bundle</button>
               <button class="ghost-button small-button" id="downloadMemoryCoreMarkdownButton" type="button">Download MEMORYCORE.md</button>
+              <button class="ghost-button small-button" id="downloadMasterMemoryButton" type="button">Download master-memory.md</button>
+              <button class="ghost-button small-button" id="importMasterMemoryButton" type="button">Import master-memory.md</button>
             </div>
+            <input id="memoryCoreImportFile" type="file" accept=".md,text/markdown,text/plain" hidden />
           </section>
           <section class="memorycore-profile-card" id="memoryCoreProfile"></section>
           <section class="memorycore-projects-card">
             <div class="memorycore-section-head">
               <strong>Saved projects</strong>
               <span id="memoryCoreStatus">Loading...</span>
+            </div>
+            <div class="memorycore-filter-row">
+              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterAllButton" type="button">All</button>
+              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterActiveButton" type="button">Active</button>
+              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterArchivedButton" type="button">Archived</button>
             </div>
             <div class="memorycore-project-list" id="memoryCoreProjectList"></div>
           </section>
@@ -343,6 +352,8 @@
               <p id="memoryCoreProjectMeta">Open one of your saved project memories to inspect the full snapshot.</p>
             </div>
             <div class="memorycore-viewer-actions">
+              <button class="primary-button small-button" id="startMemoryCoreBriefingButton" type="button">Start briefed chat</button>
+              <button class="ghost-button small-button" id="archiveMemoryCoreProjectButton" type="button">Archive</button>
               <button class="ghost-button small-button" id="copyMemoryCoreButton" type="button">Copy</button>
               <button class="ghost-button small-button danger-button" id="deleteMemoryCoreProjectButton" type="button">Delete</button>
             </div>

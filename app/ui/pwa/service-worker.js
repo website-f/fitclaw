@@ -1,8 +1,10 @@
-const CACHE_NAME = "fitclaw-aiops-shell-v22";
+const CACHE_NAME = "fitclaw-aiops-shell-v25";
 const APP_SHELL = [
   "/app-manifest.webmanifest",
   "/app-assets/chat-app.css",
   "/app-assets/chat-app.js",
+  "/app-assets/memorycore-page.css",
+  "/app-assets/memorycore-page.js",
   "/app-assets/transit-live.css",
   "/app-assets/transit-live.js",
   "/app-assets/icons/icon-192.png",
@@ -39,7 +41,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   const isNavigation = request.mode === "navigate" || request.destination === "document";
 
-  if (isNavigation && (url.pathname === "/app" || url.pathname === "/transit-live")) {
+  if (isNavigation && (url.pathname === "/app" || url.pathname === "/memorycore" || url.pathname === "/transit-live")) {
     event.respondWith(
       fetch(request)
         .then((response) => {

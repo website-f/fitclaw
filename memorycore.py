@@ -237,6 +237,63 @@ def _detect_commands(project_path: Path) -> list[str]:
     return commands[:12]
 
 
+def _derive_current_focus(summary: str, goals: list[str], stack: list[str]) -> str:
+    if goals:
+        return goals[0]
+    if summary:
+        return summary.split(".")[0].strip()
+    if stack:
+        return f"Maintain and extend the {', '.join(stack[:3])} project flow"
+    return "Keep the current project memory in sync"
+
+
+def _derive_next_steps(goals: list[str], commands: list[str], important_files: list[str]) -> list[str]:
+    steps: list[str] = []
+    steps.extend(goals[:4])
+    if commands:
+        steps.append(f"Run `{commands[0]}` to regain project context quickly")
+    if important_files:
+        steps.append(f"Review `{important_files[0]}` before making structural changes")
+    return list(dict.fromkeys(steps))[:6]
+
+
+def _derive_observations(project_path: Path, directories: list[str], files: list[str], stack: list[str]) -> list[str]:
+    observations: list[str] = []
+    if stack:
+        observations.append(f"Primary stack detected: {', '.join(stack[:4])}")
+    if directories:
+        observations.append(f"Important top-level structure includes {', '.join(directories[:4])}")
+    if files:
+        observations.append(f"Representative files include {', '.join(files[:4])}")
+    observations.append(f"Snapshot captured from {project_path}")
+    return observations[:6]
+
+
+def _derive_library_items(important_files: list[str], commands: list[str]) -> list[str]:
+    items: list[str] = []
+    for path in important_files[:4]:
+        items.append(f"Reference: {path}")
+    for command in commands[:3]:
+        items.append(f"Reusable command: {command}")
+    return items[:8]
+
+
+def _derive_skills(stack: list[str], files: list[str]) -> list[str]:
+    skills: list[str] = []
+    lowered_files = "\n".join(files).lower()
+    for item in stack:
+        skills.append(item)
+    if "docker compose" in " ".join(stack).lower() or "docker-compose" in lowered_files:
+        skills.append("Container orchestration")
+    if "fastapi" in " ".join(stack).lower():
+        skills.append("API service changes")
+    if "react-style frontend" in " ".join(stack).lower():
+        skills.append("Frontend UI iteration")
+    if "capacitor" in lowered_files:
+        skills.append("Mobile wrapper packaging")
+    return list(dict.fromkeys(skills))[:8]
+
+
 def _git_origin(project_path: Path) -> str | None:
     try:
         result = subprocess.run(
@@ -262,18 +319,35 @@ def _build_project_payload(args) -> tuple[str, dict[str, Any], Path]:
     project_key = _slugify(getattr(args, "project_key", None) or project_path.name)
     directories, files = _collect_structure(project_path)
     summary = (getattr(args, "summary", None) or _first_readme_summary(project_path) or f"Memory snapshot for {project_path.name}.").strip()
+    stack = list(dict.fromkeys([*(getattr(args, "stack", []) or []), *_detect_stack(project_path, files)]))
+    important_files = list(dict.fromkeys([*(getattr(args, "important_file", []) or []), *_important_files(files)]))
+    commands = list(dict.fromkeys([*(getattr(args, "command", []) or []), *_detect_commands(project_path)]))
+    goals = getattr(args, "goal", []) or []
+    preferences = getattr(args, "preference", []) or []
+    notes = getattr(args, "note", []) or []
     payload = {
         "title": getattr(args, "title", None) or project_path.name.replace("-", " ").replace("_", " ").title(),
         "summary": summary,
+        "status": getattr(args, "status", None) or "active",
         "root_hint": str(project_path),
         "repo_origin": getattr(args, "repo_origin", None) or _git_origin(project_path),
-        "stack": list(dict.fromkeys([*(getattr(args, "stack", []) or []), *_detect_stack(project_path, files)])),
-        "goals": getattr(args, "goal", []) or [],
-        "important_files": list(dict.fromkeys([*(getattr(args, "important_file", []) or []), *_important_files(files)])),
-        "commands": list(dict.fromkeys([*(getattr(args, "command", []) or []), *_detect_commands(project_path)])),
+        "current_focus": getattr(args, "current_focus", None) or _derive_current_focus(summary, goals, stack),
+        "session_brief": getattr(args, "session_brief", None),
+        "stack": stack,
+        "goals": goals,
+        "next_steps": getattr(args, "next_step", []) or _derive_next_steps(goals, commands, important_files),
+        "reminders": getattr(args, "reminder", []) or [],
+        "decisions": getattr(args, "decision", []) or [],
+        "observations": getattr(args, "observation", []) or _derive_observations(project_path, directories, files, stack),
+        "library_items": getattr(args, "library_item", []) or _derive_library_items(important_files, commands),
+        "open_questions": getattr(args, "question", []) or [],
+        "recent_changes": getattr(args, "recent_change", []) or [],
+        "skills": getattr(args, "skill", []) or _derive_skills(stack, files),
+        "important_files": important_files,
+        "commands": commands,
         "structure": list(dict.fromkeys([*directories, *files[:20]]))[:60],
-        "preferences": getattr(args, "preference", []) or [],
-        "notes": getattr(args, "note", []) or [],
+        "preferences": preferences,
+        "notes": notes,
         "tags": getattr(args, "tag", []) or [],
     }
     return project_key, payload, project_path
@@ -538,8 +612,19 @@ def build_parser() -> argparse.ArgumentParser:
     project_save.add_argument("--project-key")
     project_save.add_argument("--title")
     project_save.add_argument("--summary")
+    project_save.add_argument("--status")
     project_save.add_argument("--repo-origin")
+    project_save.add_argument("--current-focus")
+    project_save.add_argument("--session-brief")
     project_save.add_argument("--goal", action="append", default=[])
+    project_save.add_argument("--next-step", action="append", default=[])
+    project_save.add_argument("--reminder", action="append", default=[])
+    project_save.add_argument("--decision", action="append", default=[])
+    project_save.add_argument("--observation", action="append", default=[])
+    project_save.add_argument("--library-item", action="append", default=[])
+    project_save.add_argument("--question", action="append", default=[])
+    project_save.add_argument("--recent-change", action="append", default=[])
+    project_save.add_argument("--skill", action="append", default=[])
     project_save.add_argument("--stack", action="append", default=[])
     project_save.add_argument("--command", action="append", default=[])
     project_save.add_argument("--important-file", action="append", default=[])
@@ -573,6 +658,16 @@ def build_parser() -> argparse.ArgumentParser:
     say_parser.add_argument("--output")
     say_parser.add_argument("--preference", action="append", default=[])
     say_parser.add_argument("--note", action="append", default=[])
+    say_parser.add_argument("--status")
+    say_parser.add_argument("--goal", action="append", default=[])
+    say_parser.add_argument("--next-step", action="append", default=[])
+    say_parser.add_argument("--reminder", action="append", default=[])
+    say_parser.add_argument("--decision", action="append", default=[])
+    say_parser.add_argument("--observation", action="append", default=[])
+    say_parser.add_argument("--library-item", action="append", default=[])
+    say_parser.add_argument("--question", action="append", default=[])
+    say_parser.add_argument("--recent-change", action="append", default=[])
+    say_parser.add_argument("--skill", action="append", default=[])
     say_parser.add_argument("--no-write-local", action="store_true")
     say_parser.set_defaults(func=cmd_say)
 

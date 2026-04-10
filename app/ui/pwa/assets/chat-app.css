@@ -491,6 +491,15 @@ body::before {
 .nav-link-icon { flex-shrink: 0; color: var(--accent); }
 .nav-section-link > span:first-of-type { flex: 1; }
 .nav-link-arrow { flex-shrink: 0; color: var(--muted); }
+.nav-sub-link {
+  display: inline-flex;
+  margin-left: 2rem;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-decoration: none;
+}
+.nav-sub-link:hover { color: var(--text); }
 
 /* Profile nav body */
 #navProfile .nav-section-body {
@@ -1518,6 +1527,31 @@ select option {
   gap: 0.55rem;
 }
 
+.memorycore-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.memorycore-filter-button.is-active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.26);
+  color: var(--accent);
+}
+
+.memorycore-tag-cluster {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.memorycore-tag-cluster small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .memorycore-tag-row {
   display: flex;
   flex-wrap: wrap;
@@ -1582,6 +1616,44 @@ select option {
   gap: 0.5rem;
 }
 
+.memorycore-project-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.memorycore-project-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memorycore-project-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.3rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+
+.memorycore-project-status.is-active {
+  color: var(--success);
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.18);
+}
+
+.memorycore-project-status.is-archived {
+  color: var(--muted-strong);
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
 .memorycore-project-item time,
 .memorycore-project-item small {
   color: var(--muted);
@@ -1597,6 +1669,66 @@ select option {
   min-height: 0;
   overflow-y: auto;
   padding-right: 0.2rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.memorycore-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.memorycore-metric-card,
+.memorycore-detail-section {
+  padding: 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.memorycore-metric-card {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.memorycore-metric-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.memorycore-metric-value {
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.memorycore-detail-section {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.memorycore-detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.memorycore-detail-heading span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.memorycore-detail-list {
+  display: grid;
+  gap: 0.45rem;
+  padding-left: 1rem;
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  line-height: 1.55;
 }
 
 .memorycore-markdown {
@@ -1834,6 +1966,10 @@ select option {
   }
 
   .memorycore-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .memorycore-detail-grid {
     grid-template-columns: 1fr;
   }
 

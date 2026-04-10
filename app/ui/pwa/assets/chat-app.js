@@ -35,10 +35,12 @@ const state = {
     error: "",
     profile: null,
     projects: [],
+    selectedProject: null,
     selectedProjectKey: "",
     selectedMarkdown: "",
     wakeName: "jarvis",
     platform: "windows-x64",
+    filter: "all",
   },
 };
 
@@ -105,12 +107,20 @@ const dom = {
   memoryCoreLauncherCopy: document.getElementById("memoryCoreLauncherCopy"),
   downloadMemoryCoreBundleButton: document.getElementById("downloadMemoryCoreBundleButton"),
   downloadMemoryCoreMarkdownButton: document.getElementById("downloadMemoryCoreMarkdownButton"),
+  downloadMasterMemoryButton: document.getElementById("downloadMasterMemoryButton"),
+  importMasterMemoryButton: document.getElementById("importMasterMemoryButton"),
+  memoryCoreImportFile: document.getElementById("memoryCoreImportFile"),
   memoryCoreProfile: document.getElementById("memoryCoreProfile"),
   memoryCoreStatus: document.getElementById("memoryCoreStatus"),
+  memoryCoreFilterAllButton: document.getElementById("memoryCoreFilterAllButton"),
+  memoryCoreFilterActiveButton: document.getElementById("memoryCoreFilterActiveButton"),
+  memoryCoreFilterArchivedButton: document.getElementById("memoryCoreFilterArchivedButton"),
   memoryCoreProjectList: document.getElementById("memoryCoreProjectList"),
   memoryCoreProjectTitle: document.getElementById("memoryCoreProjectTitle"),
   memoryCoreProjectMeta: document.getElementById("memoryCoreProjectMeta"),
   memoryCoreViewerBody: document.getElementById("memoryCoreViewerBody"),
+  startMemoryCoreBriefingButton: document.getElementById("startMemoryCoreBriefingButton"),
+  archiveMemoryCoreProjectButton: document.getElementById("archiveMemoryCoreProjectButton"),
   copyMemoryCoreButton: document.getElementById("copyMemoryCoreButton"),
   deleteMemoryCoreProjectButton: document.getElementById("deleteMemoryCoreProjectButton"),
   closeInspectorButton: document.getElementById("closeInspectorButton"),
@@ -183,10 +193,18 @@ function bindEvents() {
   dom.clearAllMemoryCoreButton.addEventListener("click", () => void clearAllMemoryCore());
   dom.copyMemoryCoreButton.addEventListener("click", () => void copyMemoryCoreMarkdown());
   dom.deleteMemoryCoreProjectButton.addEventListener("click", () => void deleteSelectedMemoryCoreProject());
+  dom.archiveMemoryCoreProjectButton.addEventListener("click", () => void toggleArchiveSelectedMemoryCoreProject());
   dom.downloadMemoryCoreBundleButton.addEventListener("click", () => void downloadMemoryCoreBundle());
   dom.downloadMemoryCoreMarkdownButton.addEventListener("click", downloadSelectedMemoryCoreMarkdown);
+  dom.downloadMasterMemoryButton.addEventListener("click", () => void downloadSelectedMasterMemory());
+  dom.importMasterMemoryButton.addEventListener("click", () => dom.memoryCoreImportFile.click());
+  dom.memoryCoreImportFile.addEventListener("change", onMemoryCoreImportFileSelected);
+  dom.startMemoryCoreBriefingButton.addEventListener("click", () => void startMemoryCoreBriefingChat());
   dom.memoryCoreWakeNameInput.addEventListener("input", onMemoryCoreWakeNameInput);
   dom.memoryCorePlatformSelect.addEventListener("change", onMemoryCorePlatformChange);
+  dom.memoryCoreFilterAllButton.addEventListener("click", () => setMemoryCoreFilter("all"));
+  dom.memoryCoreFilterActiveButton.addEventListener("click", () => setMemoryCoreFilter("active"));
+  dom.memoryCoreFilterArchivedButton.addEventListener("click", () => setMemoryCoreFilter("archived"));
   dom.memoryCoreModal.addEventListener("click", (event) => {
     if (event.target === dom.memoryCoreModal) {
       closeMemoryCore();
@@ -581,11 +599,7 @@ async function loadMemoryCoreSummary(loadSelectedProject = false) {
     state.memoryCore.profile = profile;
     state.memoryCore.projects = Array.isArray(projects) ? projects : [];
 
-    const hasSelection = state.memoryCore.projects.some((item) => item.project_key === state.memoryCore.selectedProjectKey);
-    if (!hasSelection) {
-      state.memoryCore.selectedProjectKey = state.memoryCore.projects[0]?.project_key || "";
-      state.memoryCore.selectedMarkdown = "";
-    }
+    syncMemoryCoreSelection();
 
     if (loadSelectedProject && state.memoryCore.selectedProjectKey) {
       await loadMemoryCoreProject(state.memoryCore.selectedProjectKey);
@@ -601,6 +615,7 @@ async function loadMemoryCoreSummary(loadSelectedProject = false) {
 
 async function loadMemoryCoreProject(projectKey) {
   if (!projectKey) {
+    state.memoryCore.selectedProject = null;
     state.memoryCore.selectedProjectKey = "";
     state.memoryCore.selectedMarkdown = "";
     renderMemoryCore();
@@ -613,11 +628,22 @@ async function loadMemoryCoreProject(projectKey) {
   renderMemoryCore();
 
   try {
-    state.memoryCore.selectedMarkdown = await fetchText(
-      `/api/v1/memorycore/projects/${encodeURIComponent(projectKey)}/markdown?user_id=${encodeURIComponent(state.userId)}`
+    const [project, markdown, touchedProject] = await Promise.all([
+      fetchJson(`/api/v1/memorycore/projects/${encodeURIComponent(projectKey)}?user_id=${encodeURIComponent(state.userId)}`),
+      fetchText(`/api/v1/memorycore/projects/${encodeURIComponent(projectKey)}/markdown?user_id=${encodeURIComponent(state.userId)}`),
+      fetchJson(`/api/v1/memorycore/projects/${encodeURIComponent(projectKey)}/touch?user_id=${encodeURIComponent(state.userId)}`, {
+        method: "POST",
+      }).catch(() => null),
+    ]);
+    const normalizedProject = touchedProject || project;
+    state.memoryCore.selectedProject = normalizedProject;
+    state.memoryCore.selectedMarkdown = markdown;
+    state.memoryCore.projects = state.memoryCore.projects.map((item) =>
+      item.project_key === normalizedProject.project_key ? { ...item, ...normalizedProject } : item
     );
   } catch (error) {
     console.error("Failed to load Memory Core project", error);
+    state.memoryCore.selectedProject = null;
     state.memoryCore.selectedMarkdown = "";
     state.memoryCore.error = error.message || String(error);
   } finally {
@@ -627,7 +653,7 @@ async function loadMemoryCoreProject(projectKey) {
 }
 
 async function deleteSelectedMemoryCoreProject() {
-  const project = state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey);
+  const project = state.memoryCore.selectedProject || state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey);
   if (!project) return;
   if (!confirm(`Delete Memory Core project "${project.title}"?`)) return;
 
@@ -636,6 +662,7 @@ async function deleteSelectedMemoryCoreProject() {
       `/api/v1/memorycore/projects/${encodeURIComponent(project.project_key)}?user_id=${encodeURIComponent(state.userId)}`,
       { method: "DELETE" }
     );
+    state.memoryCore.selectedProject = null;
     state.memoryCore.selectedMarkdown = "";
     await loadMemoryCoreSummary(Boolean(state.memoryCore.projects.length > 1));
   } catch (error) {
@@ -652,12 +679,71 @@ async function clearAllMemoryCore() {
     await fetchJson(`/api/v1/memorycore/?user_id=${encodeURIComponent(state.userId)}`, { method: "DELETE" });
     state.memoryCore.profile = null;
     state.memoryCore.projects = [];
+    state.memoryCore.selectedProject = null;
     state.memoryCore.selectedProjectKey = "";
     state.memoryCore.selectedMarkdown = "";
     state.memoryCore.error = "";
     renderMemoryCore();
   } catch (error) {
     console.error("Failed to clear Memory Core", error);
+    state.memoryCore.error = error.message || String(error);
+    renderMemoryCore();
+  }
+}
+
+function setMemoryCoreFilter(nextFilter) {
+  state.memoryCore.filter = nextFilter;
+  syncMemoryCoreSelection();
+  renderMemoryCore();
+}
+
+function getVisibleMemoryCoreProjects() {
+  if (state.memoryCore.filter === "active") {
+    return state.memoryCore.projects.filter((item) => item.status !== "archived");
+  }
+  if (state.memoryCore.filter === "archived") {
+    return state.memoryCore.projects.filter((item) => item.status === "archived");
+  }
+  return state.memoryCore.projects;
+}
+
+function syncMemoryCoreSelection() {
+  const visibleProjects = getVisibleMemoryCoreProjects();
+  const hasVisibleSelection = visibleProjects.some((item) => item.project_key === state.memoryCore.selectedProjectKey);
+  if (!hasVisibleSelection) {
+    state.memoryCore.selectedProjectKey = visibleProjects[0]?.project_key || "";
+    state.memoryCore.selectedMarkdown = "";
+  }
+  state.memoryCore.selectedProject =
+    state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey) || null;
+}
+
+async function toggleArchiveSelectedMemoryCoreProject() {
+  const project =
+    state.memoryCore.selectedProject ||
+    state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey);
+  if (!project) return;
+
+  const nextStatus = project.status === "archived" ? "active" : "archived";
+  const actionLabel = nextStatus === "archived" ? "archive" : "restore";
+  if (!confirm(`Do you want to ${actionLabel} "${project.title}" in Memory Core?`)) return;
+
+  try {
+    const updated = await fetchJson(
+      `/api/v1/memorycore/projects/${encodeURIComponent(project.project_key)}/status?user_id=${encodeURIComponent(state.userId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ status: nextStatus }),
+      }
+    );
+    state.memoryCore.projects = state.memoryCore.projects.map((item) =>
+      item.project_key === updated.project_key ? { ...item, ...updated } : item
+    );
+    state.memoryCore.selectedProject = updated;
+    syncMemoryCoreSelection();
+    renderMemoryCore();
+  } catch (error) {
+    console.error("Failed to update Memory Core project status", error);
     state.memoryCore.error = error.message || String(error);
     renderMemoryCore();
   }
@@ -680,9 +766,20 @@ async function copyMemoryCoreMarkdown() {
 }
 
 function renderMemoryCore() {
+  const visibleProjects = getVisibleMemoryCoreProjects();
+  const activeCount = state.memoryCore.projects.filter((item) => item.status !== "archived").length;
+  const archivedCount = state.memoryCore.projects.filter((item) => item.status === "archived").length;
+  const viewerProject =
+    state.memoryCore.selectedProject ||
+    state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey) ||
+    null;
+
   dom.memoryCoreCount.textContent = String(state.memoryCore.projects.length || 0);
   dom.memoryCoreWakeNameInput.value = state.memoryCore.wakeName;
   dom.memoryCorePlatformSelect.value = state.memoryCore.platform;
+  dom.memoryCoreFilterAllButton.classList.toggle("is-active", state.memoryCore.filter === "all");
+  dom.memoryCoreFilterActiveButton.classList.toggle("is-active", state.memoryCore.filter === "active");
+  dom.memoryCoreFilterArchivedButton.classList.toggle("is-active", state.memoryCore.filter === "archived");
   const platformLabel = getMemoryCorePlatformLabel(state.memoryCore.platform);
   dom.memoryCoreLauncherCopy.innerHTML = `
     <div>Installable bundle for ${escapeHtml(platformLabel)}:</div>
@@ -692,11 +789,11 @@ function renderMemoryCore() {
     <div>The download now includes a double-click install helper so users do not need local Python or manual PATH setup.</div>
     <div>Need a native Windows installer or macOS pkg/dmg too? Use the GitHub <code class="inline-code">Build MemoryCore Installers</code> workflow.</div>
   `;
-
   const profile = state.memoryCore.profile;
-  const viewerProject = state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey) || null;
-  const hasProjects = state.memoryCore.projects.length > 0;
+  const hasProjects = visibleProjects.length > 0;
   dom.downloadMemoryCoreMarkdownButton.disabled = !state.memoryCore.selectedMarkdown;
+  dom.downloadMasterMemoryButton.disabled = !viewerProject;
+  dom.startMemoryCoreBriefingButton.disabled = !viewerProject;
 
   dom.memoryCoreProfile.innerHTML = "";
   if (profile) {
@@ -706,23 +803,14 @@ function renderMemoryCore() {
       <strong>${escapeHtml(profile.display_name || state.userId)}</strong>
       <p>${escapeHtml(profile.about || "Server-synced preferences that travel with you across devices and repos.")}</p>
     `;
-
-    const tags = [
-      ...(profile.preferences || []).slice(0, 3),
-      ...(profile.coding_preferences || []).slice(0, 2),
-      ...(profile.workflow_preferences || []).slice(0, 2),
-    ];
-    if (tags.length) {
-      const tagRow = document.createElement("div");
-      tagRow.className = "memorycore-tag-row";
-      tags.forEach((tag) => {
-        const chip = document.createElement("span");
-        chip.className = "memorycore-tag";
-        chip.textContent = tag;
-        tagRow.appendChild(chip);
-      });
-      profileWrap.appendChild(tagRow);
-    }
+    profileWrap.appendChild(renderMemoryCoreTagRow("Identity", profile.identity_notes || []));
+    profileWrap.appendChild(renderMemoryCoreTagRow("Relationship", profile.relationship_notes || []));
+    profileWrap.appendChild(renderMemoryCoreTagRow("Standing", profile.standing_instructions || []));
+    profileWrap.appendChild(renderMemoryCoreTagRow("Preferences", [
+      ...(profile.preferences || []),
+      ...(profile.coding_preferences || []),
+      ...(profile.workflow_preferences || []),
+    ]));
 
     dom.memoryCoreProfile.appendChild(profileWrap);
   } else {
@@ -739,30 +827,37 @@ function renderMemoryCore() {
   } else if (state.memoryCore.error) {
     dom.memoryCoreStatus.textContent = "Needs attention";
   } else {
-    dom.memoryCoreStatus.textContent = `${state.memoryCore.projects.length} project${state.memoryCore.projects.length === 1 ? "" : "s"}`;
+    dom.memoryCoreStatus.textContent = `${activeCount} active · ${archivedCount} archived`;
   }
 
   dom.memoryCoreProjectList.innerHTML = "";
   if (!hasProjects) {
-    dom.memoryCoreProjectList.innerHTML = `<div class="memorycore-empty">No project memories stored yet. Use MemoryCore in your terminal to save one from a repo.</div>`;
+    dom.memoryCoreProjectList.innerHTML = `<div class="memorycore-empty">No project memories stored for this filter yet. Save one from a repo or switch the Memory Core filter.</div>`;
   } else {
-    state.memoryCore.projects.forEach((project) => {
+    visibleProjects.forEach((project) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `memorycore-project-item${project.project_key === state.memoryCore.selectedProjectKey ? " active" : ""}`;
       button.innerHTML = `
         <div class="memorycore-project-title-row">
-          <strong>${escapeHtml(project.title)}</strong>
-          <time>${escapeHtml(formatDateTime(project.updated_at))}</time>
+          <div class="memorycore-project-heading">
+            <strong>${escapeHtml(project.title)}</strong>
+            <span class="memorycore-project-status ${project.status === "archived" ? "is-archived" : "is-active"}">${escapeHtml(project.status || "active")}</span>
+          </div>
+          <time>${escapeHtml(formatDateTime(project.last_opened_at || project.updated_at))}</time>
         </div>
-        <div class="memorycore-project-summary">${escapeHtml(project.summary || "No summary yet.")}</div>
-        <small>${escapeHtml((project.stack || []).slice(0, 3).join(" · ") || project.project_key)}</small>
+        <div class="memorycore-project-summary">${escapeHtml(project.current_focus || project.session_brief || project.summary || "No summary yet.")}</div>
+        <small>${escapeHtml(buildMemoryCoreProjectMeta(project))}</small>
       `;
       button.addEventListener("click", () => void loadMemoryCoreProject(project.project_key));
       dom.memoryCoreProjectList.appendChild(button);
     });
   }
 
+  dom.archiveMemoryCoreProjectButton.disabled = !viewerProject;
+  dom.archiveMemoryCoreProjectButton.textContent = viewerProject?.status === "archived" ? "Restore" : "Archive";
+  dom.archiveMemoryCoreProjectButton.disabled = !viewerProject;
+  dom.archiveMemoryCoreProjectButton.textContent = viewerProject?.status === "archived" ? "Restore" : "Archive";
   dom.deleteMemoryCoreProjectButton.disabled = !viewerProject;
   dom.copyMemoryCoreButton.disabled = !state.memoryCore.selectedMarkdown;
 
@@ -788,7 +883,12 @@ function renderMemoryCore() {
   }
 
   dom.memoryCoreProjectTitle.textContent = viewerProject.title;
-  dom.memoryCoreProjectMeta.textContent = `${viewerProject.project_key} · Updated ${formatDateTime(viewerProject.updated_at)}`;
+  dom.memoryCoreProjectMeta.textContent = [
+    viewerProject.project_key,
+    viewerProject.status || "active",
+    viewerProject.last_opened_at ? `opened ${formatDateTime(viewerProject.last_opened_at)}` : `updated ${formatDateTime(viewerProject.updated_at)}`,
+    `${viewerProject.open_count || 0} open${viewerProject.open_count === 1 ? "" : "s"}`,
+  ].join(" · ");
   dom.memoryCoreViewerBody.innerHTML = "";
 
   if (!state.memoryCore.selectedMarkdown) {
@@ -796,10 +896,125 @@ function renderMemoryCore() {
     return;
   }
 
+  const detailGrid = document.createElement("div");
+  detailGrid.className = "memorycore-detail-grid";
+  detailGrid.appendChild(renderMemoryCoreMetricCard("Session briefing", viewerProject.session_brief || "No briefing saved yet."));
+  detailGrid.appendChild(renderMemoryCoreMetricCard("Current focus", viewerProject.current_focus || "No focus saved yet."));
+  detailGrid.appendChild(renderMemoryCoreMetricCard("Next steps", viewerProject.next_steps?.length ? `${viewerProject.next_steps.length} tracked` : "None yet"));
+  detailGrid.appendChild(renderMemoryCoreMetricCard("Reminders", viewerProject.reminders?.length ? `${viewerProject.reminders.length} tracked` : "None yet"));
+  dom.memoryCoreViewerBody.appendChild(detailGrid);
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Next steps", viewerProject.next_steps));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Reminders", viewerProject.reminders));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Decision log", viewerProject.decisions));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Open questions", viewerProject.open_questions));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Observations", viewerProject.observations));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Library items", viewerProject.library_items));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Skills & behaviors", viewerProject.skills));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Recent changes", viewerProject.recent_changes));
+  dom.memoryCoreViewerBody.appendChild(
+    renderMemoryCoreSection(
+      "Timeline",
+      (viewerProject.activity_log || []).map((item) => item?.at ? `[${item.at}] ${item.detail || ""}` : (item?.detail || "")),
+    )
+  );
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Important files", viewerProject.important_files, true));
+  dom.memoryCoreViewerBody.appendChild(renderMemoryCoreSection("Useful commands", viewerProject.commands, true));
+
   const rich = document.createElement("div");
   rich.className = "memorycore-markdown rich-message";
   appendFormattedBlocks(rich, state.memoryCore.selectedMarkdown);
   dom.memoryCoreViewerBody.appendChild(rich);
+}
+
+function renderMemoryCoreMetricCard(label, value) {
+  const card = document.createElement("article");
+  card.className = "memorycore-metric-card";
+  const title = document.createElement("span");
+  title.className = "memorycore-metric-label";
+  title.textContent = label;
+  const body = document.createElement("p");
+  body.className = "memorycore-metric-value";
+  body.textContent = value;
+  card.appendChild(title);
+  card.appendChild(body);
+  return card;
+}
+
+function renderMemoryCoreSection(title, items, code = false) {
+  const cleanItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  const section = document.createElement("section");
+  section.className = "memorycore-detail-section";
+
+  const heading = document.createElement("div");
+  heading.className = "memorycore-detail-heading";
+  heading.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${cleanItems.length || 0}</span>`;
+  section.appendChild(heading);
+
+  if (!cleanItems.length) {
+    const empty = document.createElement("p");
+    empty.className = "memorycore-empty";
+    empty.textContent = `No ${title.toLowerCase()} saved yet.`;
+    section.appendChild(empty);
+    return section;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "memorycore-detail-list";
+  cleanItems.forEach((item) => {
+    const li = document.createElement("li");
+    if (code) {
+      const codeNode = document.createElement("code");
+      codeNode.className = "inline-code";
+      codeNode.textContent = item;
+      li.appendChild(codeNode);
+    } else {
+      appendInlineNodes(li, item);
+    }
+    list.appendChild(li);
+  });
+  section.appendChild(list);
+  return section;
+}
+
+function renderMemoryCoreTagRow(label, items) {
+  const cleanItems = Array.isArray(items) ? items.filter(Boolean).slice(0, 4) : [];
+  const wrap = document.createElement("div");
+  wrap.className = "memorycore-tag-cluster";
+  if (!cleanItems.length) {
+    return wrap;
+  }
+  const title = document.createElement("small");
+  title.textContent = label;
+  wrap.appendChild(title);
+  const tagRow = document.createElement("div");
+  tagRow.className = "memorycore-tag-row";
+  cleanItems.forEach((tag) => {
+    const chip = document.createElement("span");
+    chip.className = "memorycore-tag";
+    chip.textContent = tag;
+    tagRow.appendChild(chip);
+  });
+  wrap.appendChild(tagRow);
+  return wrap;
+}
+
+function buildMemoryCoreProjectMeta(project) {
+  const parts = [];
+  if (project.stack?.length) {
+    parts.push(project.stack.slice(0, 3).join(" · "));
+  } else {
+    parts.push(project.project_key);
+  }
+  if (project.next_steps_count) {
+    parts.push(`${project.next_steps_count} next`);
+  }
+  if (project.reminders_count) {
+    parts.push(`${project.reminders_count} reminders`);
+  }
+  if (project.decisions_count) {
+    parts.push(`${project.decisions_count} decisions`);
+  }
+  return parts.join(" · ");
 }
 
 function onMemoryCoreWakeNameInput() {
@@ -849,6 +1064,80 @@ function downloadSelectedMemoryCoreMarkdown() {
     ? `${state.memoryCore.selectedProjectKey}-MEMORYCORE.md`
     : "MEMORYCORE.md";
   downloadBlob(new Blob([state.memoryCore.selectedMarkdown], { type: "text/markdown;charset=utf-8" }), filename);
+}
+
+async function downloadSelectedMasterMemory() {
+  const project = state.memoryCore.selectedProject || state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey);
+  if (!project) return;
+
+  try {
+    const text = await fetchText(
+      `/api/v1/memorycore/projects/${encodeURIComponent(project.project_key)}/master-memory?user_id=${encodeURIComponent(state.userId)}`
+    );
+    downloadBlob(
+      new Blob([text], { type: "text/markdown;charset=utf-8" }),
+      `${project.project_key}-master-memory.md`
+    );
+  } catch (error) {
+    console.error("Failed to download master memory", error);
+    state.memoryCore.error = error.message || String(error);
+    renderMemoryCore();
+  }
+}
+
+async function onMemoryCoreImportFileSelected(event) {
+  const file = event.target.files?.[0];
+  dom.memoryCoreImportFile.value = "";
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  if (state.memoryCore.selectedProjectKey) {
+    formData.append("project_key", state.memoryCore.selectedProjectKey);
+  }
+
+  try {
+    const response = await fetch(`/api/v1/memorycore/import/master-memory?user_id=${encodeURIComponent(state.userId)}`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Request failed with ${response.status}`);
+    }
+    const imported = await response.json();
+    state.memoryCore.selectedProjectKey = imported.project_key;
+    await loadMemoryCoreSummary(true);
+  } catch (error) {
+    console.error("Failed to import master memory", error);
+    state.memoryCore.error = error.message || String(error);
+    renderMemoryCore();
+  }
+}
+
+async function startMemoryCoreBriefingChat() {
+  const project = state.memoryCore.selectedProject || state.memoryCore.projects.find((item) => item.project_key === state.memoryCore.selectedProjectKey);
+  if (!project) return;
+
+  startNewChat(false);
+  try {
+    const response = await fetchJson(
+      `/api/v1/memorycore/projects/${encodeURIComponent(project.project_key)}/brief-to-session?user_id=${encodeURIComponent(state.userId)}&session_id=${encodeURIComponent(state.sessionId)}`,
+      { method: "POST" }
+    );
+    state.sessionId = response.session_id || state.sessionId;
+    persistSessionId();
+    await loadSessions();
+    await loadCurrentSession();
+    renderAll();
+    scrollMessagesToBottom();
+    closeMemoryCore();
+    dom.messageInput.focus();
+  } catch (error) {
+    console.error("Failed to start briefed chat", error);
+    state.memoryCore.error = error.message || String(error);
+    renderMemoryCore();
+  }
 }
 
 function renderProfile() {

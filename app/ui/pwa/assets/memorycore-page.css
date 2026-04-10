@@ -1,0 +1,379 @@
+.memorycore-page-body {
+  min-height: 100vh;
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.memorycore-page-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1380px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: calc(1rem + var(--safe-top)) calc(1rem + var(--safe-right)) calc(1rem + var(--safe-bottom)) calc(1rem + var(--safe-left));
+  display: grid;
+  gap: 1rem;
+}
+
+.memorycore-page-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.memorycore-page-topbar-copy {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 760px;
+}
+
+.memorycore-page-topbar-copy h1 {
+  font-size: clamp(1.25rem, 2.4vw, 2rem);
+}
+
+.memorycore-page-subcopy {
+  color: var(--muted-strong);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.memorycore-page-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.memorycore-page-hero {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.memorycore-page-stat {
+  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.memorycore-page-stat-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.memorycore-page-stat strong {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.memorycore-page-stat p {
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.memorycore-page-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.memorycore-page-sidebar,
+.memorycore-page-main {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.memorycore-page-card,
+.memorycore-page-toolbar,
+.memorycore-page-projects,
+.memorycore-page-viewer {
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.memorycore-page-card-head,
+.memorycore-page-pane-head,
+.memorycore-page-viewer-head,
+.memorycore-page-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.memorycore-page-card-head h2,
+.memorycore-page-toolbar h2,
+.memorycore-page-pane-head h3 {
+  font-size: 1rem;
+}
+
+.memorycore-page-profile {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.memorycore-page-profile-empty,
+.memorycore-page-empty {
+  color: var(--muted-strong);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.memorycore-page-profile-copy {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.memorycore-page-profile-copy p,
+.memorycore-page-launcher-copy,
+.memorycore-page-toolbar-subcopy,
+.memorycore-page-viewer-meta,
+.memorycore-page-mini-status {
+  color: var(--muted-strong);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.memorycore-page-button-stack {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.memorycore-page-launcher-copy {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.memorycore-page-template-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.memorycore-page-template-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.memorycore-page-template-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.memorycore-page-template-head strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.memorycore-page-template-category {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.3rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  color: var(--accent);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.memorycore-page-template-card p {
+  color: var(--muted-strong);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.memorycore-page-template-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.memorycore-page-template-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  color: var(--muted-strong);
+  font-size: 0.7rem;
+}
+
+.memorycore-page-template-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.memorycore-page-toolbar {
+  padding: 1rem 1.05rem;
+}
+
+.memorycore-page-toolbar-copy {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.memorycore-page-toolbar-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.memorycore-page-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 1rem;
+  min-width: 0;
+}
+
+.memorycore-page-projects,
+.memorycore-page-viewer {
+  min-width: 0;
+  min-height: 680px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.9rem;
+}
+
+.memorycore-page-project-list,
+.memorycore-page-viewer-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.memorycore-page-project-group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.memorycore-page-project-group + .memorycore-page-project-group {
+  margin-top: 0.9rem;
+}
+
+.memorycore-page-group-label {
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.memorycore-page-viewer-body {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.memorycore-page-markdown {
+  padding: 0.95rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 0.8rem;
+}
+
+.memorycore-page-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.memorycore-page-mini-status {
+  text-align: right;
+}
+
+.memorycore-page-alert {
+  padding: 0.85rem 0.95rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(251, 113, 133, 0.24);
+  background: rgba(251, 113, 133, 0.08);
+  color: #ffd4dc;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 1180px) {
+  .memorycore-page-hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memorycore-page-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .memorycore-page-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .memorycore-page-projects,
+  .memorycore-page-viewer {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .memorycore-page-shell {
+    width: min(100%, calc(100% - 1rem));
+    padding: calc(0.65rem + var(--safe-top)) calc(0.5rem + var(--safe-right)) calc(0.8rem + var(--safe-bottom)) calc(0.5rem + var(--safe-left));
+  }
+
+  .memorycore-page-topbar,
+  .memorycore-page-card,
+  .memorycore-page-toolbar,
+  .memorycore-page-projects,
+  .memorycore-page-viewer {
+    padding: 0.85rem;
+  }
+
+  .memorycore-page-topbar,
+  .memorycore-page-card-head,
+  .memorycore-page-pane-head,
+  .memorycore-page-viewer-head,
+  .memorycore-page-toolbar {
+    display: grid;
+  }
+
+  .memorycore-page-topbar-actions,
+  .memorycore-page-toolbar-actions,
+  .memorycore-page-viewer-actions {
+    justify-content: stretch;
+  }
+
+  .memorycore-page-topbar-actions > *,
+  .memorycore-page-toolbar-actions > *,
+  .memorycore-page-viewer-actions > * {
+    width: 100%;
+  }
+
+  .memorycore-page-hero {
+    grid-template-columns: 1fr;
+  }
+}
