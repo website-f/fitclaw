@@ -81,7 +81,9 @@ class UploadService:
 
     @staticmethod
     def build_public_url(asset: UploadedAsset) -> str:
-        return f"/api/v1/uploads/{asset.asset_id}?token={asset.access_token}"
+        relative = f"/api/v1/uploads/{asset.asset_id}?token={asset.access_token}"
+        base = (settings.public_base_url or "").strip().rstrip("/")
+        return f"{base}{relative}" if base else relative
 
     @staticmethod
     def load_bytes(asset: UploadedAsset) -> bytes:

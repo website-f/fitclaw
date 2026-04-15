@@ -8,14 +8,14 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.middleware.agent_auth import AgentBasicAuthMiddleware
-from app.routers import agent_control, agent_tasks, agents, calendar, chat, device_control, health, memorycore, models, tasks, transit, uploads, weather, web_app
+from app.routers import agent_control, agent_tasks, agents, calendar, chat, device_control, finance, health, memorycore, models, tasks, transit, uploads, weather, web_app, whatsapp
 from app.services.runtime_config_service import RuntimeConfigService
 
 settings = get_settings()
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.31",
+    version="0.3.33",
     description="Self-hosted personal AI ops platform with Telegram, agent APIs, and background workers.",
 )
 
@@ -37,6 +37,7 @@ app.mount(
 app.include_router(health.router)
 app.include_router(chat.router)
 app.include_router(calendar.router)
+app.include_router(finance.router)
 app.include_router(weather.router)
 app.include_router(transit.router)
 app.include_router(memorycore.router)
@@ -48,6 +49,7 @@ app.include_router(agent_control.router)
 app.include_router(device_control.router)
 app.include_router(uploads.router)
 app.include_router(web_app.router)
+app.include_router(whatsapp.router)
 
 
 @app.on_event("startup")
@@ -78,8 +80,8 @@ def _prewarm_active_model() -> None:
         return
 
 
-@app.get("/", tags=["root"])
-def read_root() -> dict[str, str]:
+@app.get("/version", tags=["root"])
+def read_version() -> dict[str, str]:
     return {
         "name": settings.app_name,
         "environment": settings.app_env,
@@ -88,6 +90,8 @@ def read_root() -> dict[str, str]:
         "control": "/control",
         "app": "/app",
         "memorycore": "/memorycore",
+        "finance": "/finance",
         "transit_live": "/transit-live",
-        "version": "0.3.31",
+        "whatsapp_beta": "/whatsapp-beta",
+        "version": "0.3.33",
     }

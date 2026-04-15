@@ -51,6 +51,9 @@ celery_app.conf.update(
             "task": "app.workers.jobs.mark_stale_agents",
             "schedule": float(max(settings.agent_heartbeat_ttl_seconds // 2, 30)),
         },
+        "poll-whatsapp-inbox": {
+            "task": "app.workers.jobs.poll_whatsapp_inbox",
+            "schedule": float(max(settings.whatsapp_beta_poll_seconds, 15)),
+        },
     },
 )
-

@@ -194,13 +194,17 @@ def _extract_links(html: str, base_url: str, max_links: int) -> list[dict[str, s
 
 def available_capabilities(config: AgentConfig) -> list[str]:
     capabilities = set(config.capabilities or [])
-    capabilities.update({"shell", "file_system", "processes", "storage", "calendar", "browser"})
+    capabilities.update({"shell", "file_system", "processes", "storage", "calendar", "browser", "system"})
     if _has_screenshot_backend():
         capabilities.add("screenshot")
     if _has_pyautogui():
         capabilities.add("mouse_keyboard")
     if _load_windows_module() is not None:
         capabilities.add("windows")
+    if shutil.which("docker"):
+        capabilities.add("docker")
+    if platform.system() in {"Linux", "Darwin", "Windows"}:
+        capabilities.add("services")
     if _find_vscode_cli():
         capabilities.add("vscode")
     if _find_codex_cli():
@@ -767,6 +771,155 @@ def _process_kill(payload: dict[str, Any]) -> dict[str, Any]:
         process.kill()
         terminated = False
     return {"pid": pid, "terminated_gracefully": terminated}
+
+
+def _system_summary(_: dict[str, Any]) -> dict[str, Any]:
+    boot_time = datetime.fromtimestamp(psutil.boot_time(), timezone.utc)
+    cpu_percent = psutil.cpu_percent(interval=0.4)
+    virtual_memory = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    load_average: list[float] = []
+    if hasattr(os, "getloadavg"):
+        try:
+            load_average = [float(value) for value in os.getloadavg()]
+        except OSError:
+            load_average = []
+
+    host_name = platform.node() or os.environ.get("HOSTNAME") or "unknown"
+    summary = _storage_summary({})
+    top_partitions = list(summary.get("partitions", []))[:4]
+
+    return {
+        "hostname": host_name,
+        "platform": platform.platform(),
+        "system": platform.system(),
+        "release": platform.release(),
+        "uptime_seconds": max(0, int((datetime.now(timezone.utc) - boot_time).total_seconds())),
+        "boot_time": boot_time.isoformat(),
+        "cpu_percent": float(cpu_percent),
+        "cpu_count_logical": psutil.cpu_count(logical=True),
+        "cpu_count_physical": psutil.cpu_count(logical=False),
+        "memory": {
+            "total_bytes": int(virtual_memory.total),
+            "used_bytes": int(virtual_memory.used),
+            "available_bytes": int(virtual_memory.available),
+            "percent": float(virtual_memory.percent),
+        },
+        "swap": {
+            "total_bytes": int(swap.total),
+            "used_bytes": int(swap.used),
+            "free_bytes": int(swap.free),
+            "percent": float(swap.percent),
+        },
+        "load_average": load_average,
+        "storage": {
+            "target_usage": summary.get("target_usage", {}),
+            "partitions": top_partitions,
+        },
+        "captured_at": _utcnow_iso(),
+    }
+
+
+def _service_list(payload: dict[str, Any]) -> dict[str, Any]:
+    limit = min(max(int(payload.get("limit", 20)), 1), 80)
+    system = platform.system()
+
+    if system == "Linux":
+        executable = shutil.which("systemctl")
+        if executable:
+            completed = subprocess.run(
+                [executable, "list-units", "--type=service", "--state=running", "--no-pager", "--no-legend"],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            if completed.returncode == 0:
+                services = []
+                for line in completed.stdout.splitlines():
+                    parts = line.split(None, 4)
+                    if len(parts) < 4:
+                        continue
+                    services.append(
+                        {
+                            "name": parts[0],
+                            "load": parts[1],
+                            "active": parts[2],
+                            "sub": parts[3],
+                            "description": parts[4] if len(parts) > 4 else "",
+                        }
+                    )
+                return {"services": services[:limit], "manager": "systemd"}
+
+    if system == "Darwin":
+        executable = shutil.which("launchctl")
+        if executable:
+            completed = subprocess.run([executable, "list"], capture_output=True, text=True, timeout=25)
+            if completed.returncode == 0:
+                services = []
+                for line in completed.stdout.splitlines()[1:]:
+                    parts = line.split(None, 2)
+                    if len(parts) < 3:
+                        continue
+                    services.append(
+                        {
+                            "pid": parts[0],
+                            "last_exit_status": parts[1],
+                            "label": parts[2],
+                        }
+                    )
+                return {"services": services[:limit], "manager": "launchctl"}
+
+    if system == "Windows":
+        services = []
+        try:
+            for item in psutil.win_service_iter():
+                try:
+                    info = item.as_dict()
+                except Exception:
+                    continue
+                if str(info.get("status", "")).lower() != "running":
+                    continue
+                services.append(
+                    {
+                        "name": info.get("name"),
+                        "display_name": info.get("display_name"),
+                        "status": info.get("status"),
+                        "start_type": info.get("start_type"),
+                    }
+                )
+        except Exception:
+            services = []
+        return {"services": services[:limit], "manager": "windows-services"}
+
+    raise RuntimeError("Service listing is not available on this device.")
+
+
+def _docker_status(payload: dict[str, Any]) -> dict[str, Any]:
+    executable = shutil.which("docker")
+    if executable is None:
+        raise RuntimeError("Docker CLI is not installed on this device.")
+
+    limit = min(max(int(payload.get("limit", 20)), 1), 60)
+    completed = subprocess.run(
+        [executable, "ps", "-a", "--format", "{{json .}}"],
+        capture_output=True,
+        text=True,
+        timeout=25,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "Docker ps failed.")
+
+    containers = []
+    for line in completed.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        containers.append(payload)
+    return {"containers": containers[:limit], "count": len(containers)}
 
 
 def _app_launch(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1597,6 +1750,9 @@ COMMAND_HANDLERS = {
     "file_read": _file_read,
     "file_write": _file_write,
     "file_delete": _file_delete,
+    "system_summary": _system_summary,
+    "service_list": _service_list,
+    "docker_status": _docker_status,
     "process_list": _process_list,
     "process_kill": _process_kill,
     "app_launch": _app_launch,

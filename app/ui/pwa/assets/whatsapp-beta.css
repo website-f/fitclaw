@@ -1,0 +1,442 @@
+/* ═══════════════════════════════════════════
+   WhatsApp Beta — fully responsive
+   ═══════════════════════════════════════════ */
+
+/* ── Body ── */
+.wa-body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  color: var(--text);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.14), transparent 28rem),
+    radial-gradient(circle at bottom right, rgba(249, 115, 22, 0.1), transparent 24rem),
+    linear-gradient(180deg, #071018 0%, #0b1120 100%);
+}
+
+/* ── Shell ── */
+.wa-shell {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: calc(1.2rem + var(--safe-top, 0px))
+           calc(1rem + var(--safe-right, 0px))
+           calc(2.5rem + var(--safe-bottom, 0px))
+           calc(1rem + var(--safe-left, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-sizing: border-box;
+}
+
+/* ── Topbar ── */
+.wa-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.2rem 1.4rem;
+  flex-wrap: wrap;
+}
+.wa-topbar h1 {
+  margin: 0.2rem 0;
+  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.wa-subcopy {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  max-width: 54rem;
+}
+.wa-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* ── Warning banner ── */
+.wa-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: linear-gradient(180deg, rgba(68, 18, 18, 0.88), rgba(22, 14, 14, 0.9));
+  border-radius: var(--radius-lg, 18px);
+}
+.wa-warning h2 {
+  margin: 0.15rem 0 0.35rem;
+  font-size: clamp(0.95rem, 2.5vw, 1.2rem);
+  color: #fca5a5;
+}
+.wa-warning p {
+  margin: 0;
+  color: #f8d8d8;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+.wa-warning-icon {
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+  margin-top: 0.1rem;
+}
+
+/* ── 2-column grid ── */
+.wa-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+/* ── Card ── */
+.wa-card {
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+.wa-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.wa-card-head h3 {
+  margin: 0.15rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+/* ── Status pills ── */
+.wa-status-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.wa-status-pill {
+  border-radius: 999px;
+  padding: 0.42rem 0.8rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #dbeafe;
+  background: rgba(30, 41, 59, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  white-space: nowrap;
+}
+
+/* ── Detail list ── */
+.wa-detail-list {
+  display: grid;
+  gap: 0.65rem;
+}
+.wa-detail-list div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.wa-detail-list span {
+  flex-shrink: 0;
+}
+.wa-detail-list strong {
+  color: var(--text);
+  font-size: 0.88rem;
+  word-break: break-all;
+  text-align: right;
+  min-width: 0;
+}
+
+/* ── QR panel ── */
+.wa-qr-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.wa-qr-copy { flex: 1 1 220px; min-width: 0; }
+.wa-qr-copy h4 {
+  margin: 0.15rem 0 0.35rem;
+  font-size: 1rem;
+}
+.wa-qr-copy p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+.wa-qr-frame {
+  width: clamp(120px, 40vw, 220px);
+  aspect-ratio: 1;
+  border-radius: 1rem;
+  padding: 0.7rem;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.wa-qr-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ── Form ── */
+.wa-form {
+  display: grid;
+  gap: 0.85rem;
+}
+.wa-form textarea,
+.wa-form input {
+  font-size: 1rem;
+  width: 100%;
+  min-width: 0;
+}
+.wa-form textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+/* ── Checkbox ── */
+.wa-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+.wa-check input {
+  margin-top: 0.22rem;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* ── Form footer (save + test send) ── */
+.wa-form-footer {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.1rem;
+}
+.wa-form-footer .primary-button {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 44px;
+}
+.wa-form-footer .ghost-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+/* ── Code block ── */
+.wa-codeblock {
+  display: grid;
+  gap: 0.55rem;
+}
+.wa-codeblock code {
+  display: block;
+  border-radius: 0.95rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: #dbeafe;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+/* ── Note list (chat relay section) ── */
+.note-list {
+  display: grid;
+  gap: 0.65rem;
+  padding-left: 1.1rem;
+  margin: 0;
+  color: var(--muted-strong, #bcc8db);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+.note-list li {
+  padding-left: 0.2rem;
+}
+
+/* ── Events / audit trail ── */
+.wa-events {
+  display: grid;
+  gap: 0.6rem;
+  min-height: 5rem;
+}
+.wa-event {
+  border-radius: 0.95rem;
+  padding: 0.8rem 0.95rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  min-width: 0;
+}
+.wa-event-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+.wa-event-kind {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.wa-event-status {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.wa-event-body {
+  color: #d8e2f2;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+.wa-empty {
+  border-radius: 0.95rem;
+  padding: 1.2rem;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.5);
+  font-size: 0.88rem;
+}
+
+/* ── Touch targets ── */
+button, a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.ghost-button, .primary-button {
+  min-height: 44px;
+}
+.small-button { min-height: 38px; }
+
+/* ══════════════════════════════════════
+   RESPONSIVE — 860px  (tablet / phablet)
+══════════════════════════════════════ */
+@media (max-width: 860px) {
+  .wa-topbar {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .wa-topbar-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .wa-topbar-actions > * {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .wa-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wa-qr-panel {
+    flex-direction: column;
+  }
+  .wa-qr-frame {
+    width: clamp(140px, 50vw, 200px);
+  }
+}
+
+/* ══════════════════════════════════════
+   RESPONSIVE — 640px  (mobile)
+══════════════════════════════════════ */
+@media (max-width: 640px) {
+  .wa-shell {
+    padding-left: calc(0.75rem + var(--safe-left, 0px));
+    padding-right: calc(0.75rem + var(--safe-right, 0px));
+    gap: 0.85rem;
+  }
+
+  .wa-topbar { padding: 1rem; }
+  .wa-card   { padding: 1rem; }
+
+  .wa-topbar h1 { font-size: 1.4rem; }
+  .wa-subcopy   { font-size: 0.84rem; }
+
+  .wa-warning {
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.9rem 1rem;
+  }
+  .wa-warning-icon { display: none; }
+
+  .wa-form-footer {
+    flex-direction: column;
+  }
+  .wa-form-footer .ghost-button {
+    width: 100%;
+  }
+
+  .wa-status-grid { gap: 0.4rem; }
+  .wa-status-pill { font-size: 0.72rem; padding: 0.38rem 0.7rem; }
+
+  .wa-detail-list div {
+    flex-direction: column;
+    gap: 0.2rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    padding-bottom: 0.5rem;
+  }
+  .wa-detail-list div:last-child { border-bottom: none; padding-bottom: 0; }
+  .wa-detail-list strong { text-align: left; font-size: 0.92rem; }
+  .wa-detail-list span   { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+}
+
+/* ══════════════════════════════════════
+   RESPONSIVE — 400px  (small phone)
+══════════════════════════════════════ */
+@media (max-width: 400px) {
+  .wa-shell {
+    padding-left: calc(0.55rem + var(--safe-left, 0px));
+    padding-right: calc(0.55rem + var(--safe-right, 0px));
+  }
+  .wa-topbar h1 { font-size: 1.25rem; }
+  .wa-card { padding: 0.85rem 0.9rem; }
+}

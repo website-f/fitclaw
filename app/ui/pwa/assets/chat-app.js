@@ -2218,7 +2218,7 @@ function appendLinesWithBreaks(parent, lines) {
 }
 
 function appendInlineNodes(parent, text) {
-  const tokenPattern = /(\*\*[^*]+?\*\*|`[^`]+`|https?:\/\/[^\s<]+|\/transit-live[^\s<]*)/g;
+  const tokenPattern = /(\*\*[^*]+?\*\*|`[^`]+`|https?:\/\/[^\s<]+|\/(?:transit-live|whatsapp-beta|memorycore|finance)[^\s<]*)/g;
   let lastIndex = 0;
   let match;
 
@@ -2668,7 +2668,7 @@ function linkifyText(value) {
   const escaped = escapeHtml(value).replace(/\n/g, "<br>");
   return escaped
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>')
-    .replace(/(^|[\s>])(\/transit-live(?:[^\s<]*)?)/g, '$1<a href="$2">$2</a>');
+    .replace(/(^|[\s>])(\/(?:transit-live|whatsapp-beta|memorycore|finance)(?:[^\s<]*)?)/g, '$1<a href="$2">$2</a>');
 }
 
 function formatTime(value) {

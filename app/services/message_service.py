@@ -10,6 +10,7 @@ from app.services.attachment_service import AttachmentService
 from app.services.calendar_service import CalendarService
 from app.services.command_service import TaskCommandService
 from app.services.command_result import MessageAttachment
+from app.services.finance_service import FinanceService
 from app.services.llm_service import LLMService, LLMServiceError
 from app.services.memory_service import MemoryService
 from app.services.memorycore_service import MemoryCoreService
@@ -124,6 +125,20 @@ class MessageService:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
             prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
+            command_result = FinanceService.try_handle(
+                db=db,
+                user_id=user_id,
+                session_id=resolved_session_id,
+                text=normalized_text,
+                assets=assets,
+                prompt_messages=prompt_messages,
+                active_provider=active_llm["provider"],
+                active_model=active_llm["model"],
+            )
+        if command_result is None and assets:
+            history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
+            active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = AttachmentService.try_handle(
                 db=db,
                 user_id=user_id,
@@ -156,6 +171,13 @@ class MessageService:
             )
         if command_result is None:
             command_result = CalendarService.try_handle(
+                db=db,
+                user_id=user_id,
+                session_id=resolved_session_id,
+                text=normalized_text,
+            )
+        if command_result is None:
+            command_result = FinanceService.try_handle(
                 db=db,
                 user_id=user_id,
                 session_id=resolved_session_id,
@@ -207,17 +229,17 @@ class MessageService:
                 active_model=active_llm["model"],
             )
         except LLMServiceError as exc:
+            _ = exc
             reply = (
-                "I couldn't reach the configured language model right now.\n\n"
-                f"{exc}\n\n"
-                "Agent and task commands can still work while the chat model is unavailable."
+                "I couldn't reach the configured language model right now. "
+                "Please try again in a minute. Agent and task commands can still work while the chat model is unavailable."
             )
             provider = "llm-error"
         except Exception as exc:
+            _ = exc
             reply = (
-                "I hit an unexpected chat-processing error before I could answer.\n\n"
-                f"{exc}\n\n"
-                "Task commands and agent actions are still available while I recover."
+                "I hit an unexpected chat-processing error before I could answer. "
+                "Please try again in a moment. Task commands and agent actions are still available while I recover."
             )
             provider = "llm-error"
 

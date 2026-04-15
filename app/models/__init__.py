@@ -2,6 +2,7 @@ from app.models.agent import Agent, AgentStatus
 from app.models.calendar_event import CalendarEvent, CalendarEventStatus
 from app.models.conversation import ConversationMessage, MessageRole
 from app.models.device_command import DeviceCommand, DeviceCommandStatus
+from app.models.finance import FinanceEntry, FinanceRule, FinanceRuleKind
 from app.models.report import Report
 from app.models.setting import AppSetting
 from app.models.task import Task, TaskStatus
@@ -16,6 +17,9 @@ __all__ = [
     "ConversationMessage",
     "DeviceCommand",
     "DeviceCommandStatus",
+    "FinanceEntry",
+    "FinanceRule",
+    "FinanceRuleKind",
     "MessageRole",
     "Report",
     "Task",

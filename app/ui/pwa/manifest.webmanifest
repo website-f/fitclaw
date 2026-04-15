@@ -1,25 +1,64 @@
 {
   "name": "FitClaw AI Ops",
   "short_name": "FitClaw AI",
-  "description": "Self-hosted AI operations workspace for chat, agents, screenshots, and device control.",
+  "description": "Self-hosted AI operations workspace for chat, agents, memory, transit, and device control.",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#080507",
-  "theme_color": "#120910",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#08080c",
+  "theme_color": "#08080c",
   "orientation": "portrait-primary",
+  "lang": "en",
+  "categories": ["productivity", "utilities"],
+  "screenshots": [],
   "icons": [
     {
       "src": "/app-assets/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/app-assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/app-assets/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/app-assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "AI Chat",
+      "short_name": "Chat",
+      "description": "Open the AI chat interface",
+      "url": "/app",
+      "icons": [{ "src": "/app-assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Memory Core",
+      "short_name": "Memory",
+      "description": "Open the Memory Core hub",
+      "url": "/memorycore",
+      "icons": [{ "src": "/app-assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Transit Live",
+      "short_name": "Transit",
+      "description": "Open live transit tracker",
+      "url": "/transit-live",
+      "icons": [{ "src": "/app-assets/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

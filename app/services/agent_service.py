@@ -31,6 +31,7 @@ class AgentService:
     ) -> Agent:
         agent = db.scalar(select(Agent).where(Agent.name == name))
         now = utcnow()
+        previous_status = agent.status if agent is not None else None
 
         if agent is None:
             agent = Agent(
@@ -50,6 +51,8 @@ class AgentService:
         db.commit()
         db.refresh(agent)
         AgentService._write_heartbeat(agent)
+        if previous_status == AgentStatus.offline:
+            AgentService._queue_whatsapp_status_alert(agent.name, "online", "Agent re-registered and is reachable again.")
         return agent
 
     @staticmethod
@@ -58,6 +61,7 @@ class AgentService:
     ) -> Agent:
         agent = db.scalar(select(Agent).where(Agent.name == name))
         now = utcnow()
+        previous_status = agent.status if agent is not None else None
 
         if agent is None:
             agent = Agent(
@@ -78,6 +82,8 @@ class AgentService:
         db.commit()
         db.refresh(agent)
         AgentService._write_heartbeat(agent)
+        if previous_status == AgentStatus.offline and status != AgentStatus.offline:
+            AgentService._queue_whatsapp_status_alert(agent.name, status.value, "Heartbeat resumed and the agent is back online.")
         return agent
 
     @staticmethod
@@ -150,7 +156,7 @@ class AgentService:
 
     @staticmethod
     def mark_stale_agents(db: Session) -> int:
-        cutoff = utcnow() - timedelta(seconds=settings.agent_heartbeat_ttl_seconds)
+        cutoff = AgentService._stale_cutoff()
         stale_agents = list(
             db.scalars(
                 select(Agent).where(Agent.last_heartbeat_at < cutoff).where(Agent.status != AgentStatus.offline)
@@ -167,6 +173,10 @@ class AgentService:
         return len(stale_agents)
 
     @staticmethod
+    def _stale_cutoff():
+        return utcnow() - timedelta(seconds=settings.agent_heartbeat_ttl_seconds)
+
+    @staticmethod
     def _write_heartbeat(agent: Agent) -> None:
         payload = {
             "name": agent.name,
@@ -180,6 +190,20 @@ class AgentService:
             settings.agent_heartbeat_ttl_seconds,
             json.dumps(payload),
         )
+
+    @staticmethod
+    def _queue_whatsapp_status_alert(agent_name: str, status: str, detail: str) -> None:
+        try:
+            from app.core.database import SessionLocal
+            from app.services.whatsapp_service import WhatsAppBetaService
+
+            db = SessionLocal()
+            try:
+                WhatsAppBetaService.queue_agent_alert(db, agent_name, status, detail)
+            finally:
+                db.close()
+        except Exception:
+            return
 
     @staticmethod
     def get_model_preferences(agent: Agent) -> dict:

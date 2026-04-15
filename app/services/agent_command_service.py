@@ -42,12 +42,19 @@ class AgentCommandService:
     )
     PROCESS_PATTERN = re.compile(r"\b(?:list|show)\b.*\bprocess(?:es)?\b", re.IGNORECASE)
     WINDOW_PATTERN = re.compile(r"\b(?:list|show)\b.*\bwindows?\b", re.IGNORECASE)
+    SYSTEM_PATTERN = re.compile(
+        r"\b(?:check|inspect|show|summarize)\b.*\b(?:server|vps|linux|mac|system|machine|host)\b|"
+        r"\b(?:system|server|vps)\s+summary\b",
+        re.IGNORECASE,
+    )
+    SERVICE_PATTERN = re.compile(r"\b(?:list|show|check)\b.*\bservices?\b", re.IGNORECASE)
+    DOCKER_PATTERN = re.compile(r"\b(?:list|show|check|inspect)\b.*\bdocker\b|\bdocker\s+(?:status|containers?)\b", re.IGNORECASE)
     OPEN_VSCODE_PATTERN = re.compile(r"^(?:open|launch)\s+(?:vs\s*code|vscode|code)\b", re.IGNORECASE)
     CODEX_PATTERN = re.compile(
         r"\b(?:run|ask|send|use)\b.*\bcodex\b|\binside\s+vscode\s+codex\b|\b(?:run|ask)\s+codex\b",
         re.IGNORECASE,
     )
-    ONLINE_ONLY_COMMANDS = {"screenshot", "storage_summary", "disk_usage_scan", "process_list", "window_list", "app_action"}
+    ONLINE_ONLY_COMMANDS = {"screenshot", "storage_summary", "disk_usage_scan", "process_list", "window_list", "app_action", "system_summary", "service_list", "docker_status"}
 
     @classmethod
     def try_handle(cls, db: Session, user_id: str, text: str) -> CommandResult | None:
@@ -69,6 +76,12 @@ class AgentCommandService:
             return cls._handle_process_list(db, user_id, normalized)
         if cls.WINDOW_PATTERN.search(normalized):
             return cls._handle_window_list(db, user_id, normalized)
+        if cls.SYSTEM_PATTERN.search(normalized):
+            return cls._handle_system_summary(db, user_id, normalized)
+        if cls.SERVICE_PATTERN.search(normalized):
+            return cls._handle_service_list(db, user_id, normalized)
+        if cls.DOCKER_PATTERN.search(normalized):
+            return cls._handle_docker_status(db, user_id, normalized)
         if cls.OPEN_VSCODE_PATTERN.search(normalized):
             return cls._handle_open_vscode(db, user_id, normalized)
         if cls.CODEX_PATTERN.search(normalized):
@@ -361,6 +374,126 @@ class AgentCommandService:
             provider="agent-command",
             handled_as_agent_command=True,
         )
+
+    @classmethod
+    def _handle_system_summary(cls, db: Session, user_id: str, text: str) -> CommandResult:
+        agent, error = cls._resolve_agent(db, text)
+        if error:
+            return cls._simple_reply(error)
+        assert agent is not None
+
+        command, timeout_error = cls._execute_and_wait(
+            db=db,
+            user_id=user_id,
+            agent=agent,
+            command_type="system_summary",
+            payload_json={},
+            timeout_seconds=40,
+        )
+        if timeout_error:
+            return cls._simple_reply(timeout_error)
+        assert command is not None
+        if command.status == DeviceCommandStatus.failed:
+            return cls._simple_reply(f"System inspection failed on `{agent.name}`: {command.error_text or 'unknown error'}")
+
+        result = command.result_json or {}
+        memory = result.get("memory", {}) or {}
+        storage = (result.get("storage", {}) or {}).get("target_usage", {}) or {}
+        lines = [
+            f"System summary for `{agent.name}`.",
+            f"Host: {result.get('hostname', agent.name)}",
+            f"Platform: {result.get('platform', 'unknown')}",
+            f"Uptime: {int(result.get('uptime_seconds', 0) or 0) // 3600}h",
+            f"CPU: {result.get('cpu_percent', 0)}% | logical {result.get('cpu_count_logical', '?')} | physical {result.get('cpu_count_physical', '?')}",
+            (
+                "Memory: "
+                f"{cls._format_bytes(memory.get('used_bytes'))} used / "
+                f"{cls._format_bytes(memory.get('total_bytes'))} total "
+                f"({memory.get('percent', '?')}%)"
+            ),
+            (
+                "Disk: "
+                f"{cls._format_bytes(storage.get('used_bytes'))} used / "
+                f"{cls._format_bytes(storage.get('total_bytes'))} total "
+                f"({storage.get('percent', '?')}%)"
+            ),
+        ]
+        load_average = list(result.get("load_average") or [])
+        if load_average:
+            lines.append(f"Load average: {', '.join(f'{value:.2f}' for value in load_average[:3])}")
+        return CommandResult(reply="\n".join(lines), provider="agent-command", handled_as_agent_command=True)
+
+    @classmethod
+    def _handle_service_list(cls, db: Session, user_id: str, text: str) -> CommandResult:
+        agent, error = cls._resolve_agent(db, text)
+        if error:
+            return cls._simple_reply(error)
+        assert agent is not None
+
+        command, timeout_error = cls._execute_and_wait(
+            db=db,
+            user_id=user_id,
+            agent=agent,
+            command_type="service_list",
+            payload_json={"limit": 18},
+            timeout_seconds=45,
+        )
+        if timeout_error:
+            return cls._simple_reply(timeout_error)
+        assert command is not None
+        if command.status == DeviceCommandStatus.failed:
+            return cls._simple_reply(f"Service listing failed on `{agent.name}`: {command.error_text or 'unknown error'}")
+
+        services = list((command.result_json or {}).get("services", []))
+        manager = str((command.result_json or {}).get("manager", "service manager"))
+        if not services:
+            return cls._simple_reply(f"I didn't find running services on `{agent.name}`.")
+        lines = [f"Services on `{agent.name}` via {manager}:"]
+        for item in services[:15]:
+            label = str(item.get("name") or item.get("label") or item.get("display_name") or "unknown").strip()
+            status = str(item.get("status") or item.get("active") or item.get("last_exit_status") or "").strip()
+            description = str(item.get("description") or item.get("sub") or "").strip()
+            extra = f" | {status}" if status else ""
+            if description:
+                extra += f" | {description}"
+            lines.append(f"- {label}{extra}")
+        return CommandResult(reply="\n".join(lines), provider="agent-command", handled_as_agent_command=True)
+
+    @classmethod
+    def _handle_docker_status(cls, db: Session, user_id: str, text: str) -> CommandResult:
+        agent, error = cls._resolve_agent(db, text)
+        if error:
+            return cls._simple_reply(error)
+        assert agent is not None
+
+        command, timeout_error = cls._execute_and_wait(
+            db=db,
+            user_id=user_id,
+            agent=agent,
+            command_type="docker_status",
+            payload_json={"limit": 20},
+            timeout_seconds=45,
+        )
+        if timeout_error:
+            return cls._simple_reply(timeout_error)
+        assert command is not None
+        if command.status == DeviceCommandStatus.failed:
+            return cls._simple_reply(f"Docker inspection failed on `{agent.name}`: {command.error_text or 'unknown error'}")
+
+        containers = list((command.result_json or {}).get("containers", []))
+        if not containers:
+            return cls._simple_reply(f"No Docker containers were reported on `{agent.name}`.")
+        lines = [f"Docker containers on `{agent.name}`:"]
+        for item in containers[:12]:
+            name = str(item.get("Names") or item.get("Name") or "unknown").strip()
+            image = str(item.get("Image") or "").strip()
+            status = str(item.get("Status") or item.get("State") or "").strip()
+            ports = str(item.get("Ports") or "").strip()
+            detail = f"{image} | {status}".strip(" |")
+            if ports:
+                detail += f" | {ports}"
+            lines.append(f"- {name}: {detail}")
+        return CommandResult(reply="\n".join(lines), provider="agent-command", handled_as_agent_command=True)
 
     @classmethod
     def _handle_open_vscode(cls, db: Session, user_id: str, text: str) -> CommandResult:

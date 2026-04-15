@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b1120" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="FitClaw Memory Core" />
+  <meta name="apple-mobile-web-app-title" content="Memory Core" />
   <title>FitClaw Memory Core</title>
   <meta name="description" content="Portable project memory, templates, timeline, and briefed chat launches for FitClaw." />
   <link rel="manifest" href="/app-manifest.webmanifest" />
@@ -18,72 +18,97 @@
   <link rel="stylesheet" href="/app-assets/chat-app.css" />
   <link rel="stylesheet" href="/app-assets/memorycore-page.css" />
 </head>
-<body class="memorycore-page-body">
+<body class="mc-body" data-mc-tab="overview">
+
   <div class="ambient ambient-a"></div>
   <div class="ambient ambient-b"></div>
   <div class="ambient ambient-c"></div>
 
-  <main class="memorycore-page-shell">
-    <header class="memorycore-page-topbar glass-card">
-      <div class="memorycore-page-topbar-copy">
+  <main class="mc-shell" id="mcShell">
+
+    <!-- ── Topbar ── -->
+    <header class="mc-topbar glass-card">
+      <div class="mc-topbar-copy">
         <p class="eyebrow">Portable project memory</p>
-        <h1>Memory Core Hub</h1>
-        <p class="memorycore-page-subcopy">
-          Save structured project memory, reuse template packs, review archived timelines, and launch a briefed chat without rebuilding context from scratch.
-        </p>
+        <h1 class="mc-topbar-title">Memory Core Hub</h1>
+        <p class="mc-topbar-sub">Save structured project memory, reuse template packs, and launch briefed chats without rebuilding context from scratch.</p>
       </div>
-      <div class="memorycore-page-topbar-actions">
+      <div class="mc-topbar-actions">
         <div class="status-pill" id="pageConnectionLabel">Loading...</div>
-        <a class="ghost-button small-button" href="/app">Back to Chat</a>
+        <a class="ghost-button small-button" href="/app">← Chat</a>
+        <a class="ghost-button small-button" href="/">Home</a>
       </div>
     </header>
 
-    <section class="memorycore-page-hero">
-      <article class="memorycore-page-stat glass-card">
-        <span class="memorycore-page-stat-label">Projects</span>
+    <!-- ── Stats row ── -->
+    <section class="mc-stats-row" aria-label="Memory statistics">
+      <article class="mc-stat-card glass-card">
+        <span class="mc-stat-label">Projects</span>
         <strong id="memoryCoreCount">0</strong>
-        <p>Saved portable memories</p>
+        <span class="mc-stat-sub">Saved memories</span>
       </article>
-      <article class="memorycore-page-stat glass-card">
-        <span class="memorycore-page-stat-label">Active</span>
+      <article class="mc-stat-card glass-card">
+        <span class="mc-stat-label">Active</span>
         <strong id="activeProjectCount">0</strong>
-        <p>Hot-path project memories</p>
+        <span class="mc-stat-sub">Hot-path</span>
       </article>
-      <article class="memorycore-page-stat glass-card">
-        <span class="memorycore-page-stat-label">Archived</span>
+      <article class="mc-stat-card glass-card">
+        <span class="mc-stat-label">Archived</span>
         <strong id="archivedProjectCount">0</strong>
-        <p>Cold but preserved context</p>
+        <span class="mc-stat-sub">Preserved</span>
       </article>
-      <article class="memorycore-page-stat glass-card">
-        <span class="memorycore-page-stat-label">Templates</span>
+      <article class="mc-stat-card glass-card">
+        <span class="mc-stat-label">Templates</span>
         <strong id="templateCount">0</strong>
-        <p>Reusable Memory Core packs</p>
+        <span class="mc-stat-sub">Reusable packs</span>
       </article>
     </section>
 
-    <div class="memorycore-page-layout">
-      <aside class="memorycore-page-sidebar">
-        <section class="memorycore-page-card glass-card">
-          <div class="memorycore-page-card-head">
+    <!-- ── Mobile tab bar (hidden on desktop) ── -->
+    <nav class="mc-tabs" id="mcTabs" role="tablist" aria-label="Memory Core sections">
+      <button class="mc-tab active" data-mc-tab="overview" role="tab" aria-selected="true" type="button">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        Overview
+      </button>
+      <button class="mc-tab" data-mc-tab="projects" role="tab" aria-selected="false" type="button">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 3.5h10M2 7h10M2 10.5h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Projects
+      </button>
+      <button class="mc-tab" data-mc-tab="viewer" role="tab" aria-selected="false" type="button">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2.5h10v9H2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.5 5.5h5M4.5 7.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Viewer
+      </button>
+    </nav>
+
+    <!-- ── Main layout ── -->
+    <div class="mc-layout">
+
+      <!-- ══ LEFT SIDEBAR (Overview tab on mobile) ══ -->
+      <aside class="mc-sidebar" data-mc-panel="overview">
+
+        <!-- Profile memory -->
+        <section class="mc-card glass-card">
+          <div class="mc-card-head">
             <div>
               <p class="eyebrow">Identity Core</p>
-              <h2>Profile memory</h2>
+              <h2 class="mc-card-title">Profile memory</h2>
             </div>
             <button class="ghost-button small-button" id="refreshMemoryCoreButton" type="button">Refresh</button>
           </div>
-          <div id="memoryCoreProfile" class="memorycore-page-profile"></div>
+          <div id="memoryCoreProfile" class="mc-profile-body"></div>
         </section>
 
-        <section class="memorycore-page-card glass-card">
-          <div class="memorycore-page-card-head">
+        <!-- Launcher / Downloads -->
+        <section class="mc-card glass-card">
+          <div class="mc-card-head">
             <div>
               <p class="eyebrow">Launchers</p>
-              <h2>Install Memory Core locally</h2>
+              <h2 class="mc-card-title">Install Memory Core</h2>
             </div>
           </div>
           <label class="field compact-field">
             <span>Wake name</span>
-            <input id="memoryCoreWakeNameInput" type="text" maxlength="24" placeholder="jarvis" />
+            <input id="memoryCoreWakeNameInput" type="text" maxlength="24" placeholder="jarvis" autocomplete="off" />
           </label>
           <label class="field compact-field">
             <span>Platform</span>
@@ -93,8 +118,8 @@
               <option value="macos-x64">macOS Intel</option>
             </select>
           </label>
-          <div class="memorycore-page-launcher-copy" id="memoryCoreLauncherCopy"></div>
-          <div class="memorycore-page-button-stack">
+          <div class="mc-launcher-copy" id="memoryCoreLauncherCopy"></div>
+          <div class="mc-btn-stack">
             <button class="primary-button small-button" id="downloadMemoryCoreBundleButton" type="button">Download installable bundle</button>
             <button class="ghost-button small-button" id="downloadMemoryCoreMarkdownButton" type="button">Download MEMORYCORE.md</button>
             <button class="ghost-button small-button" id="downloadMasterMemoryButton" type="button">Download master-memory.md</button>
@@ -103,67 +128,102 @@
           <input id="memoryCoreImportFile" type="file" accept=".md,text/markdown,text/plain" hidden />
         </section>
 
-        <section class="memorycore-page-card glass-card">
-          <div class="memorycore-page-card-head">
+        <!-- Templates -->
+        <section class="mc-card glass-card">
+          <div class="mc-card-head">
             <div>
               <p class="eyebrow">Library packs</p>
-              <h2>Reusable templates</h2>
+              <h2 class="mc-card-title">Reusable templates</h2>
             </div>
-            <span class="memorycore-page-mini-status" id="templateStatusLabel">Loading...</span>
+            <span class="mc-mini-status" id="templateStatusLabel">Loading...</span>
           </div>
-          <div class="memorycore-page-template-list" id="templateList"></div>
+          <div class="mc-template-list" id="templateList"></div>
         </section>
+
       </aside>
 
-      <section class="memorycore-page-main">
-        <section class="memorycore-page-toolbar glass-card">
-          <div class="memorycore-page-toolbar-copy">
+      <!-- ══ RIGHT WORKSPACE ══ -->
+      <div class="mc-workspace">
+
+        <!-- Workspace toolbar -->
+        <div class="mc-toolbar glass-card" data-mc-panel="projects viewer">
+          <div class="mc-toolbar-copy">
             <p class="eyebrow">Project memory</p>
-            <h2>Archive, inspect, and relaunch with context</h2>
-            <p id="memoryCoreStatus" class="memorycore-page-toolbar-subcopy">Loading...</p>
+            <h2 class="mc-card-title">Archive, inspect &amp; relaunch</h2>
+            <p id="memoryCoreStatus" class="mc-toolbar-status">Loading...</p>
           </div>
-          <div class="memorycore-page-toolbar-actions">
-            <div class="memorycore-filter-row">
-              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterAllButton" type="button">All</button>
-              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterActiveButton" type="button">Active</button>
-              <button class="ghost-button small-button memorycore-filter-button" id="memoryCoreFilterArchivedButton" type="button">Archived</button>
+          <div class="mc-toolbar-actions">
+            <div class="mc-filter-row">
+              <button class="ghost-button small-button mc-filter-btn" id="memoryCoreFilterAllButton" type="button">All</button>
+              <button class="ghost-button small-button mc-filter-btn" id="memoryCoreFilterActiveButton" type="button">Active</button>
+              <button class="ghost-button small-button mc-filter-btn" id="memoryCoreFilterArchivedButton" type="button">Archived</button>
             </div>
             <button class="ghost-button small-button danger-button" id="clearAllMemoryCoreButton" type="button">Clear all</button>
           </div>
-        </section>
+        </div>
 
-        <div class="memorycore-page-workspace">
-          <aside class="memorycore-page-projects glass-card">
-            <div class="memorycore-page-pane-head">
-              <div>
-                <p class="eyebrow">Project index</p>
-                <h3>Saved memories</h3>
-              </div>
+        <!-- Split: projects list + viewer -->
+        <div class="mc-split">
+
+          <!-- Projects pane -->
+          <aside class="mc-projects-pane mc-card glass-card" data-mc-panel="projects">
+            <div class="mc-pane-head">
+              <p class="eyebrow">Project index</p>
+              <h3 class="mc-pane-title">Saved memories</h3>
             </div>
-            <div class="memorycore-page-project-list" id="memoryCoreProjectList"></div>
+            <div class="mc-project-list" id="memoryCoreProjectList"></div>
           </aside>
 
-          <section class="memorycore-page-viewer glass-card">
-            <div class="memorycore-page-pane-head memorycore-page-viewer-head">
-              <div>
+          <!-- Viewer pane -->
+          <section class="mc-viewer-pane mc-card glass-card" data-mc-panel="viewer">
+            <div class="mc-viewer-head">
+              <div class="mc-viewer-title">
                 <p class="eyebrow">Selected memory</p>
-                <h3 id="memoryCoreProjectTitle">Select a project</h3>
-                <p id="memoryCoreProjectMeta" class="memorycore-page-viewer-meta">Open one of your saved project memories to inspect the full snapshot.</p>
+                <h3 class="mc-pane-title" id="memoryCoreProjectTitle">Select a project</h3>
+                <p id="memoryCoreProjectMeta" class="mc-viewer-meta">Open a saved project memory to inspect the full snapshot.</p>
               </div>
-              <div class="memorycore-page-viewer-actions">
+              <div class="mc-viewer-actions">
                 <button class="primary-button small-button" id="startMemoryCoreBriefingButton" type="button">Start briefed chat</button>
-                <button class="ghost-button small-button" id="captureMemoryCoreSessionButton" type="button">Capture current chat</button>
+                <button class="ghost-button small-button" id="captureMemoryCoreSessionButton" type="button">Capture chat</button>
                 <button class="ghost-button small-button" id="archiveMemoryCoreProjectButton" type="button">Archive</button>
                 <button class="ghost-button small-button" id="copyMemoryCoreButton" type="button">Copy</button>
                 <button class="ghost-button small-button danger-button" id="deleteMemoryCoreProjectButton" type="button">Delete</button>
               </div>
             </div>
-            <div class="memorycore-page-viewer-body" id="memoryCoreViewerBody"></div>
+            <div class="mc-viewer-body" id="memoryCoreViewerBody"></div>
           </section>
-        </div>
-      </section>
-    </div>
+
+        </div><!-- /mc-split -->
+      </div><!-- /mc-workspace -->
+
+    </div><!-- /mc-layout -->
+
   </main>
+
+  <!-- ── Mobile tab switching ── -->
+  <script>
+    (function () {
+      var body  = document.body;
+      var tabs  = document.querySelectorAll('.mc-tab');
+      function setTab(name) {
+        body.setAttribute('data-mc-tab', name);
+        tabs.forEach(function(t) {
+          var active = t.dataset.mcTab === name;
+          t.classList.toggle('active', active);
+          t.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        // Scroll to top of main content when switching tabs
+        var shell = document.getElementById('mcShell');
+        if (shell && window.innerWidth < 900) {
+          var tabsEl = document.getElementById('mcTabs');
+          if (tabsEl) tabsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+      tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() { setTab(tab.dataset.mcTab); });
+      });
+    })();
+  </script>
 
   <script src="/app-assets/memorycore-page.js" defer></script>
 </body>

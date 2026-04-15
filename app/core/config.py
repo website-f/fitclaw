@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     api_port: int = 8000
     timezone: str = "Asia/Kuala_Lumpur"
+    public_base_url: str = ""
 
     database_url: str = "sqlite:////data/ai_ops.db"
     redis_url: str = "redis://redis:6379/0"
@@ -26,6 +27,26 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_allowed_user_ids: str = ""
     default_report_chat_id: str = ""
+    telegram_bot_enabled: bool = True
+
+    whatsapp_beta_enabled: bool = False
+    whatsapp_beta_allow_inbound: bool = True
+    whatsapp_beta_allow_blasting: bool = False
+    whatsapp_beta_bridge_base_url: str = "http://whatsapp-bridge:8080/api"
+    whatsapp_beta_bridge_api_token: str = ""
+    whatsapp_beta_sender_phone: str = ""
+    whatsapp_beta_sender_label: str = "WhatsApp beta sender"
+    whatsapp_beta_default_recipient: str = ""
+    whatsapp_beta_allowed_senders: str = ""
+    whatsapp_beta_allowed_recipients: str = ""
+    whatsapp_beta_poll_seconds: int = 20
+    whatsapp_beta_jitter_min_seconds: int = 20
+    whatsapp_beta_jitter_max_seconds: int = 75
+    whatsapp_beta_recipient_cooldown_seconds: int = 180
+    whatsapp_beta_reply_min_seconds: int = 3
+    whatsapp_beta_reply_max_seconds: int = 8
+    whatsapp_beta_max_blast_recipients: int = 5
+    whatsapp_beta_daily_limit_per_recipient: int = 30
 
     ollama_base_url: str = "http://ollama:11434"
     ollama_model: str = "qwen2.5:3b"
@@ -84,6 +105,8 @@ class Settings(BaseSettings):
     upload_max_bytes: int = 15728640
     upload_extract_text_chars: int = 24000
     attachment_context_max_minutes: int = 45
+    finance_default_currency: str = "MYR"
+    finance_auto_capture_receipts: bool = True
     web_crawl_timeout_seconds: int = 20
     web_crawl_max_links: int = 3
     weather_default_location: str = "Kuala Lumpur"
@@ -119,6 +142,16 @@ class Settings(BaseSettings):
     def ollama_vision_model_list(self) -> list[str]:
         values = [item.strip() for item in self.ollama_vision_models.split(",")]
         return [item for item in values if item]
+
+    @property
+    def whatsapp_beta_sender_allowlist(self) -> set[str]:
+        values = [item.strip() for item in self.whatsapp_beta_allowed_senders.split(",")]
+        return {item for item in values if item}
+
+    @property
+    def whatsapp_beta_recipient_allowlist(self) -> set[str]:
+        values = [item.strip() for item in self.whatsapp_beta_allowed_recipients.split(",")]
+        return {item for item in values if item}
 
 
 @lru_cache

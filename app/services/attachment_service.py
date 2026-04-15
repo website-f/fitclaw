@@ -166,8 +166,12 @@ class AttachmentService:
                 active_model=active_model,
             )
         except Exception as exc:
+            _ = exc
             return CommandResult(
-                reply=f"I could not analyze the uploaded file right now.\n\n{exc}",
+                reply=(
+                    "I couldn't analyze the uploaded file right now because the AI model is temporarily busy. "
+                    "Please try again in a minute."
+                ),
                 provider="attachment-error",
             )
 
@@ -210,8 +214,12 @@ class AttachmentService:
                 active_model=active_model,
             )
         except Exception as exc:
+            _ = exc
             return CommandResult(
-                reply=f"I could not edit the uploaded file right now.\n\n{exc}",
+                reply=(
+                    "I couldn't edit the uploaded file right now because the AI model is temporarily busy. "
+                    "Please try again in a minute."
+                ),
                 provider="attachment-error",
                 attachments=AttachmentService.build_message_attachments(document_assets),
             )
@@ -260,8 +268,12 @@ class AttachmentService:
                 active_model=active_model,
             )
         except Exception as exc:
+            _ = exc
             return CommandResult(
-                reply=f"I could not analyze the uploaded image right now.\n\n{exc}",
+                reply=(
+                    "I couldn't analyze the uploaded image right now because the AI model is temporarily busy. "
+                    "Please try again in a minute."
+                ),
                 provider="attachment-error",
                 attachments=AttachmentService.build_message_attachments(image_assets),
             )

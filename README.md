@@ -66,6 +66,7 @@ Self-hosted foundation for an always-on AI brain that lives on your VPS, talks t
 - Telegram bot built with `python-telegram-bot`
 - Responsive web chat app at `/app` with a ChatGPT-style interface
 - Dedicated transit operations page at `/transit-live`
+- Dedicated WhatsApp beta page at `/whatsapp-beta` for bridge status, owner-only test sends, and capped low-volume blasting
 - PWA support so the web app can be installed across desktop and mobile devices
 - Ollama-first LLM routing with fast local fallback models before Gemini escalation
 - Malaysia weather support via the official `data.gov.my` forecast and warning feeds, with Open-Meteo fallback for broader geocoding
@@ -163,6 +164,20 @@ That guide covers:
 - opening the right firewall ports
 - connecting your desktop agents
 - enabling auto-start with systemd
+
+## WhatsApp beta
+
+If you want guarded WhatsApp notifications and low-volume inbound chat relay through the bundled WhatsApp bridge, use:
+
+- [`deploy/whatsapp-beta-guide.md`](deploy/whatsapp-beta-guide.md)
+
+This beta is intentionally conservative:
+
+- owner-only or opt-in allowlists
+- direct chats only
+- no group processing
+- jitter, cooldowns, and daily caps
+- explicit warning that your number can still be limited or banned
 
 ## Ollama and models
 

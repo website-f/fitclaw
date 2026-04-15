@@ -10,6 +10,11 @@ NO_CACHE_HTML_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 NO_CACHE_SW_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate", "Service-Worker-Allowed": "/"}
 
 
+@router.get("/", include_in_schema=False)
+def landing_page():
+    return FileResponse(PWA_DIR / "landing.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
 @router.get("/app", include_in_schema=False)
 def chat_app():
     return FileResponse(PWA_DIR / "chat_app.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
@@ -20,9 +25,19 @@ def memorycore_app():
     return FileResponse(PWA_DIR / "memorycore.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
 
 
+@router.get("/finance", include_in_schema=False)
+def finance_app():
+    return FileResponse(PWA_DIR / "finance.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
 @router.get("/transit-live", include_in_schema=False)
 def transit_live_app():
     return FileResponse(PWA_DIR / "transit_live.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
+@router.get("/whatsapp-beta", include_in_schema=False)
+def whatsapp_beta_app():
+    return FileResponse(PWA_DIR / "whatsapp_beta.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
 
 
 @router.get("/app-manifest.webmanifest", include_in_schema=False)

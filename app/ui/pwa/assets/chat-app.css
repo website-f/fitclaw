@@ -1960,38 +1960,86 @@ select option {
     width: 100%;
   }
 
+  /* ── Full-screen modal on mobile ── */
+  .memorycore-modal {
+    padding: 0;
+    align-items: stretch;
+  }
   .memorycore-panel {
-    max-height: min(92vh, 880px);
-    padding: 0.85rem;
+    width: 100%;
+    max-height: 100vh;
+    max-height: 100dvh;
+    height: 100svh;
+    border-radius: 0;
+    padding: 0;
+    overflow: hidden; /* panel clips */
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .memorycore-head {
+    padding: 0.9rem 1rem;
+    border-radius: 0;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .memorycore-head-actions {
+    width: 100%;
+    gap: 0.4rem;
+  }
+  .memorycore-head-actions .small-button {
+    flex: 1 1 0;
+    justify-content: center;
   }
 
+  /* ── Scrollable layout inside the panel ── */
   .memorycore-layout {
     grid-template-columns: 1fr;
+    overflow-y: auto;          /* KEY: layout area scrolls */
+    -webkit-overflow-scrolling: touch;
+    padding: 0 1rem 2rem;
+    gap: 0.85rem;
+  }
+
+  /* ── Sidebar cards: natural height, no scroll clipping ── */
+  .memorycore-sidebar {
+    overflow: visible;
+    gap: 0.85rem;
+  }
+  .memorycore-projects-card {
+    grid-template-rows: auto auto;
+  }
+  .memorycore-project-list {
+    max-height: 48vh;
+  }
+
+  /* ── Viewer: natural height ── */
+  .memorycore-viewer {
+    grid-template-rows: auto auto;
+    min-height: 0;
+  }
+  .memorycore-viewer-body {
+    max-height: 55vh;
+  }
+
+  /* ── Viewer actions: wrap to 2 columns ── */
+  .memorycore-viewer-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .memorycore-viewer-actions {
+    width: 100%;
+    gap: 0.4rem;
+  }
+  .memorycore-viewer-actions .small-button {
+    flex: 1 1 calc(50% - 0.25rem);
+    justify-content: center;
   }
 
   .memorycore-detail-grid {
     grid-template-columns: 1fr;
   }
-
-  .memorycore-head,
-  .memorycore-section-head,
-  .memorycore-viewer-head {
-    grid-template-columns: 1fr;
-  }
-
-  .memorycore-head,
-  .memorycore-viewer-head {
-    display: grid;
-  }
-
-  .memorycore-head-actions,
-  .memorycore-viewer-actions {
-    width: 100%;
-  }
-
-  .memorycore-head-actions .small-button,
-  .memorycore-viewer-actions .small-button {
-    flex: 1 1 0;
+  .memorycore-section-head {
+    flex-wrap: wrap;
   }
 }
 

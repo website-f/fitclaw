@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#08080c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FitClaw AI Ops" />
+  <title>FitClaw AI Ops — Personal AI Command Center</title>
+  <meta name="description" content="Self-hosted AI operations platform. Chat with local LLMs, manage portable project memory, track real-time transit, and control remote agents — all from one place." />
+  <link rel="manifest" href="/app-manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/app-assets/icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/app-assets/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/app-assets/landing.css" />
+</head>
+<body>
+
+  <div class="land-ambient land-ambient-a" aria-hidden="true"></div>
+  <div class="land-ambient land-ambient-b" aria-hidden="true"></div>
+
+  <!-- ── Navigation ── -->
+  <nav class="land-nav" id="landNav">
+    <div class="land-nav-inner">
+      <a class="land-logo" href="/">
+        <div class="land-logo-mark">FC</div>
+        <span class="land-logo-text">FitClaw AI Ops</span>
+      </a>
+      <div class="land-nav-links">
+        <a href="/app" class="land-nav-link">Chat</a>
+        <a href="/memorycore" class="land-nav-link">Memory</a>
+        <a href="/transit-live" class="land-nav-link">Transit</a>
+        <a href="/version" class="land-nav-link land-nav-link-muted">API</a>
+      </div>
+      <a href="/app" class="land-btn land-btn-primary land-nav-cta">Open App</a>
+    </div>
+  </nav>
+
+  <!-- ── Hero ── -->
+  <section class="land-hero">
+    <div class="land-hero-inner">
+      <div class="land-hero-badge animate-fade-up">
+        <span class="land-badge-dot"></span>
+        Self-hosted AI operations platform · v0.3.31
+      </div>
+      <h1 class="land-hero-title animate-fade-up animate-delay-1">
+        Your personal<br>AI command center.
+      </h1>
+      <p class="land-hero-sub animate-fade-up animate-delay-2">
+        Chat with local LLMs, manage project memory, track live transit,<br class="land-hero-br"> and automate your devices — all from one self-hosted platform.
+      </p>
+      <div class="land-hero-actions animate-fade-up animate-delay-3">
+        <a href="/app" class="land-btn land-btn-primary land-btn-lg">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 2l7 7-7 7M2 9h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Open Chat App
+        </a>
+        <a href="#features" class="land-btn land-btn-ghost land-btn-lg">Explore features</a>
+      </div>
+      <div class="land-hero-meta animate-fade-up animate-delay-4">
+        <span class="land-meta-chip">FastAPI + Python</span>
+        <span class="land-meta-chip">Ollama Local LLM</span>
+        <span class="land-meta-chip">Offline PWA</span>
+        <span class="land-meta-chip">Docker Compose</span>
+      </div>
+    </div>
+    <div class="land-hero-visual" aria-hidden="true">
+      <div class="land-orb">
+        <div class="land-orb-core"></div>
+        <div class="land-orb-ring land-orb-ring-1"></div>
+        <div class="land-orb-ring land-orb-ring-2"></div>
+        <div class="land-orb-ring land-orb-ring-3"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Ticker: Eye-catching horizontal spinner ── -->
+  <div class="land-ticker-section" id="tickerSection" aria-label="Platform capabilities">
+    <p class="land-ticker-label">Platform capabilities</p>
+    <div class="land-ticker-wrap">
+      <div class="land-ticker-track" id="tickerTrack">
+        <span class="land-ticker-item">AI Chat</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Memory Core</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Transit Live</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Agent Ops</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Device Control</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Telegram Bot</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Ollama LLM</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Offline PWA</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Screenshot Analysis</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">File Upload</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Calendar</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Weather</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Task Manager</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Reports</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <!-- Duplicate for seamless loop -->
+        <span class="land-ticker-item">AI Chat</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Memory Core</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Transit Live</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Agent Ops</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Device Control</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Telegram Bot</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Ollama LLM</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Offline PWA</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Screenshot Analysis</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">File Upload</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Calendar</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Weather</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Task Manager</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+        <span class="land-ticker-item">Reports</span>
+        <span class="land-ticker-dot" aria-hidden="true">✦</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Features Grid ── -->
+  <section class="land-features" id="features">
+    <div class="land-section-inner">
+      <div class="land-section-head reveal">
+        <p class="land-eyebrow">What's inside</p>
+        <h2 class="land-section-title">Everything you need in one platform.</h2>
+        <p class="land-section-sub">Six core modules, all running on your hardware. No subscriptions, no data leaks.</p>
+      </div>
+
+      <div class="land-grid-6">
+        <article class="land-feature-card reveal reveal-delay-1">
+          <div class="land-feature-icon land-icon-blue">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M20 3H2c-.6 0-1 .4-1 1v12c0 .6.4 1 1 1h8l3 3 3-3h2c.6 0 1-.4 1-1V4c0-.6-.4-1-1-1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 8h10M6 12h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </div>
+          <h3>AI Chat</h3>
+          <p>ChatGPT-style interface backed by your local Ollama models or Gemini. Full conversation history, smart prompts, and file attachments.</p>
+          <a href="/app" class="land-feature-link">Open Chat →</a>
+        </article>
+
+        <article class="land-feature-card reveal reveal-delay-2">
+          <div class="land-feature-icon land-icon-emerald">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M4 3h12a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2z" stroke="currentColor" stroke-width="1.5"/><path d="M7 3v3M15 3v3M3 9h16M7 13h3M7 16h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </div>
+          <h3>Memory Core</h3>
+          <p>Portable project memory that persists across devices. Save structured context, launch briefed chats, and reuse template packs instantly.</p>
+          <a href="/memorycore" class="land-feature-link">Open Memory Core →</a>
+        </article>
+
+        <article class="land-feature-card reveal reveal-delay-3">
+          <div class="land-feature-icon land-icon-amber">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M11 2C8 2 5 4.5 5 8c0 4.5 6 11 6 11s6-6.5 6-11c0-3.5-3-6-6-6z" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
+          </div>
+          <h3>Transit Live</h3>
+          <p>Real-time Malaysia GTFS transit data. Live vehicle positions on an interactive map, route planning, and nearby stop detection.</p>
+          <a href="/transit-live" class="land-feature-link">Open Transit Live →</a>
+        </article>
+
+        <article class="land-feature-card reveal reveal-delay-4">
+          <div class="land-feature-icon land-icon-sky">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M11 3v4M11 15v4M3 11h4M15 11h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="11" cy="11" r="2.5" fill="currentColor"/></svg>
+          </div>
+          <h3>Agent Ops</h3>
+          <p>Deploy lightweight daemon agents on your desktop machines. Get status reports, trigger automation, and monitor running processes remotely.</p>
+          <a href="/app" class="land-feature-link">Open Chat →</a>
+        </article>
+
+        <article class="land-feature-card reveal reveal-delay-5">
+          <div class="land-feature-icon land-icon-rose">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><rect x="3" y="5" width="16" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 5V4a1 1 0 011-1h6a1 1 0 011 1v1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M7 10h8M7 13h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          </div>
+          <h3>Device Control</h3>
+          <p>Browser-based panel for remote device management. Send commands, capture screenshots, and manage files on connected machines.</p>
+          <a href="/control" class="land-feature-link">Open Control Panel →</a>
+        </article>
+
+        <article class="land-feature-card reveal reveal-delay-6">
+          <div class="land-feature-icon land-icon-teal">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M19 3H3c-.6 0-1 .4-1 1v12c0 .6.4 1 1 1h5.5l2.5 3 2.5-3H19c.6 0 1-.4 1-1V4c0-.6-.4-1-1-1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="7.5" cy="10" r="1.2" fill="currentColor"/><circle cx="11" cy="10" r="1.2" fill="currentColor"/><circle cx="14.5" cy="10" r="1.2" fill="currentColor"/></svg>
+          </div>
+          <h3>Telegram Bot</h3>
+          <p>Full Telegram bot integration. Receive messages, trigger commands, get AI responses and system reports directly in your Telegram app.</p>
+          <a href="/app" class="land-feature-link">Open Chat →</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Quick Access Cards ── -->
+  <section class="land-pages-section">
+    <div class="land-section-inner">
+      <div class="land-section-head reveal">
+        <p class="land-eyebrow">Quick access</p>
+        <h2 class="land-section-title">Jump straight in.</h2>
+        <p class="land-section-sub">Three core apps — each fully responsive and installable on your phone.</p>
+      </div>
+      <div class="land-pages-grid">
+        <a href="/app" class="land-page-card reveal reveal-delay-1">
+          <div class="land-page-card-top">
+            <div class="land-page-icon land-icon-blue">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true"><path d="M23 3H3c-.6 0-1 .4-1 1v16c0 .6.4 1 1 1h10l4 4 4-4h2c.6 0 1-.4 1-1V4c0-.6-.4-1-1-1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="land-page-arrow" aria-hidden="true">→</span>
+          </div>
+          <h3>AI Chat App</h3>
+          <p>Chat with local AI, send prompts, view reports and agent results in one thread.</p>
+          <span class="land-page-url">/app</span>
+        </a>
+
+        <a href="/memorycore" class="land-page-card reveal reveal-delay-2">
+          <div class="land-page-card-top">
+            <div class="land-page-icon land-icon-emerald">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true"><path d="M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5.8a2 2 0 01-2-2V6a2 2 0 012-2z" stroke="currentColor" stroke-width="1.5"/><path d="M8 4v4M18 4v4M4 11h18M8 15h5M8 18h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </div>
+            <span class="land-page-arrow" aria-hidden="true">→</span>
+          </div>
+          <h3>Memory Core Hub</h3>
+          <p>Manage, save and launch portable project memories. Export MEMORYCORE.md bundles.</p>
+          <span class="land-page-url">/memorycore</span>
+        </a>
+
+        <a href="/transit-live" class="land-page-card reveal reveal-delay-3">
+          <div class="land-page-card-top">
+            <div class="land-page-icon land-icon-amber">
+              <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true"><path d="M4 20h18M6 20V11a3 3 0 011.5-2.6l5-3a3 3 0 013 0l5 3A3 3 0 0122 11v9M9 20v-4M17 20v-4M7 23h3M16 23h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <span class="land-page-arrow" aria-hidden="true">→</span>
+          </div>
+          <h3>Transit Live</h3>
+          <p>Real-time vehicle positions, nearby routes, and GTFS route planning for Malaysia.</p>
+          <span class="land-page-url">/transit-live</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Technical Stack Section ── -->
+  <section class="land-tech-section">
+    <div class="land-section-inner">
+      <div class="land-tech-grid">
+        <div class="land-tech-copy reveal">
+          <p class="land-eyebrow">Under the hood</p>
+          <h2 class="land-section-title">Built to run anywhere.</h2>
+          <p class="land-tech-p">A fully self-hosted stack with zero mandatory cloud dependency. Your data stays on your hardware — LLM inference, database, background workers and all.</p>
+          <div class="land-tech-stack">
+            <div class="land-tech-item">
+              <div class="land-tech-bullet land-bullet-blue"></div>
+              <div>
+                <strong>FastAPI backend</strong>
+                <p>High-performance Python API server with SQLAlchemy + SQLite persistence and Celery task queue.</p>
+              </div>
+            </div>
+            <div class="land-tech-item">
+              <div class="land-tech-bullet land-bullet-emerald"></div>
+              <div>
+                <strong>Ollama + Gemini</strong>
+                <p>Local LLM inference via Ollama (any model) with Gemini as a cloud fallback option.</p>
+              </div>
+            </div>
+            <div class="land-tech-item">
+              <div class="land-tech-bullet land-bullet-amber"></div>
+              <div>
+                <strong>Redis + Celery</strong>
+                <p>Distributed background job queue for reports, screenshots, and long-running tasks.</p>
+              </div>
+            </div>
+            <div class="land-tech-item">
+              <div class="land-tech-bullet land-bullet-sky"></div>
+              <div>
+                <strong>Offline PWA</strong>
+                <p>Service worker with app shell caching. Installs on iOS Safari, Android Chrome, and desktop browsers.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="land-tech-visual reveal reveal-delay-2">
+          <div class="land-stack-cards">
+            <div class="land-stack-card">
+              <span class="land-stack-layer">UI Layer</span>
+              <strong>Progressive Web App</strong>
+              <p>Vanilla HTML/CSS/JS · Service Worker · Offline Shell</p>
+            </div>
+            <div class="land-stack-card">
+              <span class="land-stack-layer">API Layer</span>
+              <strong>FastAPI + Python</strong>
+              <p>REST endpoints · SQLAlchemy · SQLite · Celery Workers</p>
+            </div>
+            <div class="land-stack-card">
+              <span class="land-stack-layer">AI Layer</span>
+              <strong>Ollama / Gemini</strong>
+              <p>Local inference · Vision models · Multi-model switching</p>
+            </div>
+            <div class="land-stack-card">
+              <span class="land-stack-layer">Infra Layer</span>
+              <strong>Docker Compose</strong>
+              <p>Redis · n8n Workflows · Self-hosted on VPS or local</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Install CTA ── -->
+  <section class="land-cta-section">
+    <div class="land-section-inner">
+      <div class="land-cta-card reveal">
+        <p class="land-eyebrow">Install as app</p>
+        <h2>Add FitClaw to your home screen.</h2>
+        <p>Works as a native-feeling app on iOS Safari, Android Chrome, and desktop browsers. One tap — it appears in your launcher like any other app.</p>
+        <div class="land-cta-steps">
+          <div class="land-cta-step">
+            <div class="land-step-num">1</div>
+            <p>Open <strong>/app</strong> in your browser</p>
+          </div>
+          <div class="land-cta-step-arrow" aria-hidden="true">→</div>
+          <div class="land-cta-step">
+            <div class="land-step-num">2</div>
+            <p>Tap Share → <strong>Add to Home Screen</strong> on iOS, or the install icon on Chrome</p>
+          </div>
+          <div class="land-cta-step-arrow" aria-hidden="true">→</div>
+          <div class="land-cta-step">
+            <div class="land-step-num">3</div>
+            <p>FitClaw appears in your launcher and <strong>works offline</strong></p>
+          </div>
+        </div>
+        <a href="/app" class="land-btn land-btn-primary land-btn-lg">Open App Now</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="land-footer">
+    <div class="land-footer-inner">
+      <div class="land-footer-left">
+        <div class="land-logo">
+          <div class="land-logo-mark">FC</div>
+          <span class="land-logo-text">FitClaw AI Ops</span>
+        </div>
+        <p class="land-footer-sub">Self-hosted personal AI operations platform.</p>
+        <p class="land-footer-version">Version 0.3.31 · FastAPI + Ollama</p>
+      </div>
+      <nav class="land-footer-links" aria-label="Footer navigation">
+        <div class="land-footer-col">
+          <h4>Apps</h4>
+          <a href="/app">AI Chat</a>
+          <a href="/memorycore">Memory Core</a>
+          <a href="/transit-live">Transit Live</a>
+          <a href="/control">Control Panel</a>
+        </div>
+        <div class="land-footer-col">
+          <h4>Platform</h4>
+          <a href="/docs">API Docs</a>
+          <a href="/version">Version Info</a>
+          <a href="/health">Health Check</a>
+        </div>
+      </nav>
+    </div>
+    <div class="land-footer-bottom">
+      <p>Built with FastAPI, Ollama &amp; care.</p>
+    </div>
+  </footer>
+
+  <!-- PWA install banner (for Chrome/Android) -->
+  <div class="land-install-banner" id="landInstallBanner" hidden role="banner" aria-live="polite">
+    <p>Install FitClaw as an app for the best experience.</p>
+    <button class="land-btn land-btn-primary land-btn-sm" id="landInstallBtn" type="button">Install</button>
+    <button class="land-install-dismiss" id="landInstallDismiss" type="button" aria-label="Dismiss install banner">×</button>
+  </div>
+
+  <script src="/app-assets/landing.js" defer></script>
+</body>
+</html>

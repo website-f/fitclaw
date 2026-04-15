@@ -941,3 +941,57 @@ tr:hover td { background: rgba(56, 189, 248, 0.03); }
   .main { padding: 10px; }
   .hero { padding: 12px; }
 }
+
+/* ── Touch / PWA quality improvements ── */
+button, a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.icon-btn, .button, .tab, .sub-tab {
+  min-height: 44px;
+  min-width: 44px;
+}
+.tab { min-height: 40px; }
+.sub-tab { min-height: 40px; }
+.button.slim { min-height: 38px; }
+
+/* Momentum scroll on scrollable containers */
+.sidebar,
+.main,
+.sub-panel,
+.vehicle-grid,
+.nearby-vehicle-list,
+.route-chip-list {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Better readability: slightly larger line height on mobile text */
+@media (max-width: 720px) {
+  .hero-copy, .notes-text, .panel-sub, .nearby-meta-text {
+    line-height: 1.65;
+  }
+  /* Make center-map button easy to tap */
+  #centerMapButton, #centerMapButton2 {
+    min-height: 44px;
+    padding: 0 1.2rem;
+  }
+  /* Refresh feed + use location: full width stack on very small screens */
+  .sidebar-actions {
+    flex-direction: column;
+  }
+  .sidebar-actions .button {
+    width: 100%;
+  }
+  /* Map: give full viewport width, slightly taller on mobile */
+  .map { height: 300px; }
+}
+
+@media (max-width: 480px) {
+  .map { height: 260px; }
+  .hero-text h2 { font-size: 1.1rem; }
+  .hero-copy { font-size: 0.82rem; }
+  /* Stat chips: smaller to fit 3 horizontally */
+  .stat-chip { padding: 6px 10px; min-width: 68px; }
+  .stat-chip strong { font-size: 0.88rem; }
+  .stat-label { font-size: 0.62rem; }
+}

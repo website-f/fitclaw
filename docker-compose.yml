@@ -4,6 +4,8 @@ x-app-common: &app-common
     dockerfile: Dockerfile
   env_file:
     - .env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   volumes:
     - ./data:/data
   restart: unless-stopped
@@ -122,7 +124,21 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
 
+  whatsapp-bridge:
+    build:
+      context: ./whatsapp_bridge
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      WHATSAPP_BRIDGE_SERVER_ADDR: :8080
+      WHATSAPP_BRIDGE_API_TOKEN: ${WHATSAPP_BETA_BRIDGE_API_TOKEN}
+    restart: unless-stopped
+    volumes:
+      - whatsapp_bridge_data:/app/store
+
 volumes:
   redis_data:
   ollama_data:
   n8n_data:
+  whatsapp_bridge_data:

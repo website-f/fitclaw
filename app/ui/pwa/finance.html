@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1120" />
+  <title>FitClaw Finance</title>
+  <link rel="manifest" href="/app-manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/app-assets/icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/app-assets/finance.css?v=20260414-finance2" />
+</head>
+<body>
+  <div class="finance-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Finance part</p>
+        <h1>Receipts, spending, and automations</h1>
+        <p class="subtle">Send receipts in chat and they can be stored here automatically when they look like real receipts.</p>
+        <p class="context-line" id="scopeText">Viewing all saved finance sources.</p>
+      </div>
+      <div class="topbar-actions">
+        <label class="currency-picker">
+          <span>Display currency</span>
+          <select id="displayCurrencySelect">
+            <option value="MYR">MYR</option>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+            <option value="SGD">SGD</option>
+            <option value="GBP">GBP</option>
+            <option value="JPY">JPY</option>
+          </select>
+        </label>
+        <a class="ghost-button" href="/app">Back to chat</a>
+        <button class="primary-button" id="refreshButton" type="button">Refresh</button>
+      </div>
+    </header>
+    <p class="fx-line" id="fxAsOfText">FX rates: loading...</p>
+
+    <section class="summary-grid" id="summaryGrid">
+      <article class="summary-card">
+        <span class="label">Today</span>
+        <strong id="todayTotal">RM 0.00</strong>
+      </article>
+      <article class="summary-card">
+        <span class="label">This month</span>
+        <strong id="monthTotal">RM 0.00</strong>
+      </article>
+      <article class="summary-card">
+        <span class="label">Entries this month</span>
+        <strong id="monthCount">0</strong>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Automation</p>
+          <h2>Create finance rules</h2>
+        </div>
+        <div class="status" id="statusText">Ready</div>
+      </div>
+
+      <div class="rule-grid">
+        <form class="rule-card" id="categoryRuleForm">
+          <h3>Auto category</h3>
+          <label>
+            <span>Merchant keyword</span>
+            <input id="categoryKeywordInput" type="text" placeholder="shopee" />
+          </label>
+          <label>
+            <span>Category</span>
+            <input id="categoryValueInput" type="text" placeholder="Shopping" />
+          </label>
+          <button class="primary-button" type="submit">Save auto-category rule</button>
+        </form>
+
+        <form class="rule-card" id="thresholdRuleForm">
+          <h3>Threshold alert</h3>
+          <label>
+            <span>Scope</span>
+            <select id="thresholdScopeInput">
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+              <option value="daily">Daily</option>
+            </select>
+          </label>
+          <label>
+            <span>Category optional</span>
+            <input id="thresholdCategoryInput" type="text" placeholder="Food" />
+          </label>
+          <label>
+            <span>Amount</span>
+            <input id="thresholdAmountInput" type="text" placeholder="500" />
+          </label>
+          <button class="primary-button" type="submit">Save threshold rule</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="grid-two">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Entries</p>
+            <h2>Recent spending</h2>
+          </div>
+        </div>
+        <div class="entry-list" id="entryList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Rules</p>
+            <h2>Active finance rules</h2>
+          </div>
+        </div>
+        <div class="rule-list" id="ruleList"></div>
+      </section>
+    </section>
+  </div>
+
+  <script src="/app-assets/finance.js?v=20260414-finance2" defer></script>
+</body>
+</html>
