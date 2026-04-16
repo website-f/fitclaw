@@ -48,9 +48,11 @@ HELP_TEXT = (
     "- continue task tsk_xxxxx add more instructions\n"
     "\n"
     "Uploads:\n"
-    "- send a photo with a caption like `describe this image`\n"
+    "- send a photo by itself and I will ask what you want done with it\n"
+    "- send a photo with `what is this`\n"
     "- send a photo with `make this grayscale`\n"
     "- send a photo with `remove background`\n"
+    "- send a photo with `find Shopee links for this`\n"
     "- send a document with `summarize this file`\n"
     "- send a document with `rewrite this file to be more concise`\n"
     "- upload PDFs, DOCX, XLSX/XLS, CSV/TSV, code files, or text files and ask for a summary\n"
@@ -267,8 +269,6 @@ async def media_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     prompt = (update.message.caption or "").strip()
-    if not prompt:
-        prompt = "Describe this image." if update.message.photo else "Summarize this file."
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     result = await asyncio.to_thread(

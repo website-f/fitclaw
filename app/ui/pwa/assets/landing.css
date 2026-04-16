@@ -719,6 +719,90 @@ img, svg { display: block; }
 /* ══════════════════════════════════════
    CTA SECTION
 ══════════════════════════════════════ */
+.land-downloads-section {
+  position: relative;
+  z-index: 1;
+  padding: 32px 0 28px;
+}
+.land-download-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px;
+}
+.land-download-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.01)),
+    var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100%;
+}
+.land-download-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.land-download-card h3 {
+  font-size: 1.18rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.land-download-card p {
+  color: var(--text-2);
+  font-size: 0.94rem;
+  line-height: 1.72;
+}
+.land-download-meta {
+  min-height: 2.9em;
+  color: var(--text-3);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+.land-download-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0.42rem 0.8rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-2);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.land-download-pill.is-ready {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.12);
+  color: #92f3cf;
+}
+.land-download-pill.is-missing {
+  border-color: rgba(251, 113, 133, 0.2);
+  background: rgba(251, 113, 133, 0.1);
+  color: #ffb8c3;
+}
+.land-download-pill.is-loading {
+  border-color: rgba(56, 189, 248, 0.24);
+  background: rgba(56, 189, 248, 0.1);
+  color: #a8e5ff;
+}
+.land-download-btn {
+  width: 100%;
+  margin-top: auto;
+}
+.land-download-btn.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  box-shadow: none;
+}
+
 .land-cta-section {
   position: relative;
   z-index: 1;

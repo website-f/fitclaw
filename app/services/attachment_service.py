@@ -5,21 +5,32 @@ from collections import deque
 import csv
 from io import BytesIO
 from io import StringIO
+import json
 from pathlib import Path
 import re
 
 from bs4 import BeautifulSoup
-from docx import Document as DocxDocument
-from openpyxl import load_workbook
+try:
+    from docx import Document as DocxDocument
+except Exception:  # pragma: no cover - optional dependency fallback for local dev shells
+    DocxDocument = None
+try:
+    from openpyxl import load_workbook
+except Exception:  # pragma: no cover - optional dependency fallback for local dev shells
+    load_workbook = None
 from PIL import Image, ImageChops, ImageEnhance, ImageFilter, ImageOps
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
-import xlrd
+try:
+    import xlrd
+except Exception:  # pragma: no cover - optional dependency fallback for local dev shells
+    xlrd = None
 
 from app.core.config import get_settings
 from app.models.uploaded_asset import UploadedAsset, UploadedAssetKind
 from app.services.command_result import CommandResult, MessageAttachment
 from app.services.llm_service import LLMService
+from app.services.marketplace_search_service import MarketplaceSearchService
 from app.services.upload_service import UploadService
 
 settings = get_settings()
@@ -102,6 +113,15 @@ class AttachmentService:
 
         if image_assets and AttachmentService._looks_like_edit_request(normalized_text):
             return AttachmentService._handle_image_edit(db, user_id, session_id, normalized_text, image_assets[0])
+
+        if image_assets and AttachmentService._looks_like_marketplace_search_request(normalized_text):
+            return AttachmentService._handle_image_marketplace_search(
+                normalized_text=normalized_text,
+                image_assets=image_assets,
+                prompt_messages=prompt_messages,
+                active_provider=active_provider,
+                active_model=active_model,
+            )
 
         if image_assets:
             return AttachmentService._handle_image_analysis(
@@ -253,6 +273,14 @@ class AttachmentService:
         active_provider: str,
         active_model: str,
     ) -> CommandResult:
+        if AttachmentService._should_offer_image_concierge(normalized_text):
+            return AttachmentService._build_image_concierge(
+                image_assets=image_assets,
+                prompt_messages=prompt_messages,
+                active_provider=active_provider,
+                active_model=active_model,
+            )
+
         request_text = normalized_text or "Describe this image clearly and extract any important text or visual details."
         if len(request_text.split()) <= 3 and any(token in request_text.lower() for token in ("verify", "identify", "what", "check")):
             request_text = (
@@ -280,6 +308,142 @@ class AttachmentService:
 
         return CommandResult(
             reply=reply,
+            provider=provider,
+            attachments=AttachmentService.build_message_attachments(image_assets),
+        )
+
+    @staticmethod
+    def _build_image_concierge(
+        image_assets: list[UploadedAsset],
+        prompt_messages: list[dict[str, str]],
+        active_provider: str,
+        active_model: str,
+    ) -> CommandResult:
+        try:
+            preview, provider = LLMService.generate_vision_reply(
+                prompt_messages=prompt_messages,
+                prompt_text=(
+                    "Give a short one or two sentence description of the main subject in this image. "
+                    "Mention visible text only if it is important. Do not use markdown bullets."
+                ),
+                image_assets=image_assets,
+                active_provider=active_provider,
+                active_model=active_model,
+            )
+        except Exception:
+            preview = "I can see the uploaded image and it is ready for analysis."
+            provider = "attachment-image"
+
+        reply = (
+            f"{preview.strip()}\n\n"
+            "Tell me what you want me to do next. You can say:\n"
+            "- `what is this`\n"
+            "- `extract text`\n"
+            "- `remove background`\n"
+            "- `find Shopee links`\n"
+            "- `find similar items`\n"
+            "- `summarize the important details`"
+        )
+        return CommandResult(
+            reply=reply,
+            provider=provider,
+            attachments=AttachmentService.build_message_attachments(image_assets),
+        )
+
+    @staticmethod
+    def _handle_image_marketplace_search(
+        normalized_text: str,
+        image_assets: list[UploadedAsset],
+        prompt_messages: list[dict[str, str]],
+        active_provider: str,
+        active_model: str,
+    ) -> CommandResult:
+        shopping_intent = (
+            "Identify the main purchasable product in this image and return strict JSON only with these keys: "
+            "`identified_item`, `search_query`, `confidence`, `key_attributes`, `notes`. "
+            "`key_attributes` must be an array of short strings. "
+            "Keep `search_query` concise and suitable for a shopping marketplace search."
+        )
+
+        provider = "attachment-marketplace"
+        identified_item = ""
+        search_query = ""
+        confidence = ""
+        key_attributes: list[str] = []
+        notes = ""
+
+        try:
+            raw_reply, provider = LLMService.generate_vision_reply(
+                prompt_messages=prompt_messages,
+                prompt_text=shopping_intent,
+                image_assets=image_assets,
+                active_provider=active_provider,
+                active_model=active_model,
+            )
+            parsed = AttachmentService._extract_json_dict(raw_reply)
+            identified_item = str(parsed.get("identified_item", "")).strip()
+            search_query = str(parsed.get("search_query", "")).strip()
+            confidence = str(parsed.get("confidence", "")).strip()
+            key_attributes = [
+                str(item).strip()
+                for item in (parsed.get("key_attributes") or [])
+                if str(item).strip()
+            ][:6]
+            notes = str(parsed.get("notes", "")).strip()
+        except Exception:
+            try:
+                raw_reply, provider = LLMService.generate_vision_reply(
+                    prompt_messages=prompt_messages,
+                    prompt_text=(
+                        "Give the best shopping search keywords for this image in one short line only, "
+                        "followed by a second short line that says what the item most likely is."
+                    ),
+                    image_assets=image_assets,
+                    active_provider=active_provider,
+                    active_model=active_model,
+                )
+                lines = [line.strip("- ").strip() for line in raw_reply.splitlines() if line.strip()]
+                if lines:
+                    search_query = lines[0]
+                if len(lines) > 1:
+                    identified_item = lines[1]
+            except Exception:
+                search_query = ""
+
+        best_query = MarketplaceSearchService.normalize_query(
+            search_query or identified_item or normalized_text,
+            fallback="similar product",
+        )
+        links = MarketplaceSearchService.build_marketplace_links(best_query)
+
+        lines = []
+        if identified_item:
+            lines.append(f"Best match: {identified_item}")
+        else:
+            lines.append("I built a best-effort shopping search from the uploaded image.")
+        lines.append(f"Search query: `{best_query}`")
+        if confidence:
+            lines.append(f"Confidence: {confidence}")
+        if key_attributes:
+            lines.append("Key details: " + ", ".join(key_attributes))
+        if notes:
+            lines.append(notes)
+        lines.extend(
+            [
+                "",
+                "Marketplace links:",
+            ]
+        )
+        for item in links:
+            lines.append(f"- {item['label']}: {item['url']}")
+        lines.extend(
+            [
+                "",
+                "If you want, I can also `what is this`, `extract text`, or `remove background` for the same image.",
+            ]
+        )
+        return CommandResult(
+            reply="\n".join(lines),
             provider=provider,
             attachments=AttachmentService.build_message_attachments(image_assets),
         )
@@ -442,6 +606,19 @@ class AttachmentService:
         return base64.b64encode(raw).decode("ascii"), asset.mime_type
 
     @staticmethod
+    def _should_offer_image_concierge(text: str) -> bool:
+        lowered = (text or "").strip().lower()
+        return lowered in {
+            "",
+            "image",
+            "photo",
+            "picture",
+            "look at this",
+            "check this out",
+            "see this",
+        }
+
+    @staticmethod
     def should_use_recent_assets(text: str) -> bool:
         lowered = text.lower().strip()
         if not lowered:
@@ -506,13 +683,28 @@ class AttachmentService:
             "remove bg",
             "remove the background",
             "remove background",
+            "find shopee links",
+            "find lazada links",
+            "where can i buy this",
+            "where to buy this",
+            "buy this",
+            "find similar items",
+            "price check",
+            "compare price",
+            "shopping links",
+            "seller link",
         )
         return (
             any(token in lowered for token in direct_tokens)
             or any(token in lowered for token in attachment_intents)
+            or AttachmentService._looks_like_marketplace_search_request(lowered)
             or AttachmentService._looks_like_edit_request(lowered)
             or AttachmentService._looks_like_document_edit_request(lowered)
         )
+
+    @staticmethod
+    def _looks_like_marketplace_search_request(text: str) -> bool:
+        return MarketplaceSearchService.looks_like_marketplace_request(text)
 
     @staticmethod
     def _looks_like_edit_request(text: str) -> bool:
@@ -572,6 +764,27 @@ class AttachmentService:
         return cleaned
 
     @staticmethod
+    def _extract_json_dict(text: str) -> dict:
+        cleaned = AttachmentService._strip_code_fences(text).strip()
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:].strip()
+        try:
+            parsed = json.loads(cleaned)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            pass
+
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(cleaned[start : end + 1])
+                return parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
+    @staticmethod
     def _decode_text_bytes(raw: bytes) -> str:
         try:
             return raw.decode("utf-8")
@@ -588,6 +801,8 @@ class AttachmentService:
 
     @staticmethod
     def _extract_docx_text(raw: bytes) -> str:
+        if DocxDocument is None:
+            raise RuntimeError("DOCX extraction dependency is not installed.")
         document = DocxDocument(BytesIO(raw))
         parts: list[str] = []
         for paragraph in document.paragraphs:
@@ -603,6 +818,8 @@ class AttachmentService:
 
     @staticmethod
     def _extract_xlsx_text(raw: bytes) -> str:
+        if load_workbook is None:
+            raise RuntimeError("XLSX extraction dependency is not installed.")
         workbook = load_workbook(filename=BytesIO(raw), read_only=True, data_only=True)
         parts: list[str] = []
         try:
@@ -620,6 +837,8 @@ class AttachmentService:
 
     @staticmethod
     def _extract_xls_text(raw: bytes) -> str:
+        if xlrd is None:
+            raise RuntimeError("XLS extraction dependency is not installed.")
         workbook = xlrd.open_workbook(file_contents=raw)
         parts: list[str] = []
         for sheet in workbook.sheets()[:6]:

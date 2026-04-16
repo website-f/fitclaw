@@ -147,7 +147,7 @@ $('showKey').addEventListener('change', e => {
 
 function getConfig() {
   return {
-    api_base_url: $('server').value.trim(),
+    api_base_url: normalizeBaseUrl($('server').value),
     agent_name: $('agentName').value.trim(),
     username: $('username').value.trim() || 'agent',
     shared_key: $('sharedKey').value.trim(),
@@ -158,6 +158,40 @@ function getConfig() {
     allow_unassigned: $('allowUnassigned').checked,
     auto_start: $('autoStart').checked,
   };
+}
+
+function normalizeBaseUrl(rawValue) {
+  const value = rawValue.trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    const normalizedPath = url.pathname.replace(/\/+$/, '') || '/';
+    const knownUiPaths = new Set([
+      '/app',
+      '/control',
+      '/docs',
+      '/health',
+      '/health/live',
+      '/health/ready',
+      '/finance',
+      '/memorycore',
+      '/transit-live',
+      '/whatsapp-beta',
+    ]);
+
+    if (normalizedPath === '/' || knownUiPaths.has(normalizedPath)) {
+      url.pathname = '';
+      url.search = '';
+      url.hash = '';
+    } else {
+      url.search = '';
+      url.hash = '';
+    }
+
+    return url.toString().replace(/\/+$/, '');
+  } catch (e) {
+    return value.replace(/\/+$/, '');
+  }
 }
 
 function setStatus(title, detail, tone) {
@@ -217,7 +251,7 @@ async function doTest() {
       setStatus('Connection succeeded', native || 'Server reachable.', 'success');
       toast('Connected!', 'success');
     } else {
-      const base = cfg.api_base_url.replace(/\/+$/, '');
+      const base = normalizeBaseUrl(cfg.api_base_url);
       const res = await fetch(base + '/health', { signal: AbortSignal.timeout(10000) });
       if (res.ok) {
         setStatus('Connection succeeded', 'Server is reachable at ' + base, 'success');

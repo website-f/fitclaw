@@ -6,8 +6,23 @@ import json
 import os
 import socket
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from ai_ops_agent.paths import config_path, ensure_runtime_dirs
+
+
+COMMON_SERVER_UI_PATHS = {
+    "/app",
+    "/control",
+    "/docs",
+    "/health",
+    "/health/live",
+    "/health/ready",
+    "/finance",
+    "/memorycore",
+    "/transit-live",
+    "/whatsapp-beta",
+}
 
 
 def _utcnow_iso() -> str:
@@ -26,6 +41,24 @@ def _parse_capabilities(raw: str | list[str] | None) -> list[str]:
     return cleaned or ["shell"]
 
 
+def _normalize_api_base_url(raw: str) -> str:
+    candidate = raw.strip()
+    if not candidate:
+        return ""
+
+    parsed = urlsplit(candidate)
+    if not parsed.scheme or not parsed.netloc:
+        return candidate.rstrip("/")
+
+    normalized_path = parsed.path.rstrip("/") or "/"
+    if normalized_path == "/" or normalized_path in COMMON_SERVER_UI_PATHS:
+        parsed = parsed._replace(path="", query="", fragment="")
+    else:
+        parsed = parsed._replace(query="", fragment="")
+
+    return urlunsplit(parsed).rstrip("/")
+
+
 @dataclass(slots=True)
 class AgentConfig:
     api_base_url: str = "http://localhost:8000"
@@ -42,7 +75,7 @@ class AgentConfig:
     updated_at: str = field(default_factory=_utcnow_iso)
 
     def normalized(self) -> "AgentConfig":
-        self.api_base_url = self.api_base_url.rstrip("/")
+        self.api_base_url = _normalize_api_base_url(self.api_base_url)
         self.agent_name = self.agent_name.strip()
         self.username = self.username.strip() or "agent"
         self.shared_key = self.shared_key.strip()
@@ -62,6 +95,16 @@ class AgentConfig:
         }
         if not self.api_base_url.startswith(("http://", "https://")):
             errors.append("Server URL must start with http:// or https://")
+        else:
+            parsed = urlsplit(self.api_base_url)
+            if not parsed.netloc:
+                errors.append("Server URL must include a domain or IP address")
+            else:
+                normalized_path = parsed.path.rstrip("/") or "/"
+                if normalized_path != "/":
+                    errors.append(
+                        "Server URL must point to the server root, for example https://your-domain.com, not /app or another page."
+                    )
         if not self.agent_name:
             errors.append("Agent name is required")
         if not self.shared_key:

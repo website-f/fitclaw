@@ -169,6 +169,7 @@ Expected result:
 On your Windows or macOS machine, open the agent installer and use:
 
 - Server URL: `http://YOUR_VPS_IP:8000`
+- When you move behind a domain + HTTPS, use the root URL such as `https://YOUR_DOMAIN`, not `https://YOUR_DOMAIN/app`
 - Username: `agent`
 - Shared Key: the same value as `AGENT_API_SHARED_KEY`
 - Agent Name: for example `office-pc`
@@ -178,7 +179,43 @@ Then click install/start. The agent should appear in:
 - `http://YOUR_VPS_IP:8000/control`
 - `GET /api/v1/control/agents`
 
-## 10. Update after new GitHub commits
+## 10. Publish agent installers on the landing page
+
+The landing page download buttons do not need Git-tracked binaries. This stack prefers:
+
+- `/data/agent-downloads` inside the container
+
+Because `./data` is already mounted into the API container, the host path on the VPS is:
+
+- `/opt/personal-ai-ops-platform/data/agent-downloads`
+
+If your repo lives somewhere else, replace that path with your real repo directory.
+
+Create the folder:
+
+```bash
+mkdir -p /opt/personal-ai-ops-platform/data/agent-downloads
+```
+
+Upload or copy your built installers there, for example:
+
+```bash
+cp /path/to/PersonalAIOpsAgent-0.4.0-windows-x64.exe /opt/personal-ai-ops-platform/data/agent-downloads/
+cp /path/to/PersonalAIOpsAgent-0.4.0-mobile-agent-android.apk /opt/personal-ai-ops-platform/data/agent-downloads/
+```
+
+Then verify the catalog:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/downloads/agents
+```
+
+If you are already behind Caddy, the public URLs will be:
+
+- `https://YOUR_DOMAIN/api/v1/downloads/agents/windows`
+- `https://YOUR_DOMAIN/api/v1/downloads/agents/android`
+
+## 11. Update after new GitHub commits
 
 ```bash
 cd /opt/personal-ai-ops-platform
@@ -186,7 +223,7 @@ git pull
 docker compose up -d --build
 ```
 
-## 11. Auto-start on server reboot
+## 12. Auto-start on server reboot
 
 Copy the included systemd unit:
 
@@ -200,7 +237,7 @@ systemctl status personal-ai-ops-platform
 
 If you keep the repo somewhere other than `/opt/personal-ai-ops-platform`, edit the `WorkingDirectory` in the service file first.
 
-## 12. Common issues
+## 13. Common issues
 
 ### `http://YOUR_VPS_IP` shows nothing
 
@@ -266,7 +303,7 @@ Then confirm the desktop agent is using the right:
 - username
 - shared key
 
-## 13. Recommended next step
+## 14. Recommended next step
 
 After the stack is working by IP, the next upgrade is:
 

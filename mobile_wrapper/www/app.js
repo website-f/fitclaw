@@ -60,7 +60,40 @@ function authHeader(config) {
 }
 
 function normalizeBaseUrl(rawValue) {
-  return rawValue.trim().replace(/\/+$/, "");
+  const value = rawValue.trim();
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+    const normalizedPath = url.pathname.replace(/\/+$/, "") || "/";
+    const knownUiPaths = new Set([
+      "/app",
+      "/control",
+      "/docs",
+      "/health",
+      "/health/live",
+      "/health/ready",
+      "/finance",
+      "/memorycore",
+      "/transit-live",
+      "/whatsapp-beta",
+    ]);
+
+    if (normalizedPath === "/" || knownUiPaths.has(normalizedPath)) {
+      url.pathname = "";
+      url.search = "";
+      url.hash = "";
+    } else {
+      url.search = "";
+      url.hash = "";
+    }
+
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return value.replace(/\/+$/, "");
+  }
 }
 
 function isAndroidShell() {

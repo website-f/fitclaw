@@ -392,6 +392,7 @@ The agent routes are protected with HTTP Basic auth:
 
 - Username: `AGENT_BASIC_AUTH_USERNAME`
 - Password: `AGENT_API_SHARED_KEY`
+- Agent installers should use the server root URL, for example `https://YOUR_DOMAIN`, not `/app`
 
 Example auth header on Linux:
 
@@ -504,6 +505,7 @@ Outputs:
 
 - `agent_daemon\dist\PersonalAIOpsAgent.exe`
 - `agent_daemon\dist\PersonalAIOpsAgentSetup.exe` if Inno Setup is installed
+- for server-hosted landing-page downloads, copy the final `.exe` you want to publish into `data/agent-downloads/` on the VPS because `agent_daemon/dist/` is gitignored
 
 ### Build the macOS installer
 
@@ -543,6 +545,24 @@ These workflows can build and upload agent artifacts automatically from GitHub A
 - Windows setup `.exe` when Inno Setup is available
 - macOS `.pkg`
 - macOS `.dmg`
+
+### Publishing installers on the landing page
+
+The landing page download buttons and `/api/v1/downloads/agents/*` look in this order:
+
+- `AGENT_DOWNLOADS_DIR` which defaults to `/data/agent-downloads` inside Docker
+- `agent_daemon/dist/` inside the repo as a development fallback
+
+That means production installs should usually upload artifacts into the host path:
+
+- `./data/agent-downloads/` relative to the repo on the VPS
+
+Examples:
+
+- `data/agent-downloads/PersonalAIOpsAgent-0.4.0-windows-x64.exe`
+- `data/agent-downloads/PersonalAIOpsAgent-0.4.0-mobile-agent-android.apk`
+
+This keeps large binaries out of Git while still making the landing-page download buttons work.
 
 ### Development mode
 

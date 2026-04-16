@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 from pathlib import Path
 import re
+import socket
 from urllib.parse import urlparse
 
 import httpx
@@ -115,6 +117,19 @@ class WebContentService:
     @staticmethod
     def _crawl(url: str) -> CrawledLink:
         try:
+            WebContentService._validate_url(url)
+        except ValueError as exc:
+            return CrawledLink(
+                original_url=url,
+                final_url=url,
+                mime_type="",
+                status_code=0,
+                title=None,
+                extracted_text="",
+                error=str(exc),
+            )
+
+        try:
             with httpx.Client(
                 follow_redirects=True,
                 timeout=settings.web_crawl_timeout_seconds,
@@ -176,6 +191,55 @@ class WebContentService:
             status_code=response.status_code,
             title=title,
             extracted_text=extracted_text,
+        )
+
+    @staticmethod
+    def _validate_url(url: str) -> None:
+        parsed = urlparse((url or "").strip())
+        if parsed.scheme not in {"http", "https"}:
+            raise ValueError("Safe crawl only allows http:// or https:// URLs.")
+        if not parsed.hostname:
+            raise ValueError("The crawl target is missing a valid hostname.")
+        if parsed.username or parsed.password:
+            raise ValueError("Safe crawl does not allow URLs with embedded credentials.")
+
+        hostname = parsed.hostname.strip().lower()
+        if hostname == "localhost" or hostname.endswith(".local"):
+            raise ValueError("Safe crawl blocks localhost and local-network hostnames.")
+
+        try:
+            candidate_ip = ipaddress.ip_address(hostname)
+        except ValueError:
+            candidate_ip = None
+
+        if candidate_ip is not None:
+            if WebContentService._is_private_target(candidate_ip):
+                raise ValueError("Safe crawl blocks private, loopback, multicast, and link-local IP addresses.")
+            return
+
+        try:
+            resolved = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            return
+
+        for item in resolved:
+            address = item[4][0]
+            try:
+                candidate_ip = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            if WebContentService._is_private_target(candidate_ip):
+                raise ValueError("Safe crawl blocks hosts that resolve to private or loopback network addresses.")
+
+    @staticmethod
+    def _is_private_target(address: ipaddress._BaseAddress) -> bool:
+        return bool(
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_multicast
+            or address.is_reserved
+            or address.is_unspecified
         )
 
     @staticmethod

@@ -32,6 +32,7 @@ class AgentRunner:
             auth=(self.config.username, self.config.shared_key),
             headers={"Content-Type": "application/json"},
             timeout=client_timeout,
+            follow_redirects=True,
             verify=verify,
             trust_env=False,
         )
@@ -80,6 +81,10 @@ class AgentRunner:
         except httpx.ConnectError as exc:
             raise RuntimeError(
                 "The agent could not reach the server URL. Check that the API is running and that the Server URL is correct."
+            ) from exc
+        except httpx.TooManyRedirects as exc:
+            raise RuntimeError(
+                "The server URL kept redirecting. Use the final server root URL directly, for example https://your-domain.com."
             ) from exc
         except httpx.HTTPError as exc:
             raise RuntimeError(f"Connection test failed: {exc}") from exc

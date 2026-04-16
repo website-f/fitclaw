@@ -85,6 +85,7 @@ class Settings(BaseSettings):
 
     agent_basic_auth_username: str = "agent"
     agent_api_shared_key: str = "change-me-now"
+    agent_downloads_dir: str = "/data/agent-downloads"
     agent_heartbeat_ttl_seconds: int = 120
     health_report_interval_seconds: int = 600
     daily_report_cron: str = "0 8 * * *"

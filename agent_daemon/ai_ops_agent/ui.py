@@ -164,6 +164,14 @@ class InstallerWindow:
         # ── Connection & Identity ──
         conn = self._card(pad, "Connection & Identity")
         self._entry(conn, "Server URL", self.server_var)
+        ctk.CTkLabel(
+            conn,
+            text="Use the server root, for example https://fitclaw.example.com, not /app or another page.",
+            font=ctk.CTkFont(size=10),
+            text_color=_TXT3,
+            anchor="w",
+            wraplength=700,
+        ).pack(fill="x", pady=(0, 6))
 
         row1 = ctk.CTkFrame(conn, fg_color="transparent")
         row1.pack(fill="x")
