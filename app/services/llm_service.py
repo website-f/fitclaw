@@ -1,6 +1,7 @@
 import base64
 import httpx
 from pathlib import Path
+import time
 
 from app.core.config import get_settings
 from app.services.runtime_config_service import RuntimeConfigService
@@ -16,6 +17,7 @@ GEMINI_CLIENT = httpx.Client(
 )
 TEXT_CONTEXT_CHAR_BUDGET = 9000
 VISION_CONTEXT_CHAR_BUDGET = 6000
+VISION_FAST_CONTEXT_CHAR_BUDGET = 1800
 MAX_OLDER_MESSAGE_CHARS = 1000
 MAX_LATEST_MESSAGE_CHARS = 4200
 GEMINI_TEXT_FALLBACK_MODELS = ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite")
@@ -177,6 +179,55 @@ class LLMService:
         raise LLMServiceError(" | ".join(errors) or "No vision providers are configured.")
 
     @staticmethod
+    def generate_fast_vision_reply(
+        prompt_messages: list[dict[str, str]],
+        prompt_text: str,
+        image_assets: list,
+        active_provider: str | None = None,
+        active_model: str | None = None,
+    ) -> tuple[str, str]:
+        prepared_messages = LLMService._prepare_messages(prompt_messages, max_total_chars=VISION_FAST_CONTEXT_CHAR_BUDGET)
+        errors: list[str] = []
+        encoded_images = [
+            {
+                "data": base64.b64encode(Path(asset.stored_path).read_bytes()).decode("ascii"),
+                "mime_type": asset.mime_type,
+            }
+            for asset in image_assets[:1]
+        ]
+
+        preferred_ollama_model = RuntimeConfigService.get_preferred_fast_vision_model(
+            active_provider=active_provider,
+            active_model=active_model,
+        )
+        preferred_gemini_model = settings.gemini_vision_model or settings.gemini_model
+
+        try:
+            reply, resolved_model = LLMService._call_ollama_vision_with_fallbacks(
+                prepared_messages,
+                prompt_text,
+                encoded_images,
+                preferred_ollama_model,
+            )
+            return reply, f"ollama:{resolved_model}"
+        except Exception as exc:
+            errors.append(f"Ollama fast vision failed: {exc}")
+
+        if settings.gemini_enabled:
+            try:
+                reply, resolved_model = LLMService._call_gemini_vision(
+                    prepared_messages,
+                    prompt_text,
+                    encoded_images,
+                    preferred_gemini_model,
+                )
+                return reply, f"gemini:{resolved_model}"
+            except Exception as exc:
+                errors.append(f"Gemini fast vision failed: {exc}")
+
+        raise LLMServiceError(" | ".join(errors) or "No fast vision providers are configured.")
+
+    @staticmethod
     def _call_ollama(messages: list[dict[str, str]], model: str) -> str:
         payload = {
             "model": model,
@@ -284,16 +335,26 @@ class LLMService:
     ) -> tuple[str, str]:
         errors: list[str] = []
         for candidate_model in LLMService._candidate_ollama_models(preferred_model, vision=True):
-            try:
-                reply = LLMService._call_ollama_vision(
-                    prompt_messages,
-                    prompt_text,
-                    encoded_images,
-                    candidate_model,
-                )
-                return reply, candidate_model
-            except Exception as exc:
-                errors.append(f"{candidate_model}: {exc}")
+            attempts = 2 if LLMService._should_retry_vision_model(candidate_model) else 1
+            for attempt in range(attempts):
+                try:
+                    reply = LLMService._call_ollama_vision(
+                        prompt_messages,
+                        prompt_text,
+                        encoded_images,
+                        candidate_model,
+                    )
+                    return reply, candidate_model
+                except Exception as exc:
+                    error_text = str(exc)
+                    if attempt + 1 >= attempts or not LLMService._is_transient_vision_error(error_text):
+                        errors.append(f"{candidate_model}: {error_text}")
+                        break
+                    try:
+                        RuntimeConfigService.prewarm_ollama_model(candidate_model, vision=True)
+                    except Exception:
+                        pass
+                    time.sleep(1.2)
         raise LLMServiceError(" ; ".join(errors) or "No Ollama vision models are configured.")
 
     @staticmethod
@@ -472,6 +533,34 @@ class LLMService:
         if lowered == settings.ollama_vision_model.lower().strip():
             return True
         return any(token in lowered for token in ("vision", "vl", "gemma3", "llava", "minicpm-v"))
+
+    @staticmethod
+    def _should_retry_vision_model(model_name: str) -> bool:
+        profile = RuntimeConfigService.get_model_profile("ollama", model_name)
+        if profile is None:
+            return True
+        return profile.resource_tier in {"small", "medium"}
+
+    @staticmethod
+    def _is_transient_vision_error(error_text: str) -> bool:
+        lowered = str(error_text or "").strip().lower()
+        if not lowered:
+            return False
+        return any(
+            token in lowered
+            for token in (
+                "busy",
+                "temporarily unavailable",
+                "try again",
+                "timed out",
+                "timeout",
+                "connection reset",
+                "connection aborted",
+                "server disconnected",
+                "currently loading",
+                "is not ready yet",
+            )
+        )
 
     @staticmethod
     def _extract_gemini_text(data: dict) -> str:

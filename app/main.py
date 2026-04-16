@@ -57,10 +57,10 @@ app.include_router(downloads.router)
 def on_startup() -> None:
     init_db()
     if settings.ollama_preload_active_model_on_startup:
-        threading.Thread(target=_prewarm_active_model, name="fitclaw-ollama-prewarm", daemon=True).start()
+        threading.Thread(target=_prewarm_startup_models, name="fitclaw-ollama-prewarm", daemon=True).start()
 
 
-def _prewarm_active_model() -> None:
+def _prewarm_startup_models() -> None:
     db = SessionLocal()
     try:
         active = RuntimeConfigService.get_active_llm(db)
@@ -71,14 +71,27 @@ def _prewarm_active_model() -> None:
         return
 
     model_name = str(active.get("model", "")).strip()
-    if not model_name:
-        return
-
-    try:
+    prewarm_candidates: list[tuple[str, bool]] = []
+    if model_name:
         profile = RuntimeConfigService.get_model_profile("ollama", model_name)
-        RuntimeConfigService.prewarm_ollama_model(model_name, bool(profile and profile.modality == "vision"))
-    except Exception:
-        return
+        prewarm_candidates.append((model_name, bool(profile and profile.modality == "vision")))
+
+    fast_vision_model = RuntimeConfigService.get_preferred_fast_vision_model(
+        active_provider=active.get("provider"),
+        active_model=active.get("model"),
+    )
+    if fast_vision_model and fast_vision_model != model_name:
+        prewarm_candidates.append((fast_vision_model, True))
+
+    seen: set[str] = set()
+    for candidate_model, vision in prewarm_candidates:
+        if not candidate_model or candidate_model in seen:
+            continue
+        seen.add(candidate_model)
+        try:
+            RuntimeConfigService.prewarm_ollama_model(candidate_model, vision=vision)
+        except Exception:
+            continue
 
 
 @app.get("/version", tags=["root"])

@@ -356,6 +356,31 @@ class RuntimeConfigService:
         return RuntimeConfigService._merge_unique(values)
 
     @staticmethod
+    def get_preferred_fast_vision_model(active_provider: str | None = None, active_model: str | None = None) -> str:
+        active_provider_normalized = str(active_provider or "").strip().lower()
+        active_model_name = str(active_model or "").strip()
+        if active_provider_normalized == "ollama" and active_model_name:
+            profile = RuntimeConfigService.get_model_profile("ollama", active_model_name)
+            if profile and profile.modality == "vision" and profile.resource_tier in {"small", "medium"}:
+                return active_model_name
+
+        installed = set(RuntimeConfigService.list_ollama_models())
+        preferred_candidates = [
+            settings.ollama_vision_model,
+            *settings.ollama_vision_model_list,
+            "gemma3:4b",
+            "qwen2.5vl:7b",
+            "gemma3:12b",
+        ]
+        for model_name in RuntimeConfigService._merge_unique(preferred_candidates):
+            profile = RuntimeConfigService.get_model_profile("ollama", model_name)
+            if profile and profile.modality == "vision" and profile.resource_tier in {"small", "medium"}:
+                if not installed or model_name in installed:
+                    return model_name
+
+        return settings.ollama_vision_model.strip() or settings.ollama_model.strip()
+
+    @staticmethod
     def get_available_model_refs(active_provider: str | None = None, active_model: str | None = None) -> list[dict[str, str]]:
         results: list[dict[str, str]] = []
         installed = RuntimeConfigService.list_ollama_models()

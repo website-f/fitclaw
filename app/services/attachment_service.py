@@ -281,6 +281,26 @@ class AttachmentService:
                 active_model=active_model,
             )
 
+        if AttachmentService._looks_like_quick_identification_request(normalized_text):
+            try:
+                reply, provider = LLMService.generate_fast_vision_reply(
+                    prompt_messages=prompt_messages,
+                    prompt_text=(
+                        "Identify what this image most likely shows in a fast, direct answer. "
+                        "Mention any obvious text if it matters. Keep it short and practical."
+                    ),
+                    image_assets=image_assets,
+                    active_provider=active_provider,
+                    active_model=active_model,
+                )
+                return CommandResult(
+                    reply=reply,
+                    provider=provider,
+                    attachments=AttachmentService.build_message_attachments(image_assets),
+                )
+            except Exception:
+                pass
+
         request_text = normalized_text or "Describe this image clearly and extract any important text or visual details."
         if len(request_text.split()) <= 3 and any(token in request_text.lower() for token in ("verify", "identify", "what", "check")):
             request_text = (
@@ -617,6 +637,26 @@ class AttachmentService:
             "check this out",
             "see this",
         }
+
+    @staticmethod
+    def _looks_like_quick_identification_request(text: str) -> bool:
+        lowered = (text or "").strip().lower()
+        if not lowered:
+            return False
+        quick_tokens = (
+            "what is this",
+            "what's this",
+            "tell me what this is",
+            "can you tell me what this is",
+            "identify this",
+            "identify it",
+            "recognize this",
+            "recognise this",
+            "what is in this image",
+            "what is in this photo",
+            "what is in this picture",
+        )
+        return any(token in lowered for token in quick_tokens)
 
     @staticmethod
     def should_use_recent_assets(text: str) -> bool:
