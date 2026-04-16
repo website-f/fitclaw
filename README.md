@@ -142,6 +142,10 @@ If you are deploying this from GitHub onto a fresh Ubuntu VPS, use the full guid
 
 - [`deploy/vps-deploy.md`](deploy/vps-deploy.md)
 
+If this VPS will host several apps and domains, use one shared Caddy reverse proxy for the whole server:
+
+- [`deploy/caddy-reverse-proxy.md`](deploy/caddy-reverse-proxy.md)
+
 ## MemoryCore
 
 If you want portable project memory across different PCs and coding sessions, use MemoryCore:

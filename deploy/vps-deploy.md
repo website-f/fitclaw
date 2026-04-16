@@ -275,3 +275,7 @@ After the stack is working by IP, the next upgrade is:
 - enable HTTPS
 
 That is optional for now because the Telegram bot uses long polling and does not require a webhook.
+
+If this VPS will host multiple projects, prefer one shared Caddy stack in its own `/opt/reverse-proxy` folder instead of bundling Caddy into each app repo. Use:
+
+- [`deploy/caddy-reverse-proxy.md`](deploy/caddy-reverse-proxy.md)

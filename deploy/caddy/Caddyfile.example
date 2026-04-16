@@ -1,0 +1,19 @@
+{
+    email you@example.com
+}
+
+aiops.example.com {
+    encode gzip zstd
+    reverse_proxy 127.0.0.1:8000
+}
+
+n8n.example.com {
+    encode gzip zstd
+    reverse_proxy 127.0.0.1:5678
+}
+
+# Add this only if you intentionally want Flower on the public internet.
+# flower.example.com {
+#     encode gzip zstd
+#     reverse_proxy 127.0.0.1:5555
+# }
