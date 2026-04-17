@@ -10,6 +10,7 @@ const dom = {
   statusText: document.getElementById("statusText"),
   scopeText: document.getElementById("scopeText"),
   entryList: document.getElementById("entryList"),
+  entryListOverview: document.getElementById("entryListOverview"),
   ruleList: document.getElementById("ruleList"),
   categoryRuleForm: document.getElementById("categoryRuleForm"),
   categoryKeywordInput: document.getElementById("categoryKeywordInput"),
@@ -114,11 +115,13 @@ function render() {
 }
 
 function renderEntries(entries, displayCurrency, fxRates) {
+  const emptyHtml = '<div class="empty-state">No finance entries yet. Send a receipt in chat and it can land here automatically.</div>';
   if (!entries.length) {
-    dom.entryList.innerHTML = '<div class="empty-state">No finance entries yet. Send a receipt in chat and it can land here automatically.</div>';
+    if (dom.entryList) dom.entryList.innerHTML = emptyHtml;
+    if (dom.entryListOverview) dom.entryListOverview.innerHTML = emptyHtml;
     return;
   }
-  dom.entryList.innerHTML = entries.map((entry) => `
+  const renderEntry = (entry) => `
     <article class="entry-item">
       <h3>${escapeHtml(entry.title)}</h3>
       <div class="entry-meta">
@@ -131,9 +134,11 @@ function renderEntries(entries, displayCurrency, fxRates) {
         <button class="danger-button" type="button" data-entry-id="${entry.entry_id}">Delete</button>
       </div>
     </article>
-  `).join("");
+  `;
+  if (dom.entryList) dom.entryList.innerHTML = entries.map(renderEntry).join("");
+  if (dom.entryListOverview) dom.entryListOverview.innerHTML = entries.slice(0, 5).map(renderEntry).join("");
 
-  dom.entryList.querySelectorAll("[data-entry-id]").forEach((button) => {
+  document.querySelectorAll("[data-entry-id]").forEach((button) => {
     button.addEventListener("click", async () => {
       if (!confirm(`Delete finance entry ${button.dataset.entryId}?`)) return;
       await fetch(`/api/v1/finance/entries/${encodeURIComponent(button.dataset.entryId)}?user_id=${encodeURIComponent(state.userId)}`, {

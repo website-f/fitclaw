@@ -37,6 +37,11 @@ const dom = {
   waBlastMessage: document.getElementById("waBlastMessage"),
   waBlastWarningAck: document.getElementById("waBlastWarningAck"),
   waEvents: document.getElementById("waEvents"),
+  waEventsCount: document.getElementById("waEventsCount"),
+  waEventsPager: document.getElementById("waEventsPager"),
+  waEventsPrev: document.getElementById("waEventsPrev"),
+  waEventsNext: document.getElementById("waEventsNext"),
+  waEventsPagerLabel: document.getElementById("waEventsPagerLabel"),
 
   waTabs: document.querySelectorAll(".wa-tab"),
   waConvoRefreshButton: document.getElementById("waConvoRefreshButton"),
@@ -70,6 +75,8 @@ const state = {
   loadingMessages: false,
   pollTimer: null,
   pendingUploads: [],
+  eventsPage: 0,
+  eventsPageSize: 6,
 };
 
 window.addEventListener("load", () => {
@@ -143,6 +150,21 @@ function bindEvents() {
 
   dom.waAttachButton?.addEventListener("click", () => dom.waFilePicker.click());
   dom.waFilePicker?.addEventListener("change", onFileSelection);
+
+  dom.waEventsPrev?.addEventListener("click", () => {
+    if (state.eventsPage > 0) {
+      state.eventsPage -= 1;
+      renderEvents(state.status?.recent_events || []);
+    }
+  });
+  dom.waEventsNext?.addEventListener("click", () => {
+    const total = (state.status?.recent_events || []).length;
+    const maxPage = Math.max(0, Math.ceil(total / state.eventsPageSize) - 1);
+    if (state.eventsPage < maxPage) {
+      state.eventsPage += 1;
+      renderEvents(state.status?.recent_events || []);
+    }
+  });
 }
 
 function setTab(tab) {
@@ -276,11 +298,23 @@ function renderQr(status) {
 
 function renderEvents(events) {
   dom.waEvents.innerHTML = "";
-  if (!events.length) {
+  const total = events.length;
+  if (dom.waEventsCount) {
+    dom.waEventsCount.textContent = total ? `${total} event${total === 1 ? "" : "s"}` : "";
+  }
+  if (!total) {
     dom.waEvents.innerHTML = `<div class="wa-empty">No WhatsApp beta events yet.</div>`;
+    if (dom.waEventsPager) dom.waEventsPager.hidden = true;
     return;
   }
-  events.forEach((entry) => {
+
+  const pageSize = state.eventsPageSize;
+  const maxPage = Math.max(0, Math.ceil(total / pageSize) - 1);
+  if (state.eventsPage > maxPage) state.eventsPage = maxPage;
+  const start = state.eventsPage * pageSize;
+  const slice = events.slice(start, start + pageSize);
+
+  slice.forEach((entry) => {
     const article = document.createElement("article");
     article.className = "wa-event";
     const recipientSuffix = entry.recipient ? ` - ${escapeHtml(entry.recipient)}` : "";
@@ -294,6 +328,17 @@ function renderEvents(events) {
     `;
     dom.waEvents.appendChild(article);
   });
+
+  if (dom.waEventsPager) {
+    if (total <= pageSize) {
+      dom.waEventsPager.hidden = true;
+    } else {
+      dom.waEventsPager.hidden = false;
+      dom.waEventsPrev.disabled = state.eventsPage <= 0;
+      dom.waEventsNext.disabled = state.eventsPage >= maxPage;
+      dom.waEventsPagerLabel.textContent = `${state.eventsPage + 1} / ${maxPage + 1}`;
+    }
+  }
 }
 
 /* ═══════════════ CONVERSATIONS ═══════════════ */

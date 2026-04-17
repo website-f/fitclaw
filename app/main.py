@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.middleware.agent_auth import AgentBasicAuthMiddleware
-from app.routers import agent_control, agent_tasks, agents, calendar, chat, device_control, downloads, finance, health, memorycore, models, tasks, transit, uploads, weather, web_app, whatsapp
+from app.routers import agent_control, agent_tasks, agents, calendar, chat, clear_data, device_control, downloads, finance, health, memorycore, models, tasks, transit, uploads, weather, web_app, whatsapp
 from app.services.runtime_config_service import RuntimeConfigService
 
 settings = get_settings()
@@ -51,6 +51,7 @@ app.include_router(uploads.router)
 app.include_router(web_app.router)
 app.include_router(whatsapp.router)
 app.include_router(downloads.router)
+app.include_router(clear_data.router)
 
 
 @app.on_event("startup")

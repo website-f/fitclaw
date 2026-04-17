@@ -40,6 +40,11 @@ def whatsapp_beta_app():
     return FileResponse(PWA_DIR / "whatsapp_beta.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
 
 
+@router.get("/clear-data", include_in_schema=False)
+def clear_data_page():
+    return FileResponse(PWA_DIR / "clear_data.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
 @router.get("/app-manifest.webmanifest", include_in_schema=False)
 def app_manifest():
     return FileResponse(

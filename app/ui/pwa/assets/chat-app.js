@@ -48,7 +48,6 @@ const dom = {
   topbarNewChatButton: document.getElementById("topbarNewChatButton"),
   deleteChatButton: document.getElementById("deleteChatButton"),
   promptDeck: document.getElementById("promptDeck"),
-  showcaseList: document.getElementById("showcaseList"),
   quickChipRow: document.getElementById("quickChipRow"),
   uploadTray: document.getElementById("uploadTray"),
   historyList: document.getElementById("historyList"),
@@ -724,7 +723,6 @@ function renderSuggestions() {
   dom.suggestionCount.textContent = String(suggestions.length);
 
   renderSuggestionCollection(dom.promptDeck, suggestions.slice(0, 6), "prompt-card");
-  renderSuggestionCollection(dom.showcaseList, suggestions.slice(0, 3), "showcase-card");
   renderChipRow(suggestions.slice(0, 6));
   renderActionStack(suggestions.slice(0, 6));
 }

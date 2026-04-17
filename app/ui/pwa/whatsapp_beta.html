@@ -27,12 +27,15 @@
       <div class="wa-topbar-copy">
         <p class="eyebrow">WhatsApp beta</p>
         <h1>Conversations</h1>
-        <p class="wa-subcopy">Chat from the dashboard, view incoming messages, configure the bridge. Keep volume low and use a secondary number.</p>
       </div>
       <div class="wa-topbar-actions">
         <div class="status-pill" id="waPageVersion">Loading...</div>
-        <a class="ghost-button small-button" href="/app">Chat</a>
-        <a class="ghost-button small-button" href="/">Home</a>
+        <a class="icon-button wa-topbar-icon" href="/app" aria-label="Back to chat" title="Back to chat">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8.2l2 2V5l-2 1.2M2 8.2l5.2 5.2v-2.6s3.6-.2 6.8 2.6c.4-5.8-3-8.8-6.8-8.8V2.4L2 8.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="icon-button wa-topbar-icon" href="/" aria-label="Home" title="Home">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 7.5L8 2l6 5.5V14a.5.5 0 01-.5.5H10v-4.5H6V14.5H2.5A.5.5 0 012 14V7.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </a>
       </div>
     </header>
 
@@ -266,8 +269,14 @@
               <p class="eyebrow">Recent events</p>
               <h3>Audit trail</h3>
             </div>
+            <span class="wa-event-count" id="waEventsCount"></span>
           </div>
           <div id="waEvents" class="wa-events"></div>
+          <div class="wa-events-pager" id="waEventsPager" hidden>
+            <button class="ghost-button small-button" id="waEventsPrev" type="button" disabled>Prev</button>
+            <span class="wa-events-pager-label" id="waEventsPagerLabel">1 / 1</span>
+            <button class="ghost-button small-button" id="waEventsNext" type="button" disabled>Next</button>
+          </div>
         </article>
       </div>
     </section>

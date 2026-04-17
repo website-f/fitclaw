@@ -62,6 +62,22 @@
   flex-wrap: wrap;
   flex-shrink: 0;
 }
+.wa-topbar-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+  transition: background 160ms ease, transform 160ms ease;
+}
+.wa-topbar-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
 
 /* ── Tab switcher ── */
 .wa-tabs {
@@ -656,6 +672,29 @@
   line-height: 1.65;
 }
 
+.wa-event-count {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.wa-events-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+.wa-events-pager-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  min-width: 3rem;
+  text-align: center;
+}
+.wa-events-pager .small-button { min-height: 34px; }
 .wa-events { display: grid; gap: 0.6rem; min-height: 5rem; }
 .wa-event {
   border-radius: 0.95rem;
