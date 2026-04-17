@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.models.conversation import ConversationMessage
 from app.schemas.whatsapp import (
     WhatsAppBlastRequest,
     WhatsAppProfileUpdateRequest,
@@ -14,6 +16,8 @@ from app.services.whatsapp_service import WhatsAppBetaService
 
 router = APIRouter(prefix="/api/v1/whatsapp", tags=["whatsapp"])
 settings = get_settings()
+
+WHATSAPP_SESSION_PREFIX = "whatsapp:"
 
 
 @router.get("/status", response_model=WhatsAppStatusResponse)
@@ -75,6 +79,101 @@ def whatsapp_test_send(payload: WhatsAppSendRequest, db: Session = Depends(get_d
     return WhatsAppQueuedSendResponse(
         queued=False,
         message=f"Sent beta test message to `{WhatsAppBetaService.normalize_recipient(payload.recipient)}`.",
+        scheduled_count=1,
+        delays_seconds=[],
+    )
+
+
+@router.get("/conversations")
+def list_whatsapp_conversations(limit: int = 60, db: Session = Depends(get_db)):
+    rows = db.execute(
+        select(
+            ConversationMessage.session_id,
+            ConversationMessage.platform_user_id,
+            func.max(ConversationMessage.created_at).label("last_at"),
+            func.count(ConversationMessage.id).label("message_count"),
+        )
+        .where(ConversationMessage.session_id.like(f"{WHATSAPP_SESSION_PREFIX}%"))
+        .group_by(ConversationMessage.session_id, ConversationMessage.platform_user_id)
+        .order_by(func.max(ConversationMessage.created_at).desc())
+        .limit(max(1, min(limit, 200)))
+    ).all()
+
+    conversations: list[dict] = []
+    for row in rows:
+        chat_jid = str(row.session_id).removeprefix(WHATSAPP_SESSION_PREFIX)
+        user_id = str(row.platform_user_id or "")
+        sender_key = user_id.removeprefix(WHATSAPP_SESSION_PREFIX)
+        latest = db.scalars(
+            select(ConversationMessage)
+            .where(ConversationMessage.session_id == row.session_id)
+            .order_by(ConversationMessage.created_at.desc())
+            .limit(1)
+        ).first()
+        preview = ""
+        last_role = "assistant"
+        if latest is not None:
+            preview = (latest.content or "").strip().replace("\n", " ")[:160]
+            last_role = latest.role.value if latest.role else "assistant"
+        conversations.append(
+            {
+                "chat_jid": chat_jid,
+                "session_id": row.session_id,
+                "user_id": user_id,
+                "sender_key": sender_key,
+                "display_name": latest.username if latest and latest.username else sender_key,
+                "last_message_at": row.last_at.isoformat() if row.last_at else None,
+                "last_preview": preview,
+                "last_role": last_role,
+                "message_count": int(row.message_count or 0),
+            }
+        )
+    return conversations
+
+
+@router.get("/conversations/{chat_jid:path}/messages")
+def list_whatsapp_conversation_messages(chat_jid: str, limit: int = 200, db: Session = Depends(get_db)):
+    session_id = f"{WHATSAPP_SESSION_PREFIX}{chat_jid}"
+    stmt = (
+        select(ConversationMessage)
+        .where(ConversationMessage.session_id == session_id)
+        .order_by(ConversationMessage.created_at.asc())
+        .limit(max(1, min(limit, 500)))
+    )
+    items = list(db.scalars(stmt).all())
+    return [
+        {
+            "id": item.id,
+            "session_id": item.session_id,
+            "role": item.role.value if item.role else "assistant",
+            "content": item.content,
+            "provider": item.provider,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+            "attachments": list((item.metadata_json or {}).get("attachments", [])),
+        }
+        for item in items
+    ]
+
+
+@router.post("/chat-send", response_model=WhatsAppQueuedSendResponse)
+def whatsapp_chat_send(payload: WhatsAppSendRequest, db: Session = Depends(get_db)):
+    if not WhatsAppBetaService.is_enabled():
+        raise HTTPException(status_code=400, detail="WhatsApp beta is disabled.")
+    if not WhatsAppBetaService.is_allowed_recipient(db, payload.recipient):
+        raise HTTPException(status_code=400, detail="Recipient is not in the WhatsApp beta allowlist.")
+
+    success, detail = WhatsAppBetaService.send_message_now(
+        db,
+        recipient=payload.recipient,
+        message=payload.message,
+        category="chat",
+        bypass_cooldown=True,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=detail)
+    return WhatsAppQueuedSendResponse(
+        queued=False,
+        message=f"Sent WhatsApp message to `{WhatsAppBetaService.normalize_recipient(payload.recipient)}`.",
         scheduled_count=1,
         delays_seconds=[],
     )

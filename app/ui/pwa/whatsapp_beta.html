@@ -17,228 +17,262 @@
   <link rel="stylesheet" href="/app-assets/chat-app.css" />
   <link rel="stylesheet" href="/app-assets/whatsapp-beta.css" />
 </head>
-<body class="wa-body">
+<body class="wa-body" data-wa-tab="chats">
   <div class="ambient ambient-a"></div>
   <div class="ambient ambient-b"></div>
   <div class="ambient ambient-c"></div>
 
   <main class="wa-shell">
     <header class="wa-topbar glass-card">
-      <div>
-        <p class="eyebrow">Low-volume automation only</p>
-        <h1>WhatsApp Blasting (Beta)</h1>
-        <p class="wa-subcopy">Owner-only WhatsApp notifications and chat relay using an internal guarded bridge, with allowlists, jitter, cooldowns, and daily caps.</p>
+      <div class="wa-topbar-copy">
+        <p class="eyebrow">WhatsApp beta</p>
+        <h1>Conversations</h1>
+        <p class="wa-subcopy">Chat from the dashboard, view incoming messages, configure the bridge. Keep volume low and use a secondary number.</p>
       </div>
       <div class="wa-topbar-actions">
         <div class="status-pill" id="waPageVersion">Loading...</div>
-        <a class="ghost-button small-button" href="/app">← Chat</a>
+        <a class="ghost-button small-button" href="/app">Chat</a>
         <a class="ghost-button small-button" href="/">Home</a>
       </div>
     </header>
 
-    <section class="wa-warning glass-card">
-      <div class="wa-warning-icon">!</div>
-      <div>
-        <p class="eyebrow">High caution</p>
-        <h2>Do not use your main personal number</h2>
-        <p id="waWarningText">This beta can reduce risk, but it cannot guarantee safety. Use a secondary number, keep recipients allowlisted and opt-in only, and stay low-volume.</p>
+    <nav class="wa-tabs" role="tablist" aria-label="WhatsApp beta sections">
+      <button class="wa-tab" data-wa-tab="chats" type="button" role="tab" aria-selected="true">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1.4a5.4 5.4 0 00-4.6 8.2L1.6 12.4l2.9-.7A5.4 5.4 0 107 1.4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        Chats
+      </button>
+      <button class="wa-tab" data-wa-tab="config" type="button" role="tab" aria-selected="false">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v2.5M7 10.5V13M11.2 2.8l-1.8 1.8M4.6 9.4l-1.8 1.8M13 7h-2.5M3.5 7H1M11.2 11.2l-1.8-1.8M4.6 4.6L2.8 2.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.2"/></svg>
+        Configuration
+      </button>
+    </nav>
+
+    <!-- ════════════ CHATS TAB ════════════ -->
+    <section class="wa-panel wa-panel-chats" data-wa-panel="chats">
+      <div class="wa-chat-shell glass-card">
+        <!-- Conversations list -->
+        <aside class="wa-convo-list" id="waConvoList" aria-label="Conversations">
+          <div class="wa-convo-head">
+            <div>
+              <p class="eyebrow">Inbox</p>
+              <h2 class="wa-convo-title">Chats</h2>
+            </div>
+            <button class="ghost-button small-button" id="waConvoRefreshButton" type="button" aria-label="Refresh conversations">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1.5 7a5.5 5.5 0 019.3-3.9M12.5 7a5.5 5.5 0 01-9.3 3.9M11 1.5v2.5h-2.5M3 12.5V10h2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <label class="wa-search">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4" stroke="currentColor" stroke-width="1.4"/><path d="M9.2 9.2L12 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <input id="waConvoSearch" type="text" placeholder="Search or new chat (number)" autocomplete="off" />
+          </label>
+          <div class="wa-convo-scroll" id="waConvoScroll"></div>
+        </aside>
+
+        <!-- Active chat pane -->
+        <section class="wa-chat-pane" id="waChatPane">
+          <header class="wa-chat-head" id="waChatHead">
+            <button class="icon-button wa-back-button" id="waBackButton" type="button" aria-label="Back to chats">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3l-5 5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="wa-chat-avatar" id="waChatAvatar">W</div>
+            <div class="wa-chat-head-copy">
+              <strong id="waChatTitle">Select a conversation</strong>
+              <span id="waChatSub">Pick a chat from the list to see messages.</span>
+            </div>
+          </header>
+
+          <div class="wa-message-scroll" id="waMessageScroll">
+            <div class="wa-chat-empty" id="waChatEmpty">
+              <div class="wa-chat-empty-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M14 2.8a11.2 11.2 0 00-9.5 17L3 25l5.2-1.3A11.2 11.2 0 1014 2.8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              </div>
+              <p>Your WhatsApp messages land here. Pick a conversation on the left, or type a number in the search bar to start a new thread.</p>
+            </div>
+            <div class="wa-message-list" id="waMessageList"></div>
+          </div>
+
+          <form class="wa-composer" id="waComposer">
+            <div class="wa-upload-tray" id="waUploadTray"></div>
+            <div class="wa-composer-row">
+              <button class="icon-button wa-attach-button" id="waAttachButton" type="button" aria-label="Attach file">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M15.2 8.5l-6.4 6.4a4 4 0 01-5.6-5.7l6.4-6.4a2.7 2.7 0 013.7 3.8l-6.4 6.4a1.3 1.3 0 01-1.9-1.9l5.9-5.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <input id="waFilePicker" type="file" multiple hidden />
+              <label class="sr-only" for="waMessageInput">Message</label>
+              <textarea id="waMessageInput" rows="1" maxlength="3800" placeholder="Message"></textarea>
+              <button class="primary-button wa-send-button" id="waSendButton" type="submit">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2L7 9M14 2l-4.5 12-2.2-5.3L2 6.5 14 2z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          </form>
+        </section>
       </div>
     </section>
 
-    <section class="wa-grid">
-      <article class="glass-card wa-card">
-        <div class="wa-card-head">
-          <div>
-            <p class="eyebrow">Bridge status</p>
-            <h3>Connection health</h3>
-          </div>
-          <button class="ghost-button small-button" id="waRefreshButton" type="button">Refresh</button>
+    <!-- ════════════ CONFIG TAB ════════════ -->
+    <section class="wa-panel wa-panel-config" data-wa-panel="config">
+      <section class="wa-warning glass-card">
+        <div class="wa-warning-icon">!</div>
+        <div>
+          <p class="eyebrow">High caution</p>
+          <h2>Do not use your main personal number</h2>
+          <p id="waWarningText">This beta can reduce risk, but it cannot guarantee safety. Use a secondary number, keep recipients allowlisted and opt-in only, and stay low-volume.</p>
         </div>
-        <div class="wa-status-grid">
-          <div class="wa-status-pill" id="waEnabledState">Disabled</div>
-          <div class="wa-status-pill" id="waBridgeState">Bridge unknown</div>
-          <div class="wa-status-pill" id="waInboundState">Inbound unknown</div>
-          <div class="wa-status-pill" id="waBlastState">Blast unknown</div>
-        </div>
-        <div class="wa-detail-list">
-          <div><span>Bridge URL</span><strong id="waBridgeUrl">-</strong></div>
-          <div><span>Configured sender</span><strong id="waSenderPhone">-</strong></div>
-          <div><span>Bridge connected as</span><strong id="waConnectedSender">-</strong></div>
-          <div><span>Default recipient</span><strong id="waDefaultRecipient">-</strong></div>
-          <div><span>Allowlisted senders</span><strong id="waSenderCount">0</strong></div>
-          <div><span>Allowlisted recipients</span><strong id="waRecipientCount">0</strong></div>
-        </div>
-        <div id="waQrPanel" class="wa-qr-panel" hidden>
-          <div class="wa-qr-copy">
-            <p class="eyebrow">Pairing required</p>
-            <h4>Scan this QR code in WhatsApp</h4>
-            <p id="waQrHint">Open WhatsApp on the phone you want to use, then go to Linked Devices and scan this code.</p>
-          </div>
-          <div class="wa-qr-frame">
-            <img id="waQrImage" alt="WhatsApp pairing QR code" />
-          </div>
-        </div>
-      </article>
+      </section>
 
-      <article class="glass-card wa-card">
-        <div class="wa-card-head">
-          <div>
-            <p class="eyebrow">Profile</p>
-            <h3>Sender and recipient setup</h3>
+      <div class="wa-grid">
+        <article class="glass-card wa-card">
+          <div class="wa-card-head">
+            <div>
+              <p class="eyebrow">Bridge status</p>
+              <h3>Connection health</h3>
+            </div>
+            <button class="ghost-button small-button" id="waRefreshButton" type="button">Refresh</button>
           </div>
-        </div>
-        <form id="waProfileForm" class="wa-form">
-          <label class="field compact-field">
-            <span>Sender phone number</span>
-            <input id="waSenderPhoneInput" type="text" placeholder="60123456789" />
-          </label>
-          <label class="field compact-field">
-            <span>Sender label</span>
-            <input id="waSenderLabelInput" type="text" placeholder="My WhatsApp automation line" />
-          </label>
-          <label class="field compact-field">
-            <span>Default notification recipient</span>
-            <input id="waDefaultRecipientInput" type="text" placeholder="60123456789" />
-          </label>
-          <label class="field compact-field">
-            <span>Allowlisted inbound senders / owner numbers</span>
-            <textarea id="waAllowedSendersInput" rows="4" placeholder="Numbers allowed to chat with the AI from WhatsApp. The default recipient is added automatically."></textarea>
-          </label>
-          <label class="field compact-field">
-            <span>Allowlisted outbound recipients</span>
-            <textarea id="waAllowedRecipientsInput" rows="4" placeholder="One number per line"></textarea>
-          </label>
-          <div class="wa-form-footer">
-            <button class="primary-button" type="submit">Save WhatsApp setup</button>
+          <div class="wa-status-grid">
+            <div class="wa-status-pill" id="waEnabledState">Disabled</div>
+            <div class="wa-status-pill" id="waBridgeState">Bridge unknown</div>
+            <div class="wa-status-pill" id="waInboundState">Inbound unknown</div>
+            <div class="wa-status-pill" id="waBlastState">Blast unknown</div>
+          </div>
+          <div class="wa-detail-list">
+            <div><span>Bridge URL</span><strong id="waBridgeUrl">-</strong></div>
+            <div><span>Configured sender</span><strong id="waSenderPhone">-</strong></div>
+            <div><span>Bridge connected as</span><strong id="waConnectedSender">-</strong></div>
+            <div><span>Default recipient</span><strong id="waDefaultRecipient">-</strong></div>
+            <div><span>Allowlisted senders</span><strong id="waSenderCount">0</strong></div>
+            <div><span>Allowlisted recipients</span><strong id="waRecipientCount">0</strong></div>
+          </div>
+          <div id="waQrPanel" class="wa-qr-panel" hidden>
+            <div class="wa-qr-copy">
+              <p class="eyebrow">Pairing required</p>
+              <h4>Scan this QR code in WhatsApp</h4>
+              <p id="waQrHint">Open WhatsApp on the phone you want to use, then go to Linked Devices and scan this code.</p>
+            </div>
+            <div class="wa-qr-frame">
+              <img id="waQrImage" alt="WhatsApp pairing QR code" />
+            </div>
+          </div>
+        </article>
+
+        <article class="glass-card wa-card">
+          <div class="wa-card-head">
+            <div>
+              <p class="eyebrow">Profile</p>
+              <h3>Sender and recipient setup</h3>
+            </div>
+          </div>
+          <form id="waProfileForm" class="wa-form">
+            <label class="field compact-field">
+              <span>Sender phone number</span>
+              <input id="waSenderPhoneInput" type="text" placeholder="60123456789" />
+            </label>
+            <label class="field compact-field">
+              <span>Sender label</span>
+              <input id="waSenderLabelInput" type="text" placeholder="My WhatsApp automation line" />
+            </label>
+            <label class="field compact-field">
+              <span>Default notification recipient</span>
+              <input id="waDefaultRecipientInput" type="text" placeholder="60123456789" />
+            </label>
+            <label class="field compact-field">
+              <span>Allowlisted inbound senders / owner numbers</span>
+              <textarea id="waAllowedSendersInput" rows="4" placeholder="Numbers allowed to chat with the AI from WhatsApp. The default recipient is added automatically."></textarea>
+            </label>
+            <label class="field compact-field">
+              <span>Allowlisted outbound recipients</span>
+              <textarea id="waAllowedRecipientsInput" rows="4" placeholder="One number per line"></textarea>
+            </label>
+            <div class="wa-form-footer">
+              <button class="primary-button" type="submit">Save WhatsApp setup</button>
               <button class="ghost-button" id="waQuickTestButton" type="button">
                 <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true"><path d="M13.5 2L6 9.5M13.5 2L9 13.5l-3-4-4-3 11.5-4.5z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Save and test
+                Save and test
               </button>
-          </div>
-        </form>
-      </article>
-    </section>
+            </div>
+          </form>
+        </article>
+      </div>
 
-    <section class="wa-grid">
-      <article class="glass-card wa-card">
-        <div class="wa-card-head">
-          <div>
-            <p class="eyebrow">Owner test</p>
-            <h3>Send a test message</h3>
+      <div class="wa-grid">
+        <article class="glass-card wa-card">
+          <div class="wa-card-head">
+            <div>
+              <p class="eyebrow">Owner test</p>
+              <h3>Send a test message</h3>
+            </div>
           </div>
-        </div>
-        <form id="waTestForm" class="wa-form">
-          <label class="field compact-field">
-            <span>Allowlisted recipient</span>
-            <input id="waTestRecipient" type="text" placeholder="60123456789 or 60123456789@s.whatsapp.net" />
-          </label>
-          <label class="field compact-field">
-            <span>Message</span>
-            <textarea id="waTestMessage" rows="4" maxlength="4000" placeholder="Daily report check-in from FitClaw beta."></textarea>
-          </label>
-          <label class="wa-check">
-            <input id="waTestWarningAck" type="checkbox" />
-            <span>I understand this is a risky beta and I should not use my main number.</span>
-          </label>
-          <button class="primary-button" type="submit">Send test now</button>
-        </form>
-      </article>
+          <form id="waTestForm" class="wa-form">
+            <label class="field compact-field">
+              <span>Allowlisted recipient</span>
+              <input id="waTestRecipient" type="text" placeholder="60123456789 or 60123456789@s.whatsapp.net" />
+            </label>
+            <label class="field compact-field">
+              <span>Message</span>
+              <textarea id="waTestMessage" rows="4" maxlength="4000" placeholder="Daily report check-in from FitClaw beta."></textarea>
+            </label>
+            <label class="wa-check">
+              <input id="waTestWarningAck" type="checkbox" />
+              <span>I understand this is a risky beta and I should not use my main number.</span>
+            </label>
+            <button class="primary-button" type="submit">Send test now</button>
+          </form>
+        </article>
 
-      <article class="glass-card wa-card">
-        <div class="wa-card-head">
-          <div>
-            <p class="eyebrow">Chat relay</p>
-            <h3>What works</h3>
+        <article class="glass-card wa-card">
+          <div class="wa-card-head">
+            <div>
+              <p class="eyebrow">Chat relay</p>
+              <h3>What works</h3>
+            </div>
           </div>
-        </div>
-        <ul class="note-list">
-          <li>Incoming WhatsApp messages can chat with your AI and trigger the same agent and task logic as Telegram.</li>
-          <li>Only allowlisted senders are processed, and group chats are ignored for safety.</li>
-          <li>Replies are delayed slightly to look less robotic and to reduce risk.</li>
-          <li>The connected WhatsApp account is the real sender. The sender phone field here helps you manage and document that profile.</li>
-        </ul>
-      </article>
-    </section>
+          <ul class="note-list">
+            <li>Incoming WhatsApp messages can chat with your AI and trigger the same agent and task logic as Telegram.</li>
+            <li>Only allowlisted senders are processed, and group chats are ignored for safety.</li>
+            <li>Replies are delayed slightly to look less robotic and to reduce risk.</li>
+            <li>The connected WhatsApp account is the real sender. The sender phone field here helps you manage and document that profile.</li>
+          </ul>
+        </article>
+      </div>
 
-    <section class="wa-grid">
-      <article class="glass-card wa-card">
-        <div class="wa-card-head">
-          <div>
-            <p class="eyebrow">Low-volume only</p>
-            <h3>Blast to allowlist</h3>
+      <div class="wa-grid">
+        <article class="glass-card wa-card">
+          <div class="wa-card-head">
+            <div>
+              <p class="eyebrow">Low-volume only</p>
+              <h3>Blast to allowlist</h3>
+            </div>
           </div>
-        </div>
-        <form id="waBlastForm" class="wa-form">
-          <label class="field compact-field">
-            <span>Recipients</span>
-            <textarea id="waBlastRecipients" rows="4" placeholder="One allowlisted number or JID per line"></textarea>
-          </label>
-          <label class="field compact-field">
-            <span>Message</span>
-            <textarea id="waBlastMessage" rows="5" maxlength="4000" placeholder="Important agent update: one device went offline and needs attention."></textarea>
-          </label>
-          <label class="wa-check">
-            <input id="waBlastWarningAck" type="checkbox" />
-            <span>I understand this queues a risky beta send and must stay low-volume and opt-in only.</span>
-          </label>
-          <button class="primary-button danger-button" type="submit">Queue beta blast</button>
-        </form>
-      </article>
+          <form id="waBlastForm" class="wa-form">
+            <label class="field compact-field">
+              <span>Recipients</span>
+              <textarea id="waBlastRecipients" rows="4" placeholder="One allowlisted number or JID per line"></textarea>
+            </label>
+            <label class="field compact-field">
+              <span>Message</span>
+              <textarea id="waBlastMessage" rows="5" maxlength="4000" placeholder="Important agent update: one device went offline and needs attention."></textarea>
+            </label>
+            <label class="wa-check">
+              <input id="waBlastWarningAck" type="checkbox" />
+              <span>I understand this queues a risky beta send and must stay low-volume and opt-in only.</span>
+            </label>
+            <button class="primary-button danger-button" type="submit">Queue beta blast</button>
+          </form>
+        </article>
 
-      <article class="glass-card wa-card">
-        <div class="wa-card-head">
-          <div>
-            <p class="eyebrow">Example incoming chat</p>
-            <h3>Ask from WhatsApp</h3>
+        <article class="glass-card wa-card">
+          <div class="wa-card-head">
+            <div>
+              <p class="eyebrow">Recent events</p>
+              <h3>Audit trail</h3>
+            </div>
           </div>
-        </div>
-        <div class="wa-codeblock">
-          <code>list agents</code>
-          <code>check storage on DESKTOP-0112K9I</code>
-          <code>weather in Kuala Lumpur now</code>
-          <code>show live buses in KL</code>
-          <code>ask DESKTOP-0112K9I to crawl https://example.com and summarize it</code>
-        </div>
-      </article>
-
-      <article class="glass-card wa-card">
-        <div class="wa-card-head">
-          <div>
-            <p class="eyebrow">Recent events</p>
-            <h3>Audit trail</h3>
-          </div>
-        </div>
-        <div id="waEvents" class="wa-events"></div>
-      </article>
+          <div id="waEvents" class="wa-events"></div>
+        </article>
+      </div>
     </section>
   </main>
 
-  <script>
-    document.getElementById('waQuickTestButton').addEventListener('click', function () {
-      var recipient = (document.getElementById('waDefaultRecipientInput').value || '').trim();
-      var testRecipientEl = document.getElementById('waTestRecipient');
-      var testMessageEl  = document.getElementById('waTestMessage');
-      var testAckEl      = document.getElementById('waTestWarningAck');
-
-      // Pre-fill recipient from saved default number if the field is empty
-      if (recipient && !testRecipientEl.value.trim()) {
-        testRecipientEl.value = recipient;
-      }
-
-      // Pre-fill a default test message if field is empty
-      if (!testMessageEl.value.trim()) {
-        testMessageEl.value = 'Hello from FitClaw \uD83D\uDC4B — this is a test message to confirm the WhatsApp bridge is working correctly.';
-      }
-
-      // Auto-acknowledge the warning
-      testAckEl.checked = true;
-
-      // Scroll to and focus the test form
-      var testForm = document.getElementById('waTestForm');
-      testForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setTimeout(function () { testMessageEl.focus(); }, 400);
-    });
-  </script>
   <script src="/app-assets/whatsapp-beta.js" defer></script>
 </body>
 </html>
