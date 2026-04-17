@@ -31,6 +31,20 @@ class AgentDownloadServiceTests(unittest.TestCase):
         artifact, _ = AgentDownloadService.get_download("windows")
         self.assertEqual(artifact.name, setup.name)
 
+    def test_release_directory_is_checked_before_dist(self) -> None:
+        release_dir = AgentDownloadService.REPO_ROOT / "agent_daemon" / "release"
+        release_dir.mkdir(parents=True, exist_ok=True)
+        published = release_dir / "PersonalAIOpsAgent-0.4.0-windows-x64.exe"
+        published.write_bytes(b"release")
+
+        dist = AgentDownloadService.REPO_ROOT / "agent_daemon" / "dist"
+        dist.mkdir(parents=True, exist_ok=True)
+        fallback = dist / "PersonalAIOpsAgent-0.3.9-windows-x64.exe"
+        fallback.write_bytes(b"dist")
+
+        artifact, _ = AgentDownloadService.get_download("windows")
+        self.assertEqual(artifact.name, published.name)
+
     def test_android_falls_back_to_debug_output(self) -> None:
         debug_dir = (
             AgentDownloadService.REPO_ROOT

@@ -10,6 +10,8 @@ __pycache__/
 *.sqlite3
 data/*
 !data/.gitkeep
+# Keep raw agent build output out of Git; curated binaries meant to ship with the repo
+# should go in `agent_daemon/release/` instead.
 agent_daemon/dist/
 agent_daemon/build-output/
 memorycore_cli/dist/

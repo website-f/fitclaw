@@ -18,6 +18,7 @@ class AgentDownloadService:
             "locations": [
                 ("$agent_downloads_dir", ["*Setup*.exe", "*windows*.exe", "*.exe"]),
                 ("$agent_downloads_dir/windows", ["*Setup*.exe", "*windows*.exe", "*.exe"]),
+                ("agent_daemon/release", ["*Setup*.exe", "*windows*.exe", "*.exe"]),
                 ("agent_daemon/dist", ["*Setup*.exe", "*windows*.exe", "*.exe"]),
             ],
         },
@@ -28,6 +29,7 @@ class AgentDownloadService:
             "locations": [
                 ("$agent_downloads_dir", ["*mobile-agent-android*.apk", "*.apk"]),
                 ("$agent_downloads_dir/android", ["*mobile-agent-android*.apk", "*.apk"]),
+                ("agent_daemon/release", ["*mobile-agent-android*.apk", "*.apk"]),
                 ("agent_daemon/dist", ["*mobile-agent-android*.apk", "*.apk"]),
                 ("agent_daemon/packaging/android/app/build/outputs/apk/debug", ["*.apk"]),
             ],

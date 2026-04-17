@@ -551,6 +551,7 @@ These workflows can build and upload agent artifacts automatically from GitHub A
 The landing page download buttons and `/api/v1/downloads/agents/*` look in this order:
 
 - `AGENT_DOWNLOADS_DIR` which defaults to `/data/agent-downloads` inside Docker
+- `agent_daemon/release/` in the repo for curated binaries that should travel with Git
 - `agent_daemon/dist/` inside the repo as a development fallback
 
 That means production installs should usually upload artifacts into the host path:
@@ -561,6 +562,10 @@ Examples:
 
 - `data/agent-downloads/PersonalAIOpsAgent-0.4.0-windows-x64.exe`
 - `data/agent-downloads/PersonalAIOpsAgent-0.4.0-mobile-agent-android.apk`
+
+If you want the installer files to ship with the repository and appear after a plain `git pull`, put the curated release artifacts in:
+
+- `agent_daemon/release/`
 
 This keeps large binaries out of Git while still making the landing-page download buttons work.
 

@@ -21,7 +21,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
-Get-ChildItem $distDir -Filter "PersonalAIOpsAgent*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $distDir -Filter "PersonalAIOpsAgent*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 Push-Location $agentRoot
 
@@ -61,11 +61,17 @@ if ($iscc) {
 $canonicalExe = Join-Path $distDir "PersonalAIOpsAgent.exe"
 $versionedExe = Join-Path $distDir "PersonalAIOpsAgent-$Version-windows-x64.exe"
 if (Test-Path $canonicalExe) {
+  if (Test-Path $versionedExe) {
+    Remove-Item -Path $versionedExe -Force
+  }
   Rename-Item -Path $canonicalExe -NewName (Split-Path $versionedExe -Leaf) -Force
 }
 
 if (Test-Path $setupPath) {
   $versionedSetup = Join-Path $distDir "PersonalAIOpsAgent-$Version-windows-x64-setup.exe"
+  if (Test-Path $versionedSetup) {
+    Remove-Item -Path $versionedSetup -Force
+  }
   Rename-Item -Path $setupPath -NewName (Split-Path $versionedSetup -Leaf) -Force
 }
 
