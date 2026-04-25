@@ -26,6 +26,7 @@ sessions.
 12. [Universal agent context + token auto-capture from any medium](#12-universal-agent-context--token-auto-capture-from-any-medium) — done ✅
 13. [OpenClaw-style — /claude command + session pings + approval round-trip](#13-openclaw-style--claude-command--session-pings--approval-round-trip) — done ✅
 14. [Multi-project fix-and-deploy loop — registry + /fix + /push + /deploy](#14-multi-project-fix-and-deploy-loop--registry--fix--push--deploy) — done ✅
+15. [Smart inbound router + automation roadmap](#15-smart-inbound-router--automation-roadmap) — done ✅
 
 **Appendix: [📚 Sandbox & learning resources](#-sandbox--learning-resources)** — Go, Python, FastAPI, Django, Docker, Kubernetes, ML, Postgres, and more.
 
