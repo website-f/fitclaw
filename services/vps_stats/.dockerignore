@@ -1,0 +1,5 @@
+.git
+*.exe
+*.test
+dist/
+build-output/

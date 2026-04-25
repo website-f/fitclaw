@@ -19,8 +19,11 @@ class Settings(BaseSettings):
     timezone: str = "Asia/Kuala_Lumpur"
     public_base_url: str = ""
 
-    database_url: str = "sqlite:////data/ai_ops.db"
+    database_url: str = "postgresql+psycopg://aiops:CHANGE_ME@postgres:5432/aiops"
     redis_url: str = "redis://redis:6379/0"
+    vps_stats_internal_url: str = "http://vps_stats:8090"
+    vps_stats_token: str = ""
+    api_internal_url: str = "http://api:8000"
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
 

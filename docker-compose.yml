@@ -13,10 +13,12 @@ x-app-common: &app-common
 services:
   api:
     <<: *app-common
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "${API_BIND_IP:-0.0.0.0}:${API_PORT:-8000}:8000"
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       ollama:
@@ -37,6 +39,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       ollama:
@@ -46,6 +50,8 @@ services:
     <<: *app-common
     command: celery -A app.core.celery_app.celery_app worker --loglevel=info
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
       ollama:
@@ -55,6 +61,8 @@ services:
     <<: *app-common
     command: celery -A app.core.celery_app.celery_app beat --loglevel=info
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -66,6 +74,21 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aiops}
+      POSTGRES_USER: ${POSTGRES_USER:-aiops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aiops} -d ${POSTGRES_DB:-aiops}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -124,6 +147,67 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
 
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_BIND_IP:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_BIND_IP:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+
+  ml:
+    profiles: ["ml"]
+    build:
+      context: ./services/ml
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${ML_BIND_IP:-127.0.0.1}:${ML_PORT:-9000}:9000"
+
+  vps_stats:
+    build:
+      context: ./services/vps_stats
+      dockerfile: Dockerfile
+    environment:
+      VPS_STATS_ADDR: ":8090"
+      VPS_STATS_TOKEN: ${VPS_STATS_TOKEN:-}
+      VPS_STATS_DISK_PATH: ${VPS_STATS_DISK_PATH:-/host/root}
+      HOST_PROC: /host/proc
+      HOST_SYS: /host/sys
+      HOST_ETC: /host/etc
+    restart: unless-stopped
+    ports:
+      - "${VPS_STATS_BIND_IP:-127.0.0.1}:${VPS_STATS_PORT:-8090}:8090"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+      - /:/host/root:ro
+
   whatsapp-bridge:
     build:
       context: ./whatsapp_bridge
@@ -138,7 +222,10 @@ services:
       - whatsapp_bridge_data:/app/store
 
 volumes:
+  postgres_data:
   redis_data:
   ollama_data:
   n8n_data:
   whatsapp_bridge_data:
+  prometheus_data:
+  grafana_data:

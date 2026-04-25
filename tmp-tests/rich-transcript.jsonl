@@ -1,0 +1,2 @@
+{"message":{"role":"user","content":"how many tests do we have?"}}
+{"message":{"role":"assistant","model":"claude-opus-4-7","usage":{"input_tokens":2000,"output_tokens":40},"content":[{"type":"text","text":"You have 14 unit tests across 3 files. The newest one is test_usage_service.py."}]}}

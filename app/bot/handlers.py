@@ -1,9 +1,10 @@
 import asyncio
 from pathlib import Path
 
+import httpx
 from telegram import BotCommand, PhotoSize, Update
 from telegram.constants import ChatAction
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.core.config import get_settings
 from app.core.database import session_scope
@@ -12,6 +13,7 @@ from app.services.command_result import MessageAttachment
 from app.services.message_service import MessageService
 from app.services.runtime_config_service import RuntimeConfigService
 from app.services.upload_service import UploadService
+from app.services.vps_stats_service import UsageService, VpsStatsService, VpsStatsUnavailable
 
 settings = get_settings()
 
@@ -85,6 +87,13 @@ async def post_init(application: Application) -> None:
             BotCommand("codex", "Run a Codex prompt on an agent"),
             BotCommand("models", "Show active and available models"),
             BotCommand("usemodel", "Switch the runtime model"),
+            BotCommand("stats", "Show VPS CPU / RAM / disk / uptime"),
+            BotCommand("processes", "Top processes by CPU (add `mem` for memory)"),
+            BotCommand("disks", "List mounted filesystems and usage"),
+            BotCommand("usage", "Token + cost usage (today | week | month)"),
+            BotCommand("claude", "Run a Claude Code prompt on an agent PC"),
+            BotCommand("vscode", "List open VS Code windows on the agent"),
+            BotCommand("sessions", "List recent Claude Code sessions on the agent"),
         ]
     )
 
@@ -98,6 +107,14 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("codex", codex_command))
     application.add_handler(CommandHandler("models", models_command))
     application.add_handler(CommandHandler("usemodel", usemodel_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("processes", processes_command))
+    application.add_handler(CommandHandler("disks", disks_command))
+    application.add_handler(CommandHandler("usage", usage_command))
+    application.add_handler(CommandHandler("claude", claude_command))
+    application.add_handler(CommandHandler("vscode", vscode_command))
+    application.add_handler(CommandHandler("sessions", sessions_command))
+    application.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^app_(approve|deny):"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message))
     application.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, media_message))
     return application
@@ -140,6 +157,153 @@ async def models_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text(text)
 
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        stats = await asyncio.to_thread(VpsStatsService.fetch)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"vps_stats is unreachable: {exc}")
+        return
+    await update.message.reply_text(VpsStatsService.format_for_telegram(stats), parse_mode=None)
+
+
+async def processes_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    args = [arg.lower() for arg in (context.args or [])]
+    by = "mem" if "mem" in args or "memory" in args else "cpu"
+    top = 10
+    for arg in args:
+        if arg.isdigit():
+            top = max(1, min(50, int(arg)))
+            break
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        rows = await asyncio.to_thread(VpsStatsService.fetch_processes, top, by)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"vps_stats is unreachable: {exc}")
+        return
+    text = VpsStatsService.format_processes_for_telegram(rows, by)
+    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+
+
+async def disks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        rows = await asyncio.to_thread(VpsStatsService.fetch_disks)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"vps_stats is unreachable: {exc}")
+        return
+    text = VpsStatsService.format_disks_for_telegram(rows)
+    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+
+
+async def approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Approve/Deny button taps from an approval Telegram message."""
+    query = update.callback_query
+    if not query or not query.data or not query.from_user:
+        return
+    if not is_authorized(query.from_user.id):
+        await query.answer("Not authorized.", show_alert=True)
+        return
+
+    try:
+        action, approval_id = query.data.split(":", 1)
+    except ValueError:
+        await query.answer("Malformed callback.", show_alert=True)
+        return
+
+    approved = action == "app_approve"
+    decided_by = query.from_user.username or str(query.from_user.id)
+
+    api_url = settings.api_internal_url.rstrip("/")
+
+    def _decide_sync() -> dict | None:
+        try:
+            response = httpx.post(
+                f"{api_url}/api/v1/approvals/{approval_id}/decide",
+                json={"approved": approved, "decided_by": decided_by},
+                timeout=5.0,
+            )
+            if response.status_code >= 400:
+                return None
+            return response.json()
+        except httpx.HTTPError:
+            return None
+
+    result = await asyncio.to_thread(_decide_sync)
+    if result is None:
+        await query.answer("Failed to record decision.", show_alert=True)
+        return
+    await query.answer("Approved." if approved else "Denied.")
+
+
+async def vscode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        rows = await asyncio.to_thread(VpsStatsService.fetch_vscode_windows)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"vps_stats unreachable: {exc}")
+        return
+    text = VpsStatsService.format_vscode_for_telegram(rows)
+    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+
+
+async def sessions_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        rows = await asyncio.to_thread(VpsStatsService.fetch_claude_sessions)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"vps_stats unreachable: {exc}")
+        return
+    text = VpsStatsService.format_sessions_for_telegram(rows)
+    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+
+
+async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    period = "today"
+    if context.args:
+        arg = context.args[0].lower()
+        if arg in {"today", "week", "month"}:
+            period = arg
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        summary = await asyncio.to_thread(UsageService.fetch_summary, period)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"Usage API unreachable: {exc}")
+        return
+    text = UsageService.format_summary_for_telegram(summary)
+    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+
+
 async def agents_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
@@ -172,6 +336,55 @@ async def screenshot_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         process_message_sync,
         str(update.effective_user.id),
         text,
+        update.effective_user.username or update.effective_user.full_name,
+        f"telegram:{update.effective_user.id}",
+    )
+    await deliver_processed_message(update, result)
+
+
+async def claude_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Dispatch a Claude Code prompt to a named agent PC.
+
+    Syntax: /claude <agent> | <path> | <prompt>
+    Example: /claude office-pc | C:\\projects\\repo | add a unit test for UsageService
+
+    Reuses the existing NL agent-dispatch routing; the agent_daemon on
+    the target PC interprets `run this prompt inside claude code on <agent>`
+    and runs `claude -p "<prompt>"` in the given path.
+    """
+    if not update.effective_user or not update.message or not update.effective_chat:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+
+    raw = " ".join(context.args).strip()
+    if not raw or "|" not in raw:
+        await update.message.reply_text(
+            "Usage: /claude <agent> | <path> | <prompt>\n"
+            "Example: /claude office-pc | C:\\projects\\repo | add a unit test for UsageService",
+        )
+        return
+
+    parts = [item.strip() for item in raw.split("|", 2)]
+    if len(parts) != 3 or not parts[0] or not parts[2]:
+        await update.message.reply_text(
+            "Usage: /claude <agent> | <path> | <prompt>\n"
+            "Example: /claude office-pc | C:\\projects\\repo | add a unit test for UsageService",
+        )
+        return
+
+    agent_name, workspace_path, prompt = parts
+    normalized_text = f"run this prompt inside claude code on {agent_name}"
+    if workspace_path:
+        normalized_text += f" in {workspace_path}"
+    normalized_text += f": {prompt}"
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    result = await asyncio.to_thread(
+        process_message_sync,
+        str(update.effective_user.id),
+        normalized_text,
         update.effective_user.username or update.effective_user.full_name,
         f"telegram:{update.effective_user.id}",
     )

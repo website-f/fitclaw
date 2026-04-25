@@ -10,6 +10,8 @@ __pycache__/
 *.sqlite3
 data/*
 !data/.gitkeep
+deploy/k8s/*secret.yaml
+!deploy/k8s/*secret.yaml.example
 # Keep raw agent build output out of Git; curated binaries meant to ship with the repo
 # should go in `agent_daemon/release/` instead.
 agent_daemon/dist/

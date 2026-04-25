@@ -1,0 +1,16 @@
+# Tells Grafana to load any dashboard JSON files under /var/lib/grafana/dashboards.
+# Drop a dashboard JSON (exported from Grafana UI) in the bind-mounted
+# deploy/observability/grafana/dashboards/ and it'll appear on next restart.
+
+apiVersion: 1
+
+providers:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

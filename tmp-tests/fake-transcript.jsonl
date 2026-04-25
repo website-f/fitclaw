@@ -1,0 +1,2 @@
+{"message": {"role": "assistant", "model": "claude-opus-4-7", "usage": {"input_tokens": 4500, "output_tokens": 220, "cache_read_input_tokens": 15000, "cache_creation_input_tokens": 800}}}
+{"message": {"role": "assistant", "model": "claude-opus-4-7", "usage": {"input_tokens": 5200, "output_tokens": 180, "cache_read_input_tokens": 15000}}}

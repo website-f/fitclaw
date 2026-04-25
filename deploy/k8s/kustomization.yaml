@@ -1,0 +1,17 @@
+# kustomize is the built-in k8s way to group and template manifests.
+# `kubectl apply -k deploy/k8s/` applies every resource listed here.
+#
+# If `vps-stats-secret.yaml` is missing, the apply will fail — that's the
+# intended guardrail: never deploy without the token.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aiops
+
+resources:
+  - namespace.yaml
+  - vps-stats-configmap.yaml
+  - vps-stats-secret.yaml
+  - vps-stats-daemonset.yaml
+  - vps-stats-service.yaml

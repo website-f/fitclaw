@@ -4,10 +4,12 @@ import threading
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.config import get_settings
-from app.core.database import SessionLocal, init_db
+from app.core.database import SessionLocal
 from app.middleware.agent_auth import AgentBasicAuthMiddleware
+from app.modules import register_all as register_all_modules
 from app.routers import agent_control, agent_tasks, agents, calendar, chat, clear_data, device_control, downloads, finance, health, memorycore, models, tasks, transit, uploads, weather, web_app, whatsapp
 from app.services.runtime_config_service import RuntimeConfigService
 
@@ -53,10 +55,15 @@ app.include_router(whatsapp.router)
 app.include_router(downloads.router)
 app.include_router(clear_data.router)
 
+register_all_modules(app)
+
+# Expose /metrics for Prometheus. Records per-route request count, latency,
+# and in-progress gauges — standard FastAPI observability in one line.
+Instrumentator().instrument(app).expose(app, include_in_schema=False, should_gzip=True)
+
 
 @app.on_event("startup")
 def on_startup() -> None:
-    init_db()
     if settings.ollama_preload_active_model_on_startup:
         threading.Thread(target=_prewarm_startup_models, name="fitclaw-ollama-prewarm", daemon=True).start()
 

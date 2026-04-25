@@ -79,65 +79,80 @@ type saveResult struct {
 }
 
 func main() {
-	cfg, phrase, err := parseArgs(os.Args[1:])
+	cfg, remaining, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fail(err)
 	}
-	if strings.TrimSpace(phrase) == "" {
-		fail(errors.New("usage: jarvis remember this whole thing"))
+	if len(remaining) == 0 {
+		fail(errors.New("usage: memorycore {usage|design|<natural language>}"))
 	}
-	if err := runNatural(cfg, phrase); err != nil {
-		fail(err)
+	switch remaining[0] {
+	case "usage":
+		if err := runUsageCommand(cfg, remaining[1:]); err != nil {
+			fail(err)
+		}
+	case "design":
+		if err := runDesignCommand(cfg, remaining[1:]); err != nil {
+			fail(err)
+		}
+	default:
+		phrase := strings.Join(remaining, " ")
+		if strings.TrimSpace(phrase) == "" {
+			fail(errors.New("usage: memorycore remember this whole thing"))
+		}
+		if err := runNatural(cfg, phrase); err != nil {
+			fail(err)
+		}
 	}
 }
 
-func parseArgs(args []string) (config, string, error) {
+func parseArgs(args []string) (config, []string, error) {
 	cfg := config{
 		ServerURL: defaultServerURL,
 		UserID:    defaultUserID,
 		Path:      ".",
 	}
-	var phraseParts []string
+	var remaining []string
 	for index := 0; index < len(args); index++ {
 		token := args[index]
 		switch token {
 		case "--server-url":
 			index++
 			if index >= len(args) {
-				return cfg, "", errors.New("--server-url requires a value")
+				return cfg, nil, errors.New("--server-url requires a value")
 			}
 			cfg.ServerURL = strings.TrimRight(args[index], "/")
 		case "--user-id":
 			index++
 			if index >= len(args) {
-				return cfg, "", errors.New("--user-id requires a value")
+				return cfg, nil, errors.New("--user-id requires a value")
 			}
 			cfg.UserID = args[index]
 		case "--path":
 			index++
 			if index >= len(args) {
-				return cfg, "", errors.New("--path requires a value")
+				return cfg, nil, errors.New("--path requires a value")
 			}
 			cfg.Path = args[index]
 		case "--project-key":
 			index++
 			if index >= len(args) {
-				return cfg, "", errors.New("--project-key requires a value")
+				return cfg, nil, errors.New("--project-key requires a value")
 			}
 			cfg.ProjectKey = args[index]
 		case "--output":
 			index++
 			if index >= len(args) {
-				return cfg, "", errors.New("--output requires a value")
+				return cfg, nil, errors.New("--output requires a value")
 			}
 			cfg.Output = args[index]
 		case "--no-write-local":
 			cfg.NoWriteLocal = true
 		default:
-			phraseParts = append(phraseParts, token)
+			remaining = append(remaining, token)
 		}
 	}
-	return cfg, strings.Join(phraseParts, " "), nil
+	return cfg, remaining, nil
 }
 
 func runNatural(cfg config, phrase string) error {

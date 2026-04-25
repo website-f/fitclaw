@@ -1,0 +1,23 @@
+# ClusterIP — reachable only from inside the cluster at
+# `vps-stats.aiops.svc.cluster.local:8090`. Other pods in the `aiops`
+# namespace can just use `http://vps-stats:8090`.
+#
+# Because vps-stats is a DaemonSet, this Service load-balances across every
+# node's pod. If you want a caller pinned to the pod on its own node
+# (e.g. for per-node metrics), set `internalTrafficPolicy: Local`.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: vps-stats
+  namespace: aiops
+  labels:
+    app.kubernetes.io/name: vps-stats
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vps-stats
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vps-stats-config
+  namespace: aiops
+data:
+  VPS_STATS_ADDR: ":8090"
+  VPS_STATS_DISK_PATH: "/host/root"
+  HOST_PROC: "/host/proc"
+  HOST_SYS: "/host/sys"
+  HOST_ETC: "/host/etc"

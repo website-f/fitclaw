@@ -1,0 +1,85 @@
+# DaemonSet → one Pod per node. Correct pattern for "report metrics from
+# this node" — if you add a second node, it automatically gets a vps_stats
+# instance without you touching anything.
+#
+# Deployment would be wrong here: it gives you N replicas somewhere in the
+# cluster, but we need exactly one per node with that node's host filesystems
+# mounted.
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vps-stats
+  namespace: aiops
+  labels:
+    app.kubernetes.io/name: vps-stats
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vps-stats
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vps-stats
+    spec:
+      # hostPID + hostNetwork aren't strictly required — they'd let us see
+      # the host's full process tree. We're leaving them off for now so the
+      # DaemonSet stays low-privilege. gopsutil still works with just the
+      # /proc + /sys + / bind-mounts below.
+      containers:
+        - name: vps-stats
+          image: vps_stats:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8090
+          envFrom:
+            - configMapRef:
+                name: vps-stats-config
+            - secretRef:
+                name: vps-stats-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: host-sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: host-etc
+              mountPath: /host/etc
+              readOnly: true
+            - name: host-root
+              mountPath: /host/root
+              readOnly: true
+      volumes:
+        - name: host-proc
+          hostPath:
+            path: /proc
+        - name: host-sys
+          hostPath:
+            path: /sys
+        - name: host-etc
+          hostPath:
+            path: /etc
+        - name: host-root
+          hostPath:
+            path: /

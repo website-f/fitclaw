@@ -3,7 +3,7 @@ FROM golang:1.24 AS memorycore-builder
 WORKDIR /src/memorycore_cli
 
 COPY memorycore_cli/go.mod ./
-COPY memorycore_cli/main.go ./
+COPY memorycore_cli/*.go ./
 
 RUN mkdir -p /out/windows-x64 /out/macos-x64 /out/macos-arm64 \
     && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /out/windows-x64/memorycore.exe . \
