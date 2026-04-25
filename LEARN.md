@@ -25,6 +25,7 @@ sessions.
 11. [Bring-up report — bugs we hit and fixed](#11-bring-up-report--bugs-we-hit-and-fixed) — done ✅
 12. [Universal agent context + token auto-capture from any medium](#12-universal-agent-context--token-auto-capture-from-any-medium) — done ✅
 13. [OpenClaw-style — /claude command + session pings + approval round-trip](#13-openclaw-style--claude-command--session-pings--approval-round-trip) — done ✅
+14. [Multi-project fix-and-deploy loop — registry + /fix + /push + /deploy](#14-multi-project-fix-and-deploy-loop--registry--fix--push--deploy) — done ✅
 
 **Appendix: [📚 Sandbox & learning resources](#-sandbox--learning-resources)** — Go, Python, FastAPI, Django, Docker, Kubernetes, ML, Postgres, and more.
 
@@ -2854,6 +2855,252 @@ The current "Approval needed" message is plain text. Make it:
 - **Expire auto-approve for repeat commands.** If you approve
   `docker system prune` once, you might want to auto-approve it again
   for the next 10 minutes in the same session. Cache layer homework.
+
+---
+
+## 14. Multi-project fix-and-deploy loop — registry + /fix + /push + /deploy
+
+### What we built (Stages A → D)
+
+The full Telegram → AI fix → push → auto-deploy loop, working across
+many projects, with one Telegram command per stage. Universal: any
+project that defines a `deploy_command` (Docker, PM2, systemd,
+whatever) plugs in.
+
+**Stage A — Project registry.** New module
+[app/modules/projects/](app/modules/projects/) with table `projects`,
+full CRUD API at `/api/v1/projects/*`, plus a `/match` endpoint that
+returns projects whose slug/name/keywords appear as substrings of an
+input string ("the button is broken on fitclaw" → matches `fitclaw`).
+
+**Stage B — `/fix` command.** Telegram `/fix <slug> | <issue>` looks up
+the project, dispatches a Claude Code fix request to its registered
+PC agent via the existing NL-routing pipeline (the same one `/codex`
+uses). The agent runs `git pull` → `claude -p "<issue>"` → leaves
+changes uncommitted in the working tree.
+
+**Stage C — `/push` command.** Telegram `/push <slug>` shows an inline
+keyboard with that project's branches. Tapping a branch dispatches a
+`git_push` task to the agent: stage, commit, push.
+
+**Stage D — `/deploy` command.** Telegram `/deploy <slug> [branch]`
+runs the project's `deploy_command` on this VPS via `subprocess`,
+streams exit code + tail of stdout/stderr back as a Telegram message.
+
+### Files added/changed
+
+- [app/modules/projects/](app/modules/projects/) — full module (5 files).
+- [app/modules/__init__.py](app/modules/__init__.py) — registers `projects`.
+- [alembic/versions/02553c1779ee_add_projects.py](alembic/versions/) — migration.
+- [app/services/vps_stats_service.py](app/services/vps_stats_service.py) —
+  new `ProjectsClient` (list/match/get/deploy from inside the bot).
+- [app/bot/handlers.py](app/bot/handlers.py) — `/projects`, `/fix`,
+  `/push`, `/deploy` commands + branch & deploy callback handlers,
+  inline keyboards.
+- [agent_daemon/ai_ops_agent/claude_fix_executor.py](agent_daemon/ai_ops_agent/claude_fix_executor.py) —
+  drop-in handlers for `claude_fix` and `git_push` command types,
+  ready to wire into `task_executor.py` on the PC.
+
+### Concept 1 — One-table-rules-them-all
+
+Every project becomes a single row:
+
+| Field | Purpose |
+|---|---|
+| `slug` | Stable identifier used by Telegram commands |
+| `name`, `description`, `keywords` | NL matching |
+| `repo_url`, `default_branch`, `branches` | Git side |
+| `agent_name`, `local_path` | Where to run the fix on PC |
+| `vps_path`, `deploy_command` | How to redeploy on this VPS |
+
+The `deploy_command` is a free-form shell string — the universal
+escape hatch. Examples:
+
+```bash
+# Docker compose
+cd /home/admin/fitclaw && git pull && docker compose pull && docker compose up -d
+
+# PM2 (Node)
+cd /var/www/myapp && git pull && npm ci --production && pm2 reload myapp
+
+# systemd
+cd /opt/myservice && git pull && sudo systemctl restart myservice
+
+# Static site
+cd /var/www/landing && git pull && npm run build
+```
+
+The server passes `$PROJECT_SLUG` and `$PROJECT_BRANCH` as env vars so
+your script can use them.
+
+### Concept 2 — NL match without ML
+
+[ProjectService.match_by_text](app/modules/projects/service.py) is 12
+lines of code: lowercase the input, lowercase each project's
+slug/name/keywords, return projects with any substring hit. **No
+embeddings, no LLM.** This is enough until you have ~50+ projects with
+overlapping keywords. When that day comes, swap the implementation
+behind the same function signature; callers don't change.
+
+Lesson: **start with the dumbest possible version.** If
+`"fitclaw" in "fix the button on fitclaw"` solves your need, you
+don't need pgvector. The cost of overengineering this early is real:
+embeddings, API calls, an extra dependency, a learning curve, and an
+extra failure mode.
+
+### Concept 3 — Inline keyboards as state machines
+
+The Telegram inline keyboard pattern from approvals (§13) generalizes:
+
+| Step | Sent | callback_data |
+|---|---|---|
+| `/push fitclaw` | "Choose target branch" + buttons | `push_branch:fitclaw:main` |
+| User taps `dev` | (callback fires) | `push_branch:fitclaw:dev` |
+| Bot dispatches `git_push` task | "Push dispatched…" | — |
+
+Each callback is a state transition. Encode the next-step intent in
+`callback_data` (max 64 bytes — slug + branch fits). For anything
+larger than 64 bytes, look it up by ID from a table.
+
+The whole flow has no server-side session/state machinery. Every
+button tap is self-contained, looks up DB rows by ID, performs an
+action, edits the message. Stateless server, state in the user's
+chat history. Robust.
+
+### Concept 4 — Why the agent just does git, no merge magic
+
+The PC agent's `git_push` handler is intentionally simple:
+`add -A && commit -m '<msg>' && push origin <branch>`. It does not
+try to rebase, resolve conflicts, or open PRs.
+
+Reasoning: anything more sophisticated requires human judgment when
+something goes wrong. Better to fail loudly ("push failed: rejected
+non-fast-forward") and let you decide than to auto-resolve and create
+silent merges. The agent is an executor, not a maintainer.
+
+For PR creation, the right tool is `gh pr create` from inside the
+agent. Add later as a homework — it's 5 lines.
+
+### Concept 5 — Deploy security
+
+`run_deploy` in [service.py](app/modules/projects/service.py) executes
+`/bin/sh -c "<deploy_command>"` with the project's vps_path as cwd.
+That's potentially dangerous if anyone untrusted can write to the
+projects table. Mitigations:
+
+1. **The project registry is owner-only.** Only `fitclaw` (you) writes
+   to it. Telegram `is_authorized` gate on `/deploy` ensures the
+   command can only fire from you.
+2. **`_safe_env()` strips most env vars** before the subprocess. The
+   shell sees only `PATH`, `HOME`, `USER`, etc. plus
+   `$PROJECT_SLUG` and `$PROJECT_BRANCH`. Your bot token doesn't
+   leak into the deploy script.
+3. **Timeout = 600s.** A runaway deploy command can't hang the api
+   forever.
+4. **stdout / stderr are captured.** No surprise interactive prompts.
+
+Improvements to do later: run deploys as a non-root user, log every
+deploy to an audit table (similar to homework 13.2), require a second
+approval via the inline keyboard for `production` branch deploys.
+
+### 💡 Try it — full QA
+
+```bash
+# Stage A: register a project
+curl -X PUT "http://localhost:8000/api/v1/projects/fitclaw?user_id=fitclaw" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "fitclaw",
+    "name": "Personal AI Ops Platform",
+    "keywords": ["fitclaw", "memorycore", "ai-ops"],
+    "branches": ["main", "dev", "staging"],
+    "agent_name": "office-pc",
+    "local_path": "/home/you/projects/fitclaw",
+    "vps_path": "/home/admin/fitclaw",
+    "deploy_command": "echo deploy $PROJECT_SLUG branch=$PROJECT_BRANCH && date"
+  }'
+
+# Stage A: NL match
+curl "http://localhost:8000/api/v1/projects/match?user_id=fitclaw&q=fix+the+button+on+fitclaw"
+
+# Stage D: deploy
+curl -X POST "http://localhost:8000/api/v1/projects/fitclaw/deploy?user_id=fitclaw" \
+  -H "Content-Type: application/json" -d '{"branch":"main"}'
+
+# Telegram (requires the bot up + your chat authorized):
+/projects                                  # lists registered projects
+/fix fitclaw | the /usage button is broken # dispatches fix
+/push fitclaw                              # branch selection keyboard
+/deploy fitclaw main                       # confirm-then-deploy keyboard
+```
+
+### 🏋️ Homework 14.1 — Wire the executor into agent_daemon
+
+The drop-in module
+[agent_daemon/ai_ops_agent/claude_fix_executor.py](agent_daemon/ai_ops_agent/claude_fix_executor.py)
+defines `run_claude_fix(payload)` and `run_git_push(payload)`. Open
+`task_executor.py` and add:
+
+```python
+from .claude_fix_executor import run_claude_fix, run_git_push
+
+# inside execute_task or wherever device_command_type is dispatched:
+if device_command_type == "claude_fix":
+    return run_claude_fix(payload_json)
+if device_command_type == "git_push":
+    return run_git_push(payload_json)
+```
+
+You'll also need to teach the server's NL message routing to emit
+`device_command_type="claude_fix"` for "run this prompt inside claude
+code on …" messages. Look at how `codex` is currently routed in
+[app/services/](app/services/) and clone the pattern. Estimated 1–2
+hours.
+
+### 🏋️ Homework 14.2 — `gh pr create` instead of direct push
+
+Modify `run_git_push` to push to a feature branch (e.g.
+`fix/<slug>-<timestamp>`), then run `gh pr create --base <chosen> --head <feature>`,
+and return the PR URL. Telegram sends the URL as a clickable link.
+This is a strictly better workflow for shared repos — review before
+merge.
+
+### 🏋️ Homework 14.3 — Deploy audit table
+
+Mirror the approval pattern: a `deploy_audit` table that records every
+`/deploy` invocation (slug, branch, exit_code, started_at,
+duration_ms, decided_by). Add `/audit deploy` Telegram command to
+review the last 10.
+
+### Gotchas
+
+- **`vps_path` must exist on the api container's filesystem** for
+  `subprocess.run(cwd=...)` to work. We added a fallback that drops
+  the cwd if the path is missing — useful for smoke tests, but for
+  real deploys you need to either (a) bind-mount the path into the
+  api container or (b) make the deploy_command SSH out to a separate
+  deploy host (`ssh deploy@vps "cd /path && docker compose up -d"`).
+- **Telegram callback_data is 64 bytes max.** `push_branch:<slug>:<branch>`
+  fits as long as both stay short. If you ever have a slug or branch
+  over ~25 chars, look up by ID instead of packing into callback_data.
+- **`process_message_sync` for /fix and /push** uses your existing NL
+  routing layer. If the routing layer doesn't yet recognize "run this
+  prompt inside claude code on …", the dispatch silently no-ops. Wire
+  it (homework 14.1) for the loop to actually execute on a real PC.
+
+### What's next (not built today)
+
+- **Streaming deploy logs.** Today /deploy returns a single message
+  after `subprocess.run` finishes. For real-world deploys (5+ min)
+  you want progressive log streaming back to Telegram. Pattern:
+  spawn the subprocess, read stdout in chunks, edit the Telegram
+  message every ~2 seconds with the latest tail.
+- **Webhook from GitHub.** Instead of /deploy from Telegram, listen
+  for `git push` webhooks and auto-deploy. Adds zero risk if the
+  deploy command is idempotent.
+- **Per-project AGENTS.md fetch.** Currently the agent assumes the
+  project repo has its own AGENTS.md. If not, the bot could fetch
+  one centrally. v2.
 
 ---
 

@@ -21,6 +21,88 @@ class VpsStatsUnavailable(RuntimeError):
     """Raised when vps_stats is unreachable or returns an error."""
 
 
+class RouterClient:
+    """Bot-side classifier client. Calls our own /api/v1/router/classify."""
+
+    @staticmethod
+    def classify(text: str, source: str = "telegram") -> dict[str, Any]:
+        settings = get_settings()
+        url = f"{settings.api_internal_url.rstrip('/')}/api/v1/router/classify"
+        try:
+            response = httpx.post(
+                url,
+                params={"user_id": "fitclaw"},
+                json={"text": text, "source": source},
+                timeout=20.0,  # local LLM can be slow
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as exc:
+            logger.warning("router classify failed: %s", exc)
+            return {"intent": {"category": "chat", "confidence": 0.0, "params": {}, "reasoning": ""}, "decision_id": 0}
+
+
+class ProjectsClient:
+    """Bot-side client for the projects module's HTTP surface.
+
+    Same pattern as UsageService below — call our own API so the formatting
+    and flow is identical to what an external agent would see.
+    """
+
+    @staticmethod
+    def list_projects() -> list[dict[str, Any]]:
+        settings = get_settings()
+        url = f"{settings.api_internal_url.rstrip('/')}/api/v1/projects"
+        try:
+            response = httpx.get(url, params={"user_id": "fitclaw"}, timeout=5.0)
+            response.raise_for_status()
+            return response.json() or []
+        except httpx.HTTPError as exc:
+            raise VpsStatsUnavailable(f"projects API unreachable: {exc}") from exc
+
+    @staticmethod
+    def match(query: str) -> list[dict[str, Any]]:
+        settings = get_settings()
+        url = f"{settings.api_internal_url.rstrip('/')}/api/v1/projects/match"
+        try:
+            response = httpx.get(
+                url, params={"user_id": "fitclaw", "q": query}, timeout=5.0
+            )
+            response.raise_for_status()
+            return response.json() or []
+        except httpx.HTTPError as exc:
+            raise VpsStatsUnavailable(f"projects API unreachable: {exc}") from exc
+
+    @staticmethod
+    def get(slug: str) -> dict[str, Any] | None:
+        settings = get_settings()
+        url = f"{settings.api_internal_url.rstrip('/')}/api/v1/projects/{slug}"
+        try:
+            response = httpx.get(url, params={"user_id": "fitclaw"}, timeout=5.0)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as exc:
+            raise VpsStatsUnavailable(f"projects API unreachable: {exc}") from exc
+
+    @staticmethod
+    def deploy(slug: str, branch: str | None = None) -> dict[str, Any]:
+        settings = get_settings()
+        url = f"{settings.api_internal_url.rstrip('/')}/api/v1/projects/{slug}/deploy"
+        try:
+            response = httpx.post(
+                url,
+                params={"user_id": "fitclaw"},
+                json={"branch": branch} if branch else {},
+                timeout=620.0,
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as exc:
+            raise VpsStatsUnavailable(f"deploy failed: {exc}") from exc
+
+
 class UsageService:
     """Thin client for the MemoryCore usage ledger (in-process).
 

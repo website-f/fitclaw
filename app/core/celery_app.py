@@ -55,5 +55,13 @@ celery_app.conf.update(
             "task": "app.workers.jobs.poll_whatsapp_inbox",
             "schedule": float(max(settings.whatsapp_beta_poll_seconds, 15)),
         },
+        "host-threshold-alert": {
+            "task": "app.workers.jobs.host_threshold_alert",
+            "schedule": 300.0,  # every 5 min
+        },
+        "daily-standup-digest": {
+            "task": "app.workers.jobs.daily_standup_digest",
+            "schedule": parse_cron_expression("0 8 * * *"),  # 8am local time
+        },
     },
 )

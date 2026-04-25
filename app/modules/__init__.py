@@ -17,8 +17,10 @@ from fastapi import FastAPI
 
 from app.modules import approvals as _approvals
 from app.modules import memorycore as _memorycore
+from app.modules import projects as _projects
+from app.modules import router as _router
 
-_MODULES = (_memorycore, _approvals)
+_MODULES = (_memorycore, _approvals, _projects, _router)
 
 
 def register_all(app: FastAPI) -> None:

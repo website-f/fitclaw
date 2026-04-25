@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 
 import httpx
-from telegram import BotCommand, PhotoSize, Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, PhotoSize, Update
 from telegram.constants import ChatAction
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -13,7 +13,7 @@ from app.services.command_result import MessageAttachment
 from app.services.message_service import MessageService
 from app.services.runtime_config_service import RuntimeConfigService
 from app.services.upload_service import UploadService
-from app.services.vps_stats_service import UsageService, VpsStatsService, VpsStatsUnavailable
+from app.services.vps_stats_service import ProjectsClient, RouterClient, UsageService, VpsStatsService, VpsStatsUnavailable
 
 settings = get_settings()
 
@@ -94,6 +94,10 @@ async def post_init(application: Application) -> None:
             BotCommand("claude", "Run a Claude Code prompt on an agent PC"),
             BotCommand("vscode", "List open VS Code windows on the agent"),
             BotCommand("sessions", "List recent Claude Code sessions on the agent"),
+            BotCommand("projects", "List registered code projects"),
+            BotCommand("fix", "Dispatch a fix to a project — /fix <slug> | <issue>"),
+            BotCommand("push", "Show branch selector to push a project"),
+            BotCommand("deploy", "Trigger deploy_command for a project"),
         ]
     )
 
@@ -114,7 +118,13 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("claude", claude_command))
     application.add_handler(CommandHandler("vscode", vscode_command))
     application.add_handler(CommandHandler("sessions", sessions_command))
+    application.add_handler(CommandHandler("projects", projects_command))
+    application.add_handler(CommandHandler("fix", fix_command))
+    application.add_handler(CommandHandler("push", push_command))
+    application.add_handler(CommandHandler("deploy", deploy_command))
     application.add_handler(CallbackQueryHandler(approval_callback, pattern=r"^app_(approve|deny):"))
+    application.add_handler(CallbackQueryHandler(branch_push_callback, pattern=r"^push_branch:"))
+    application.add_handler(CallbackQueryHandler(deploy_callback, pattern=r"^deploy:"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message))
     application.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, media_message))
     return application
@@ -249,6 +259,247 @@ async def approval_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.answer("Failed to record decision.", show_alert=True)
         return
     await query.answer("Approved." if approved else "Denied.")
+
+
+async def projects_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    try:
+        rows = await asyncio.to_thread(ProjectsClient.list_projects)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"Projects API unreachable: {exc}")
+        return
+    if not rows:
+        await update.message.reply_text(
+            "No projects registered yet.\n"
+            "Add one with:\n"
+            "  curl -X PUT http://api/api/v1/projects/<slug>?user_id=fitclaw \\\n"
+            "    -H 'Content-Type: application/json' \\\n"
+            "    -d '{\"slug\":\"...\",\"name\":\"...\",\"keywords\":[\"...\"], "
+            "\"agent_name\":\"office-pc\",\"local_path\":\"C:\\\\projects\\\\...\","
+            " \"vps_path\":\"/home/admin/...\",\"deploy_command\":\"docker compose up -d\","
+            " \"branches\":[\"main\",\"dev\"]}'"
+        )
+        return
+    lines = [f"Registered projects ({len(rows)}):"]
+    for row in rows:
+        agent = row.get("agent_name") or "-"
+        path = row.get("local_path") or "-"
+        lines.append(f"  • {row['slug']:<14} ({agent})  {path}")
+    await update.message.reply_text("```\n" + "\n".join(lines) + "\n```", parse_mode="Markdown")
+
+
+async def fix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Dispatch a fix request to a registered project's PC agent.
+
+    Syntax: /fix <slug> | <issue text>
+    """
+    if not update.effective_user or not update.message or not update.effective_chat:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+
+    raw = " ".join(context.args).strip()
+    if not raw or "|" not in raw:
+        await update.message.reply_text(
+            "Usage: /fix <slug> | <issue text>\n"
+            "Example: /fix fitclaw | the /usage button doesn't respond on iOS"
+        )
+        return
+    slug_raw, issue = [p.strip() for p in raw.split("|", 1)]
+    slug = slug_raw.lower()
+    try:
+        project = await asyncio.to_thread(ProjectsClient.get, slug)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"Projects API unreachable: {exc}")
+        return
+    if project is None:
+        await update.message.reply_text(
+            f"No project registered with slug `{slug}`. Run /projects to see registered ones."
+        )
+        return
+    if not project.get("agent_name") or not project.get("local_path"):
+        await update.message.reply_text(
+            f"Project `{slug}` is missing `agent_name` or `local_path`. "
+            "Set them before dispatching fixes."
+        )
+        return
+
+    agent_name = project["agent_name"]
+    local_path = project["local_path"]
+    branch = project.get("default_branch") or "main"
+    normalized_text = (
+        f"run this prompt inside claude code on {agent_name} in {local_path}: "
+        f"You are working on project '{project['name']}' ({slug}). "
+        f"Pull latest from branch '{branch}' first, then fix this reported issue: {issue}"
+    )
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    result = await asyncio.to_thread(
+        process_message_sync,
+        str(update.effective_user.id),
+        normalized_text,
+        update.effective_user.username or update.effective_user.full_name,
+        f"telegram:{update.effective_user.id}",
+    )
+    await deliver_processed_message(update, result)
+    # Hint: tell user how to push when done
+    await update.message.reply_text(
+        f"When the agent finishes, run `/push {slug}` to choose a branch and push the changes."
+    )
+
+
+async def push_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show inline branch keyboard for pushing a project."""
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /push <slug>")
+        return
+    slug = context.args[0].lower()
+    try:
+        project = await asyncio.to_thread(ProjectsClient.get, slug)
+    except VpsStatsUnavailable as exc:
+        await update.message.reply_text(f"Projects API unreachable: {exc}")
+        return
+    if project is None:
+        await update.message.reply_text(f"No project `{slug}`.")
+        return
+    branches = project.get("branches") or [project.get("default_branch") or "main"]
+    keyboard = [
+        [InlineKeyboardButton(f"⬆️ Push → {b}", callback_data=f"push_branch:{slug}:{b}")]
+        for b in branches[:8]
+    ]
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data=f"push_branch:{slug}:_cancel")])
+    await update.message.reply_text(
+        f"Choose target branch for `{slug}`:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+async def branch_push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle a branch-selection tap from the /push keyboard."""
+    query = update.callback_query
+    if not query or not query.data or not query.from_user:
+        return
+    if not is_authorized(query.from_user.id):
+        await query.answer("Not authorized.", show_alert=True)
+        return
+    try:
+        _, slug, branch = query.data.split(":", 2)
+    except ValueError:
+        await query.answer("Malformed callback.", show_alert=True)
+        return
+    if branch == "_cancel":
+        await query.answer("Cancelled.")
+        await query.edit_message_text(f"Push for `{slug}` cancelled.", parse_mode="Markdown")
+        return
+
+    try:
+        project = await asyncio.to_thread(ProjectsClient.get, slug)
+    except VpsStatsUnavailable as exc:
+        await query.answer(f"unreachable: {exc}", show_alert=True)
+        return
+    if project is None or not project.get("agent_name") or not project.get("local_path"):
+        await query.answer(f"project '{slug}' missing agent/path", show_alert=True)
+        return
+
+    agent_name = project["agent_name"]
+    local_path = project["local_path"]
+    push_text = (
+        f"run this prompt inside claude code on {agent_name} in {local_path}: "
+        f"Stage all current changes, commit with message 'fix dispatched via Telegram', "
+        f"then `git push origin {branch}`. "
+        f"After push completes, output exactly: PUSH_COMPLETE {slug} {branch}"
+    )
+
+    def _dispatch() -> object:
+        return process_message_sync(
+            str(query.from_user.id),
+            push_text,
+            query.from_user.username or str(query.from_user.id),
+            f"telegram:{query.from_user.id}",
+        )
+
+    await query.answer(f"Dispatching push to {branch}…")
+    result = await asyncio.to_thread(_dispatch)
+    await query.edit_message_text(
+        f"⬆️ Push dispatched to agent `{agent_name}` for `{slug}` → `{branch}`.\n"
+        f"When the push completes, run `/deploy {slug} {branch}` to redeploy on the VPS.",
+        parse_mode="Markdown",
+    )
+
+
+async def deploy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Run a project's deploy_command on this VPS."""
+    if not update.effective_user or not update.message:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You are not allowed to use this bot.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /deploy <slug> [branch]")
+        return
+    slug = context.args[0].lower()
+    branch = context.args[1] if len(context.args) > 1 else None
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🚀 Deploy now", callback_data=f"deploy:{slug}:{branch or '-'}"),
+        InlineKeyboardButton("❌ Cancel", callback_data=f"deploy:{slug}:_cancel"),
+    ]])
+    branch_text = f" (branch: `{branch}`)" if branch else ""
+    await update.message.reply_text(
+        f"Confirm deploy for `{slug}`{branch_text}?",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+
+
+async def deploy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.data or not query.from_user:
+        return
+    if not is_authorized(query.from_user.id):
+        await query.answer("Not authorized.", show_alert=True)
+        return
+    try:
+        _, slug, branch_arg = query.data.split(":", 2)
+    except ValueError:
+        await query.answer("Malformed callback.", show_alert=True)
+        return
+    if branch_arg == "_cancel":
+        await query.answer("Cancelled.")
+        await query.edit_message_text(f"Deploy for `{slug}` cancelled.", parse_mode="Markdown")
+        return
+    branch: str | None = None if branch_arg == "-" else branch_arg
+    await query.answer("Deploying… (may take a minute)")
+
+    def _run() -> dict:
+        try:
+            return ProjectsClient.deploy(slug, branch)
+        except VpsStatsUnavailable as exc:
+            return {"exit_code": -2, "stdout": "", "stderr": str(exc)}
+
+    result = await asyncio.to_thread(_run)
+    exit_code = result.get("exit_code", -1)
+    icon = "✅" if exit_code == 0 else "❌"
+    stderr = (result.get("stderr") or "").strip()
+    stdout_tail = (result.get("stdout") or "").strip()[-1500:]
+    body = stdout_tail
+    if stderr:
+        body = (body + "\n\n[stderr]\n" + stderr[-500:]).strip()
+    text = (
+        f"{icon} Deploy `{slug}`"
+        + (f" (branch: `{branch}`)" if branch else "")
+        + f" — exit {exit_code}\n\n```\n{body or '(no output)'}\n```"
+    )
+    await query.edit_message_text(text[:4000], parse_mode="Markdown")
 
 
 async def vscode_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -447,6 +698,9 @@ async def usemodel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text(result)
 
 
+CONFIDENCE_THRESHOLD = 0.7  # below this → fall through to existing NL chat
+
+
 async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.effective_chat or not update.message or not update.message.text:
         return
@@ -456,15 +710,129 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("You are not allowed to use this bot.")
         return
 
+    text = update.message.text
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
+    # 1) Try the smart router first — it handles fix/push/deploy/query/finance/etc.
+    routed = await _try_smart_route(update, context, text)
+    if routed:
+        return
+
+    # 2) Fall through to the existing NL routing layer (general chat,
+    #    legacy device-control phrasing, codex routing, etc.)
     result = await asyncio.to_thread(
         process_message_sync,
         str(user.id),
-        update.message.text,
+        text,
         user.username or user.full_name,
         f"telegram:{user.id}",
     )
     await deliver_processed_message(update, result)
+
+
+async def _try_smart_route(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+) -> bool:
+    """Classify + dispatch. Return True if handled, False to fall through."""
+    raw = await asyncio.to_thread(RouterClient.classify, text, "telegram")
+    intent = raw.get("intent") or {}
+    category = intent.get("category") or "chat"
+    confidence = float(intent.get("confidence") or 0.0)
+    params = intent.get("params") or {}
+
+    if confidence < CONFIDENCE_THRESHOLD:
+        return False  # not confident → existing NL layer takes over
+    if category == "chat":
+        return False
+
+    # --- DISPATCHERS ---
+    if category == "fix":
+        return await _route_fix(update, context, params)
+    if category == "push":
+        return await _route_push(update, context, params)
+    if category == "deploy":
+        return await _route_deploy(update, context, params)
+    if category == "query":
+        return await _route_query(update, context, params)
+    if category in {"finance", "crm", "calendar", "task"}:
+        # Modules not yet wired — log and acknowledge so the user knows it
+        # was understood, just not actioned automatically yet.
+        await update.message.reply_text(
+            f"Got it — categorized as `{category}`. That module isn't wired yet; "
+            f"I'll log this and you can review later. (params: `{params}`)",
+            parse_mode="Markdown",
+        )
+        return True
+
+    return False
+
+
+async def _route_fix(update, context, params: dict) -> bool:
+    project = (params.get("project") or "").strip().lower()
+    issue = (params.get("issue") or "").strip()
+    if not project or not issue:
+        return False
+    proj = await asyncio.to_thread(ProjectsClient.get, project)
+    if proj is None:
+        await update.message.reply_text(
+            f"I think you want a fix on `{project}`, but it's not in the registry. "
+            f"Run /projects to see what's registered.",
+            parse_mode="Markdown",
+        )
+        return True
+    context.args = [project, "|", issue]
+    await fix_command(update, context)
+    return True
+
+
+async def _route_push(update, context, params: dict) -> bool:
+    project = (params.get("project") or "").strip().lower()
+    if not project:
+        return False
+    context.args = [project]
+    await push_command(update, context)
+    return True
+
+
+async def _route_deploy(update, context, params: dict) -> bool:
+    project = (params.get("project") or "").strip().lower()
+    branch = (params.get("branch") or "").strip()
+    if not project:
+        return False
+    context.args = [project] + ([branch] if branch else [])
+    await deploy_command(update, context)
+    return True
+
+
+async def _route_query(update, context, params: dict) -> bool:
+    target = (params.get("target") or "").strip().lower()
+    if target in {"usage", "tokens", "cost", "spend"}:
+        context.args = []
+        await usage_command(update, context)
+        return True
+    if target in {"stats", "ram", "memory", "cpu"}:
+        await stats_command(update, context)
+        return True
+    if target in {"disk", "disks"}:
+        await disks_command(update, context)
+        return True
+    if target in {"processes", "process", "top"}:
+        context.args = []
+        await processes_command(update, context)
+        return True
+    if target in {"vscode", "code", "windows"}:
+        await vscode_command(update, context)
+        return True
+    if target in {"sessions", "claude", "session"}:
+        await sessions_command(update, context)
+        return True
+    if target in {"projects", "project", "repos"}:
+        await projects_command(update, context)
+        return True
+    if target in {"agents"}:
+        await agents_command(update, context)
+        return True
+    return False  # don't recognize the query target; let chat handle it
 
 
 async def media_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
