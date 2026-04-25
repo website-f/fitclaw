@@ -3105,6 +3105,251 @@ review the last 10.
 
 ---
 
+## 15. Smart inbound router + automation roadmap
+
+### What we built
+
+**Core (#27): Smart inbound router.** New module
+[app/modules/router/](app/modules/router/) that classifies arbitrary
+free-text via the local Ollama LLM and dispatches to the right handler.
+The bot's `text_message` handler now tries the router first and falls
+through to the existing NL chat layer only when confidence is low.
+
+**Plus two scheduled tasks:**
+- **#15 Host threshold alert** — `host_threshold_alert` Celery beat task,
+  runs every 5 min, alerts Telegram once/hour if CPU/mem > 90% or
+  disk > 85%.
+- **#28 Daily standup digest** — `daily_standup_digest` Celery beat task,
+  runs daily at 8am, summarizes yesterday's AI usage + completed tasks
+  to Telegram.
+
+Files:
+- [app/modules/router/](app/modules/router/) — full module (5 files).
+- [app/modules/__init__.py](app/modules/__init__.py) — registers router.
+- [alembic/versions/bb999d88703e_add_routing_decisions.py](alembic/versions/) — migration.
+- [app/services/vps_stats_service.py](app/services/vps_stats_service.py) —
+  new `RouterClient`.
+- [app/bot/handlers.py](app/bot/handlers.py) — `_try_smart_route`,
+  `_route_fix`, `_route_push`, `_route_deploy`, `_route_query`.
+- [app/workers/jobs.py](app/workers/jobs.py) —
+  `host_threshold_alert` and `daily_standup_digest`.
+- [app/core/celery_app.py](app/core/celery_app.py) — beat schedule
+  entries for the two new tasks.
+
+### Concept 1 — Why a tiny LLM is plenty for routing
+
+`qwen2.5:3b` (the default Ollama model) classifies these correctly with
+>0.9 confidence in our QA:
+
+| Input | Predicted |
+|---|---|
+| "the /usage button doesnt respond on iOS in fitclaw" | fix, project=fitclaw, issue=… |
+| "deploy fitclaw to dev" | deploy, project=fitclaw, branch=dev |
+| "how much did i spend today" | finance |
+| "what is my disk usage" | query, target=disks |
+| "paid 250 for facebook ads" | finance, amount=250, vendor=facebook |
+| "new lead from john for an ecommerce site" | crm, name=john |
+| "book a meeting with sarah on friday at 3pm" | calendar, who=sarah, when=friday 3pm |
+| "hi how are you doing today" | chat |
+
+Why so accurate without fine-tuning?
+1. **Few-shot examples in the prompt** — 5 examples cover the high-traffic
+   shapes. Easy to extend.
+2. **Strict JSON output** — the model isn't asked to be creative, just to
+   pick from 9 categories. Constrained output hugely helps small models.
+3. **Local + free** — runs on your VPS's Ollama. ~500ms latency. Each
+   classification logs a `routing_decisions` row, so you can later
+   build a "fix the misclassifications" feedback loop.
+
+### Concept 2 — JSON extraction is fragile, plan for it
+
+[`_extract_json`](app/modules/router/service.py) handles three cases of
+LLM output:
+1. Pure JSON — happy path.
+2. Markdown-fenced JSON (` ```json {...} ``` `).
+3. JSON embedded in chatty preamble — find first `{` and last `}`.
+
+Even with all that, parse failures happen. The whole classifier is
+wrapped to **always return a `chat` fallback on any error**. The router
+never blocks the bot. This is the right default for any AI-in-the-loop
+component: when the smart layer fails, the dumb layer takes over.
+
+### Concept 3 — The dispatcher pattern
+
+`_try_smart_route` looks like this:
+
+```python
+intent = await classify(text)
+if confidence < 0.7 or category == "chat":
+    return False  # let existing NL chat handle it
+if category == "fix":   return await _route_fix(...)
+if category == "deploy":return await _route_deploy(...)
+...
+```
+
+Each `_route_*` function reuses the existing slash-command handlers
+(`fix_command`, `deploy_command`, etc.) by setting `context.args` and
+calling them. **Zero command-handler duplication.** Adding a new
+category is 10 lines: add it to the prompt's example list, add a
+`_route_<category>` function, route to it.
+
+### Concept 4 — Beat tasks vs ad-hoc tasks
+
+The two new Celery tasks demonstrate the two scheduling patterns:
+
+- **`schedule: 300.0`** — fixed interval (every 5 min). Use for
+  "monitor and alert when threshold crossed" patterns.
+- **`schedule: parse_cron_expression("0 8 * * *")`** — cron expression.
+  Use for "run at this specific clock time."
+
+Inside the task, both use `@celery_app.task(name=...)` and run inside
+the worker container. The beat container picks them off the schedule;
+the worker container does the actual execution.
+
+### Concept 5 — Throttle alerts via Redis
+
+`host_threshold_alert` keeps `last_alert_timestamp` per metric in Redis:
+
+```python
+redis.hset("vps_stats:last_alert", "cpu_percent", time.time())
+```
+
+Before alerting, it checks: was the last alert for this metric < 1 hour
+ago? If yes, skip. This prevents the "send 60 alerts in 5 minutes
+because CPU is pegged" failure mode that kills useful alerting systems.
+
+This pattern generalizes — call it "deduplication by side-effect." Any
+time you have a noisy event source (logs, metric breaches, error
+reports), you want a TTL-keyed dedup before alerting.
+
+### 💡 Try it
+
+```bash
+# Test the classifier directly
+curl -X POST "http://localhost:8000/api/v1/router/classify?user_id=fitclaw" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"redeploy fitclaw to staging please","source":"qa"}' | python -m json.tool
+
+# Send a free-text message to your Telegram bot (no slash command):
+"the button on fitclaw is broken"   → bot dispatches /fix automatically
+"deploy fitclaw to dev"             → bot shows /deploy confirmation
+"what is my ram"                    → bot replies with /stats output
+"paid 250 for facebook ads"         → bot replies "categorized as finance, not yet wired"
+
+# Run a Celery task manually:
+docker compose exec worker python -c "from app.workers.jobs import host_threshold_alert; print(host_threshold_alert())"
+docker compose exec worker python -c "from app.workers.jobs import daily_standup_digest; print(daily_standup_digest())"
+
+# Inspect routing decisions
+docker compose exec postgres psql -U aiops -d aiops -c "SELECT category, confidence, dispatched, raw_text FROM routing_decisions ORDER BY id DESC LIMIT 10;"
+```
+
+### 🏋️ Homework 15.1 — Add a "did I get this right?" feedback loop
+
+After every dispatch, send a Telegram inline keyboard "✅ Right / ❌ Wrong"
+linking back to the `routing_decisions.id`. Store the answer in a new
+`feedback` column. After a few weeks of corrections you have labeled
+training data — fine-tune a small LoRA on Qwen for a smarter classifier
+(or just feed labeled examples back into the prompt as additional
+few-shots).
+
+### 🏋️ Homework 15.2 — Wire #29 high-value approval gate
+
+When the router dispatches a `deploy` and the project's `prod_branch`
+is involved (e.g. `main`), force-create an approval record (§13 module)
+and block until you tap Approve. Implementation: 5 lines in
+`_route_deploy`. Highest-leverage safety feature.
+
+---
+
+## 🗺️ Automation roadmap (28 items left)
+
+Each row maps a planned automation to its module + estimated effort.
+Pick one per session.
+
+### 💰 Finance (5)
+| # | Feature | Module | Effort |
+|---|---|---|---|
+| 1 | Invoice generator from chat | new `app/modules/invoicing/` | M |
+| 2 | Receipt photo → categorized expense | extend existing `attachment_service` + finance | S |
+| 3 | Recurring invoices | `invoicing/` + Celery beat | S |
+| 4 | Bank CSV reconciliation | new `app/modules/finance/` (or extend) | M |
+| 5 | Malaysia SST/GST report exporter | `finance/` reports submodule | M |
+| 6 | Cash flow forecast | `finance/` | M |
+
+### 🤝 CRM (5)
+| # | Feature | Module | Effort |
+|---|---|---|---|
+| 7 | Lead intake from WhatsApp | new `app/modules/crm/` | S |
+| 8 | Auto-quote generator | `crm/` + LLM | M |
+| 9 | Auto-triage incoming chats | `router/` + `crm/` | M |
+| 10 | Stale-lead nudges | `crm/` + Celery beat | S |
+| 11 | Voice-memo → action items | new `whisper_service.py` + tasks module | L |
+
+### 🛠 Ops (4 left — #13 + #15 done above)
+| # | Feature | Module | Effort |
+|---|---|---|---|
+| 12 | SSL cert expiry monitor | new `app/modules/cert_monitor/` + beat | S |
+| 14 | Backup verification | `ops_jobs.py` + beat | S |
+| 16 | Auto-deploy webhook | extends §14 — receiver in `projects/` | M |
+
+### 📝 Content (5)
+| # | Feature | Module | Effort |
+|---|---|---|---|
+| 17 | Blog draft generator | new `app/modules/content/` | M |
+| 18 | Social post scheduler | `content/` + 3rd-party API client | L |
+| 19 | Image generator integration | extend `services/ml/` | M |
+| 20 | SEO audit on demand | extends `web_content_service` | S |
+| 21 | Newsletter compiler | `content/` + Celery beat (Friday 5pm) | S |
+
+### ⚙️ Productivity (5)
+| # | Feature | Module | Effort |
+|---|---|---|---|
+| 22 | Calendar booking via NL | wire `_route_calendar` to existing `calendar_service` | S |
+| 23 | Email triage | new `app/modules/email/` (IMAP) | L |
+| 24 | Document summarizer | reuse OCR + add LLM summary endpoint | S |
+| 25 | Receipt → warranty tracker | extend finance with warranty subschema | S |
+| 26 | Travel itinerary builder | `email/` + LLM extractor | M |
+
+### 🧠 Cross-cutting (3 left — #27 done above)
+| # | Feature | Module | Effort |
+|---|---|---|---|
+| 28 | Daily standup digest (DONE in §15 today) | `jobs.py` + beat | — |
+| 29 | High-value approval gate | extend `approvals/` + `router/` | S |
+| 30 | Cross-project knowledge search | new `app/modules/search/` + pgvector | L |
+
+### Suggested next session
+
+**Pick exactly one.** Highest immediate value:
+
+1. **#22 Calendar via NL** (S) — already classifies as `calendar`. Just wire
+   `_route_calendar` to the existing `calendar_service`. ~1 hour. Big
+   "I just talk and it does the thing" win.
+2. **#29 High-value approval gate** (S) — drop-in safety. ~30 min once §13
+   is understood.
+3. **#2 Receipt auto-categorize** (S) — you already snap receipts. Add
+   Ollama categorization + Telegram digest. ~2 hours.
+
+Anything `L` should wait until you've shipped 3–4 `S`-tier wins.
+
+### Gotchas
+
+- **Confidence threshold is a knob.** 0.7 is conservative — you may want
+  0.6 once you've seen what your model produces. Tune per-category if
+  needed.
+- **The classifier costs Ollama tokens.** If you message the bot a lot,
+  watch your usage ledger. Cache identical recent classifications in
+  Redis for the rare case you ask the same question repeatedly.
+- **`finance`/`crm`/etc. categories say "not yet wired."** Until you
+  build those modules, the bot logs the intent and acknowledges. A
+  feature, not a bug — it lets you see what would route there before
+  you commit to the module.
+- **Daily standup runs at 8am in `settings.timezone`.** Check
+  `TIMEZONE=Asia/Kuala_Lumpur` in `.env` if your standup arrives at
+  the wrong hour.
+
+---
+
 ## 📚 Sandbox & learning resources
 
 Everything below is free (or has a generous free tier). Curated by topic,
