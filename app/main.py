@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.middleware.agent_auth import AgentBasicAuthMiddleware
 from app.modules import register_all as register_all_modules
-from app.routers import agent_control, agent_tasks, agents, calendar, chat, clear_data, device_control, downloads, finance, health, memorycore, models, tasks, transit, uploads, weather, web_app, whatsapp
+from app.routers import agent_control, agent_tasks, agents, analytics, calendar, chat, clear_data, device_control, downloads, finance, health, models, tasks, transit, uploads, weather, web_app, whatsapp
 from app.services.runtime_config_service import RuntimeConfigService
 
 settings = get_settings()
@@ -42,7 +42,7 @@ app.include_router(calendar.router)
 app.include_router(finance.router)
 app.include_router(weather.router)
 app.include_router(transit.router)
-app.include_router(memorycore.router)
+app.include_router(analytics.router)
 app.include_router(models.router)
 app.include_router(tasks.router)
 app.include_router(agents.router)
@@ -111,7 +111,6 @@ def read_version() -> dict[str, str]:
         "health": "/health",
         "control": "/control",
         "app": "/app",
-        "memorycore": "/memorycore",
         "finance": "/finance",
         "transit_live": "/transit-live",
         "whatsapp_beta": "/whatsapp-beta",

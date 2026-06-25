@@ -76,7 +76,9 @@ function normalizeBaseUrl(rawValue) {
       "/health/live",
       "/health/ready",
       "/finance",
-      "/memorycore",
+      "/knowledge",
+      "/analytics",
+      "/office",
       "/transit-live",
       "/whatsapp-beta",
     ]);

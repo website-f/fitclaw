@@ -45,8 +45,8 @@ class RouterClient:
 class ProjectsClient:
     """Bot-side client for the projects module's HTTP surface.
 
-    Same pattern as UsageService below — call our own API so the formatting
-    and flow is identical to what an external agent would see.
+    Call our own API so the formatting and flow is identical to what an
+    external agent would see.
     """
 
     @staticmethod
@@ -101,56 +101,6 @@ class ProjectsClient:
             return response.json()
         except httpx.HTTPError as exc:
             raise VpsStatsUnavailable(f"deploy failed: {exc}") from exc
-
-
-class UsageService:
-    """Thin client for the MemoryCore usage ledger (in-process).
-
-    We call our own HTTP surface so the formatting path is identical to
-    what external callers see. Cheap — same process, localhost, no TLS.
-    """
-
-    @staticmethod
-    def fetch_summary(period: str = "today") -> dict[str, Any]:
-        settings = get_settings()
-        url = f"{settings.api_internal_url.rstrip('/')}/api/v1/memorycore/usage/summary"
-        params = {"user_id": "fitclaw", "period": period}
-        try:
-            response = httpx.get(url, params=params, timeout=5.0)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as exc:
-            raise VpsStatsUnavailable(f"usage API unreachable: {exc}") from exc
-
-    @staticmethod
-    def format_summary_for_telegram(summary: dict[str, Any]) -> str:
-        total = summary.get("total", {})
-        lines = [
-            f"💰 Token usage — {summary.get('period', '?')}",
-            f"Calls:  {total.get('calls', 0)}",
-            f"Input:  {total.get('input_tokens', 0):,} tokens",
-            f"Output: {total.get('output_tokens', 0):,} tokens",
-            f"Cost:   ${total.get('cost_usd', 0):.4f}",
-        ]
-        by_tool = summary.get("by_tool") or {}
-        if by_tool:
-            lines.append("")
-            lines.append("By tool:")
-            for tool, b in sorted(by_tool.items()):
-                lines.append(
-                    f"  {tool:<14} {b.get('calls', 0):>3}×  "
-                    f"${b.get('cost_usd', 0):.4f}"
-                )
-        by_model = summary.get("by_model") or {}
-        if by_model:
-            lines.append("")
-            lines.append("By model:")
-            for model, b in sorted(by_model.items()):
-                lines.append(
-                    f"  {model:<28} {b.get('calls', 0):>3}×  "
-                    f"${b.get('cost_usd', 0):.4f}"
-                )
-        return "\n".join(lines)
 
 
 class VpsStatsService:

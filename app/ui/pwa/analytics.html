@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Analytics — FitClaw AI Ops</title>
+    <link rel="manifest" href="/app-manifest.webmanifest" />
+    <meta name="theme-color" content="#0b0d12" />
+    <link rel="stylesheet" href="/app-assets/chat-app.css" />
+    <link rel="stylesheet" href="/app-assets/knowledge.css" />
+    <link rel="stylesheet" href="/app-assets/analytics.css" />
+  </head>
+  <body class="kb-body an-body">
+    <div class="kb-stage">
+      <header class="kb-topbar glass-card">
+        <a href="/app" class="kb-back">← Chat</a>
+        <div class="kb-title-block">
+          <p class="eyebrow">Governance dashboard</p>
+          <h1>Analytics</h1>
+          <p class="kb-subtitle">Token spend, feedback trends, knowledge coverage, finance burn, audit timeline.</p>
+        </div>
+        <a href="/" class="kb-home">Home</a>
+      </header>
+
+      <main class="kb-main">
+        <section class="glass-card kb-card an-overview">
+          <div class="kb-section-head">
+            <h2>At a glance</h2>
+            <div class="an-controls">
+              <label class="kb-field kb-inline-field">
+                <span>Window</span>
+                <select id="anWindow">
+                  <option value="7">Last 7 days</option>
+                  <option value="14">Last 14 days</option>
+                  <option value="30" selected>Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                </select>
+              </label>
+              <button type="button" class="text-button" id="anRefresh">Refresh</button>
+            </div>
+          </div>
+          <div class="an-stat-grid" id="anStatGrid">
+            <div class="an-stat">
+              <span class="an-stat-label">Tokens today</span>
+              <strong id="anTokensToday">—</strong>
+              <small id="anTokensWeek">Week 0 · Month 0</small>
+            </div>
+            <div class="an-stat">
+              <span class="an-stat-label">Cost today (USD)</span>
+              <strong id="anCostToday">—</strong>
+              <small id="anCostMonth">Month $0.00</small>
+            </div>
+            <div class="an-stat">
+              <span class="an-stat-label">Thumbs up · down</span>
+              <strong id="anFeedback">—</strong>
+              <small id="anCorrections">0 corrections</small>
+            </div>
+            <div class="an-stat">
+              <span class="an-stat-label">Knowledge base</span>
+              <strong id="anKb">—</strong>
+              <small id="anKbBreakdown">0 chunks · 0 departments</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass-card kb-card">
+          <div class="kb-section-head">
+            <h2>Token usage by model</h2>
+            <span class="kb-meta-tag">Today</span>
+          </div>
+          <div class="an-bar-list" id="anUsageByModel"></div>
+        </section>
+
+        <section class="glass-card kb-card">
+          <div class="kb-section-head">
+            <h2>Budget caps</h2>
+            <span class="kb-meta-tag">Active alerts highlighted</span>
+          </div>
+          <div class="an-budget-list" id="anBudgets">
+            <p class="kb-empty">No budgets configured.</p>
+          </div>
+        </section>
+
+        <section class="glass-card kb-card">
+          <div class="kb-section-head">
+            <h2>Finance burn</h2>
+            <span class="kb-meta-tag">Window total</span>
+          </div>
+          <div class="an-finance" id="anFinance"></div>
+        </section>
+
+        <section class="glass-card kb-card">
+          <div class="kb-section-head">
+            <h2>Recent activity</h2>
+            <span class="kb-meta-tag">Audit log</span>
+          </div>
+          <ol class="an-audit" id="anAudit"></ol>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app-assets/analytics.js" defer></script>
+  </body>
+</html>

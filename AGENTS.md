@@ -20,7 +20,7 @@ prompt](#initialization-prompt-for-agents) section below.
   reports, captures memory.
 - **Repo:** https://github.com/website-f/fitclaw.git
 - **Primary language:** Python 3.12 (FastAPI). One Go microservice
-  (`services/vps_stats`) and one Go CLI (`memorycore_cli`).
+  (`services/vps_stats`).
 - **Deployment unit:** Docker Compose. Optional Kubernetes manifests in
   [`deploy/k8s/`](deploy/k8s/) for learning.
 
@@ -32,7 +32,6 @@ personal-ai-ops-platform/
 │   ├── core/                    # db, config, celery, security
 │   ├── models/                  # legacy SQLAlchemy ORM (pre-module split)
 │   ├── modules/                 # new plugin-style modules — see below
-│   │   └── memorycore/          # usage ledger + design library
 │   ├── contracts/               # shared types between modules
 │   ├── routers/                 # legacy FastAPI routers
 │   ├── services/                # legacy service layer
@@ -44,13 +43,12 @@ personal-ai-ops-platform/
 │   ├── vps_stats/               # Go — host metrics
 │   └── ml/                      # Python — TensorFlow/OpenCV placeholder
 ├── whatsapp_bridge/             # Go — WhatsApp via whatsmeow
-├── memorycore_cli/              # Go CLI (tool, not service)
 ├── alembic/                     # db migrations — single source of truth
 ├── deploy/
 │   ├── k8s/                     # kustomize-bundled vps_stats manifests
 │   └── observability/           # Prometheus + Grafana config
 ├── docker-compose.yml
-├── Dockerfile                   # builds python api + memorycore_cli Go
+├── Dockerfile                   # builds python api
 ├── AGENTS.md                    # this file
 ├── CLAUDE.md                    # pointer to AGENTS.md + Claude-specific notes
 ├── LEARN.md                     # teaching journal, 11 sections, exercises
@@ -85,15 +83,12 @@ tokens:
    `alembic revision --autogenerate -m "msg"`, review the file, commit.
 3. **Every table has a `user_id` column.** The app is multi-user ready
    from day one.
-4. **Unknown costs store NULL.** See
-   [app/modules/memorycore/pricing.py](app/modules/memorycore/pricing.py)
-   — a missing price is louder than a wrong price.
-5. **Ports bound to 127.0.0.1 by default.** Public exposure is opt-in
+4. **Ports bound to 127.0.0.1 by default.** Public exposure is opt-in
    via env vars. See `.env.example`.
-6. **Migrations run before app start** in the compose `api` command
+5. **Migrations run before app start** in the compose `api` command
    (`sh -c "alembic upgrade head && uvicorn …"`). Don't call `init_db`
    in `@app.on_event("startup")`.
-7. **Secrets are never in git.** `.gitignore` covers `.env`,
+6. **Secrets are never in git.** `.gitignore` covers `.env`,
    `deploy/k8s/*secret.yaml`.
 
 ## Key commands
@@ -106,8 +101,7 @@ docker compose up -d
 docker compose run --rm -v "/c/.../alembic/versions:/app/alembic/versions" \
   api alembic revision --autogenerate -m "describe the change"
 
-# Build the Go CLI / services locally
-cd memorycore_cli && go build -o memorycore .
+# Build the Go service locally
 cd services/vps_stats && go build -o vps_stats .
 
 # View logs
@@ -122,62 +116,6 @@ docker compose --profile ml up -d ml
 # Full teardown + volumes (only if you need a clean DB)
 docker compose down -v
 ```
-
-## Token usage tracking (what makes this project "universal")
-
-There's a ledger table `memory_usage` and a REST API for it. **Any
-agent, any medium, any model can log usage to it.** You (the agent)
-should log every significant session when you finish. The user inspects
-via Telegram `/usage` command, directly via curl, or the Go CLI.
-
-### REST endpoint (any HTTP client)
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/memorycore/usage?user_id=fitclaw" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool": "claude_code",       // or "codex", "cursor", "aider", "api", "other"
-    "model": "claude-opus-4-7",  // the exact model id
-    "session_id": "abc123",      // your session id if you have one
-    "input_tokens": 12000,
-    "output_tokens": 800,
-    "cache_read_tokens": 0,
-    "cache_write_tokens": 0,
-    "note": "adding the new feature X"
-  }'
-```
-
-Server auto-computes `cost_usd` from
-[pricing.py](app/modules/memorycore/pricing.py).
-
-### Go CLI
-
-```bash
-./memorycore_cli usage log --tool claude_code --model claude-opus-4-7 \
-  --session abc123 --in 12000 --out 800
-./memorycore_cli usage today
-./memorycore_cli usage week
-./memorycore_cli usage session abc123
-```
-
-### Claude Code auto-capture
-
-[.claude/settings.json](.claude/settings.json) registers a `Stop` hook
-that runs [.claude/hooks/log-usage.py](.claude/hooks/log-usage.py)
-after every session — reads the transcript, sums token usage, POSTs to
-the endpoint. Zero manual work.
-
-### Codex CLI auto-capture
-
-[scripts/codex-with-usage.sh](scripts/codex-with-usage.sh) wraps the
-`codex` CLI and logs the session's usage from its own telemetry file.
-If you use Codex directly, call this wrapper instead.
-
-### Other agents
-
-Aider: add a post-commit hook that POSTs.
-Cursor: manual logging via the Go CLI at the end of a session.
-Gemini / generic: manual via the REST endpoint above.
 
 ## Initialization prompt for agents
 
@@ -208,17 +146,7 @@ session. It tells the agent how to use this project's context.**
 >    migration has been run, initial tables exist, stack is operational.
 >    Check `docker compose ps` if unsure.
 >
-> 5. **When your session ends, log your token usage** to the MemoryCore
->    ledger. If the system's Stop/end hook is wired for your agent,
->    this happens automatically. Otherwise POST once with:
->
->    ```
->    curl -X POST "http://localhost:8000/api/v1/memorycore/usage?user_id=fitclaw" \
->      -H "Content-Type: application/json" \
->      -d '{"tool": "<your-tool-name>", "model": "<model-id>", "session_id": "<session>", "input_tokens": <n>, "output_tokens": <n>, "note": "<one-line-summary>"}'
->    ```
->
-> 6. **Respect the conventions.** If you're adding a feature, it goes
+> 5. **Respect the conventions.** If you're adding a feature, it goes
 >    into `app/modules/<name>/`. If you're changing schema, you run
 >    Alembic autogenerate. If you skip these, you're creating churn
 >    someone (the user, or future-you) has to untangle. Don't.
@@ -234,11 +162,9 @@ session. It tells the agent how to use this project's context.**
 | User asks for | You do |
 |---|---|
 | "add a new Telegram command" | Edit [app/bot/handlers.py](app/bot/handlers.py), add `CommandHandler(...)` + a handler fn + a `BotCommand(...)` in `post_init`. |
-| "add a new API route for feature X" | Prefer creating `app/modules/x/` over adding to `app/routers/`. Follow the memorycore module shape. |
+| "add a new API route for feature X" | Prefer creating `app/modules/x/` over adding to `app/routers/`. Follow the existing module shape (e.g. `app/modules/projects/`). |
 | "change the DB schema" | Edit the model → `docker compose run --rm -v "…" api alembic revision --autogenerate -m "msg"` → review + commit + `alembic upgrade head`. |
 | "the bot should do something with VPS" | Use `app/services/vps_stats_service.py`. It's the only thing that should talk to the Go service. |
-| "log an LLM call for tracking" | POST to `/api/v1/memorycore/usage`. See example above. |
-| "save a design reference" | PUT to `/api/v1/memorycore/designs/{name}`. Image paths can be local paths or URLs. |
 
 ## How the user asks things
 

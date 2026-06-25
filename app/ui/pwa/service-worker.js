@@ -1,12 +1,16 @@
-const CACHE_NAME = "fitclaw-aiops-shell-v35";
+const CACHE_NAME = "fitclaw-aiops-shell-v41";
 const APP_SHELL = [
   "/app-manifest.webmanifest",
   "/app-assets/chat-app.css",
   "/app-assets/chat-app.js",
   "/app-assets/finance.css",
   "/app-assets/finance.js",
-  "/app-assets/memorycore-page.css",
-  "/app-assets/memorycore-page.js",
+  "/app-assets/knowledge.css",
+  "/app-assets/knowledge.js",
+  "/app-assets/analytics.css",
+  "/app-assets/analytics.js",
+  "/app-assets/office.css",
+  "/app-assets/office.js",
   "/app-assets/whatsapp-beta.css",
   "/app-assets/whatsapp-beta.js",
   "/app-assets/transit-live.css",
@@ -20,7 +24,7 @@ const APP_SHELL = [
   "/app-assets/icons/apple-touch-icon.png",
 ];
 
-const NAV_ROUTES = ["/", "/app", "/finance", "/memorycore", "/transit-live", "/whatsapp-beta", "/clear-data"];
+const NAV_ROUTES = ["/", "/app", "/finance", "/knowledge", "/analytics", "/office", "/transit-live", "/whatsapp-beta", "/clear-data"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

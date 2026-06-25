@@ -47,13 +47,6 @@
       "icons": [{ "src": "/app-assets/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Memory Core",
-      "short_name": "Memory",
-      "description": "Open the Memory Core hub",
-      "url": "/memorycore",
-      "icons": [{ "src": "/app-assets/icons/icon-192.png", "sizes": "192x192" }]
-    },
-    {
       "name": "Transit Live",
       "short_name": "Transit",
       "description": "Open live transit tracker",

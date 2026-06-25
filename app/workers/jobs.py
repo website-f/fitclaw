@@ -120,8 +120,6 @@ from datetime import datetime, timedelta, timezone
 
 import redis as _redis_lib
 
-from app.modules.memorycore.models import MemoryUsage
-
 
 _THRESHOLD_REDIS_KEY = "vps_stats:last_alert"
 
@@ -183,11 +181,7 @@ def host_threshold_alert() -> dict:
 
 @celery_app.task(name="app.workers.jobs.daily_standup_digest")
 def daily_standup_digest() -> dict:
-    """LEARN.md §15 #28 — every morning, summarize yesterday's activity.
-
-    Combines: MemoryUsage rows (LLM cost & calls) + Task completions, posts
-    a single formatted Telegram message.
-    """
+    """LEARN.md §15 #28 — every morning, summarize yesterday's activity."""
     if not (settings.report_chat_enabled and settings.default_report_chat_id):
         return {"ok": False, "reason": "no report chat configured"}
 
@@ -197,32 +191,15 @@ def daily_standup_digest() -> dict:
     with session_scope() as db:
         from app.models.task import Task
 
-        usage_rows = list(db.execute(
-            select(MemoryUsage).where(
-                MemoryUsage.created_at >= start, MemoryUsage.created_at < end
-            )
-        ).scalars().all())
         completed_tasks = list(db.execute(
             select(Task).where(Task.completed_at >= start, Task.completed_at < end)
         ).scalars().all())
 
-    total_in = sum(r.input_tokens for r in usage_rows)
-    total_out = sum(r.output_tokens for r in usage_rows)
-    total_cost = sum(float(r.cost_usd or 0) for r in usage_rows)
-
-    by_tool: dict[str, int] = {}
-    for r in usage_rows:
-        by_tool[r.tool] = by_tool.get(r.tool, 0) + 1
-
     lines = [
         f"☀️ Daily standup — {start.date()}",
         "",
-        f"AI usage: {len(usage_rows)} sessions, in={total_in:,} out={total_out:,}, cost=${total_cost:.4f}",
+        f"Tasks completed: {len(completed_tasks)}",
     ]
-    if by_tool:
-        lines.append("  by tool: " + ", ".join(f"{k}={v}" for k, v in sorted(by_tool.items())))
-    lines.append("")
-    lines.append(f"Tasks completed: {len(completed_tasks)}")
     for task in completed_tasks[:10]:
         lines.append(f"  • {task.title}")
     if len(completed_tasks) > 10:
@@ -230,4 +207,4 @@ def daily_standup_digest() -> dict:
 
     text = "\n".join(lines)
     delivered = TelegramService.send_message(settings.default_report_chat_id, text)
-    return {"ok": True, "delivered": delivered, "usage_rows": len(usage_rows), "completed_tasks": len(completed_tasks)}
+    return {"ok": True, "delivered": delivered, "completed_tasks": len(completed_tasks)}

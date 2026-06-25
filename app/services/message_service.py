@@ -13,7 +13,6 @@ from app.services.command_result import MessageAttachment
 from app.services.finance_service import FinanceService
 from app.services.llm_service import LLMService, LLMServiceError
 from app.services.memory_service import MemoryService
-from app.services.memorycore_service import MemoryCoreService
 from app.services.runtime_config_service import RuntimeConfigService
 from app.services.transit_service import TransitService
 from app.services.upload_service import UploadService
@@ -35,33 +34,42 @@ class ProcessedMessage:
 
 class MessageService:
     @staticmethod
-    def _build_system_prompt(db: Session, user_id: str, session_id: str | None = None) -> str:
-        linked_project_key = None
-        if session_id:
-            linked_project_key = MemoryCoreService.get_linked_project_key(db, user_id=user_id, session_id=session_id)
-        memory_context = MemoryCoreService.build_assistant_context(
-            db,
-            user_id=user_id,
-            project_key=linked_project_key,
-        )
-        if not memory_context:
-            return settings.system_prompt
-        return f"{settings.system_prompt}\n\nMemoryCore context:\n{memory_context}"
+    def _build_system_prompt(
+        db: Session,
+        user_id: str,
+        session_id: str | None = None,
+        user_text: str | None = None,
+    ) -> str:
+        prompt = settings.system_prompt
+        kb_context = MessageService._build_knowledge_context(db, user_id=user_id, user_text=user_text)
+        if kb_context:
+            prompt = f"{prompt}\n\n{kb_context}"
+        return prompt
 
     @staticmethod
-    def _sync_memorycore_session_context(db: Session, user_id: str, session_id: str) -> None:
-        project_key = MemoryCoreService.get_linked_project_key(db, user_id=user_id, session_id=session_id)
-        if not project_key:
-            return
+    def _build_knowledge_context(
+        db: Session,
+        *,
+        user_id: str,
+        user_text: str | None,
+    ) -> str:
+        if not user_text:
+            return ""
+        cleaned = user_text.strip()
+        # Skip retrieval for trivially short messages so we don't pollute the prompt.
+        if len(cleaned) < 12:
+            return ""
         try:
-            MemoryCoreService.capture_session_context(
-                db,
-                user_id=user_id,
-                project_key=project_key,
-                session_id=session_id,
-            )
+            from app.modules.knowledge.service import KnowledgeService
+            hits = KnowledgeService.search(db, user_id=user_id, query=cleaned, limit=3)
         except Exception:
-            return
+            return ""
+        if not hits:
+            return ""
+        blocks = ["Knowledge base excerpts (cite via [KB:doc-id#chunk] when relevant):"]
+        for hit in hits:
+            blocks.append(f"[KB:{hit.doc_id}#{hit.chunk_index}] ({hit.title})\n{hit.text.strip()}")
+        return "\n\n".join(blocks)
 
     @staticmethod
     def _store_assistant_message(
@@ -84,7 +92,6 @@ class MessageService:
             provider=provider,
             metadata_json=metadata_json,
         )
-        MessageService._sync_memorycore_session_context(db, user_id=user_id, session_id=session_id)
 
     @staticmethod
     def process_user_message(
@@ -120,10 +127,34 @@ class MessageService:
             metadata_json=user_metadata,
         )
 
+        handoff_reply = MessageService._maybe_open_handoff(
+            db,
+            user_id=user_id,
+            session_id=resolved_session_id,
+            text=normalized_text,
+        )
+        if handoff_reply is not None:
+            MessageService._store_assistant_message(
+                db=db,
+                session_id=resolved_session_id,
+                user_id=user_id,
+                content=handoff_reply,
+                username=username,
+                provider="handoff",
+            )
+            return ProcessedMessage(
+                reply=handoff_reply,
+                provider="handoff",
+                session_id=resolved_session_id,
+                handled_as_task_command=False,
+                handled_as_agent_command=False,
+                attachments=[],
+            )
+
         command_result = None
         if assets:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id, user_text=normalized_text)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = FinanceService.try_handle(
                 db=db,
@@ -137,7 +168,7 @@ class MessageService:
             )
         if command_result is None and assets:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id, user_text=normalized_text)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = AttachmentService.try_handle(
                 db=db,
@@ -189,7 +220,7 @@ class MessageService:
             command_result = TransitService.try_handle(normalized_text)
         if command_result is None:
             history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
+            prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id, user_text=normalized_text)}] + MemoryService.to_llm_messages(history)
             active_llm = RuntimeConfigService.get_active_llm(db)
             command_result = WebContentService.try_handle(
                 text=normalized_text,
@@ -220,7 +251,7 @@ class MessageService:
             )
 
         history = MemoryService.get_recent_messages(db, resolved_session_id, limit=settings.memory_window)
-        prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id)}] + MemoryService.to_llm_messages(history)
+        prompt_messages = [{"role": "system", "content": MessageService._build_system_prompt(db, user_id, resolved_session_id, user_text=normalized_text)}] + MemoryService.to_llm_messages(history)
         active_llm = RuntimeConfigService.get_active_llm(db)
         try:
             reply, provider = LLMService.generate_reply(
@@ -252,6 +283,15 @@ class MessageService:
             provider=provider,
         )
 
+        MessageService._log_chat_audit(
+            db,
+            user_id=user_id,
+            session_id=resolved_session_id,
+            provider=provider,
+            user_text=normalized_text,
+            reply=reply,
+        )
+
         return ProcessedMessage(
             reply=reply,
             provider=provider,
@@ -260,3 +300,63 @@ class MessageService:
             handled_as_agent_command=False,
             attachments=[],
         )
+
+    @staticmethod
+    def _maybe_open_handoff(
+        db: Session,
+        *,
+        user_id: str,
+        session_id: str,
+        text: str,
+    ) -> str | None:
+        cleaned = (text or "").strip()
+        if not cleaned:
+            return None
+        try:
+            from app.modules.governance.service import HandoffService
+        except Exception:
+            return None
+        if not HandoffService.should_handoff(cleaned):
+            return None
+        try:
+            row = HandoffService.open(
+                db,
+                user_id=user_id,
+                question=cleaned,
+                session_id=session_id,
+                reason="keyword",
+            )
+        except Exception:
+            return None
+        return (
+            "I'm escalating this to a human teammate.\n"
+            f"Handoff id: `{row.handoff_id}`. You'll see their reply right here in this chat once they respond."
+        )
+
+    @staticmethod
+    def _log_chat_audit(
+        db: Session,
+        *,
+        user_id: str,
+        session_id: str,
+        provider: str | None,
+        user_text: str,
+        reply: str,
+    ) -> None:
+        try:
+            from app.modules.audit.service import AuditService
+            AuditService.log(
+                db,
+                user_id=user_id,
+                source="chat",
+                action="chat.reply",
+                summary=(user_text or "")[:240] or "(empty)",
+                actor=provider,
+                detail={
+                    "session_id": session_id,
+                    "provider": provider,
+                    "reply_chars": len(reply or ""),
+                },
+            )
+        except Exception:
+            return

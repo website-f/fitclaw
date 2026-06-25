@@ -57,6 +57,8 @@ const dom = {
   composerWrap: document.querySelector(".composer-wrap"),
   composerForm: document.getElementById("composerForm"),
   filePicker: document.getElementById("filePicker"),
+  receiptPicker: document.getElementById("receiptPicker"),
+  receiptButton: document.getElementById("receiptButton"),
   messageInput: document.getElementById("messageInput"),
   attachButton: document.getElementById("attachButton"),
   sendButton: document.getElementById("sendButton"),
@@ -113,6 +115,8 @@ function bindEvents() {
   dom.clearDraftButton.addEventListener("click", clearComposerDraft);
   dom.attachButton.addEventListener("click", () => dom.filePicker.click());
   dom.filePicker.addEventListener("change", onFileSelection);
+  dom.receiptButton.addEventListener("click", () => dom.receiptPicker.click());
+  dom.receiptPicker.addEventListener("change", onReceiptSelection);
   dom.newChatButton.addEventListener("click", () => startNewChat(true));
   dom.topbarNewChatButton.addEventListener("click", () => startNewChat(true));
   dom.deleteChatButton.addEventListener("click", () => void deleteCurrentSession());
@@ -376,17 +380,27 @@ async function onFileSelection(event) {
   await uploadSelectedFiles(files);
 }
 
+async function onReceiptSelection(event) {
+  const files = Array.from(event.target.files || []);
+  dom.receiptPicker.value = "";
+  if (!files.length) return;
+  await uploadSelectedFiles(files, { intent: "receipt" });
+}
+
 async function onSubmitMessage(event) {
   event.preventDefault();
   await submitComposerMessage();
 }
 
 async function submitComposerMessage() {
-  const text = dom.messageInput.value.trim();
+  let text = dom.messageInput.value.trim();
   const readyUploads = state.pendingUploads.filter((item) => item.status === "ready");
   const hasUploadingFiles = state.pendingUploads.some((item) => item.status === "uploading");
   if (state.sending || hasUploadingFiles) return;
   if (!text && !readyUploads.length) return;
+  if (!text && readyUploads.some((item) => item.intent === "receipt")) {
+    text = "Save this receipt to Finance.";
+  }
   await sendMessage(text, readyUploads);
 }
 
@@ -767,15 +781,101 @@ function renderActionStack(suggestions) {
   });
 }
 
-function runSuggestion(item) {
+async function runSuggestion(item) {
   const attachments = item.useAttachments
     ? state.pendingUploads.filter((upload) => upload.status === "ready")
     : [];
   if (item.useAttachments && !attachments.length) {
     dom.messageInput.focus();
-    return Promise.resolve();
+    return;
+  }
+  const tutorialId = item.tutorialId || item.title;
+  if (tutorialId && shouldShowTutorial(tutorialId)) {
+    const proceed = await showTutorialModal(item);
+    if (!proceed) return;
   }
   return sendMessage(item.prompt, attachments);
+}
+
+function tutorialKey(id) {
+  return `fitclaw.tutorial.dismissed.${id}`;
+}
+
+function shouldShowTutorial(id) {
+  if (!id) return false;
+  return localStorage.getItem(tutorialKey(id)) !== "1";
+}
+
+function buildTutorialMeta(item) {
+  if (item.tutorial) return item.tutorial;
+  // Default tutorial derived from the action shape so every task gets a primer.
+  const what = item.description || "This task sends a structured prompt to the AI ops platform.";
+  const steps = [
+    "FitClaw parses the prompt and routes it to the right module.",
+    item.useAttachments
+      ? "Attached files travel with the message — vision and document extractors run automatically."
+      : "Replies arrive in your chat thread with optional citations and attachments.",
+    "Every run is recorded in the Audit log so you can review what happened later.",
+  ];
+  const tips = item.tips || [
+    "You can edit the prompt before sending by canceling this tutorial and editing the composer.",
+    "Use the \u{1F44D} / \u{1F44E} buttons on the reply to teach the model what worked.",
+  ];
+  return { what, steps, tips };
+}
+
+function showTutorialModal(item) {
+  return new Promise((resolve) => {
+    const meta = buildTutorialMeta(item);
+    const backdrop = document.createElement("div");
+    backdrop.className = "tutorial-backdrop";
+    backdrop.innerHTML = `
+      <div class="tutorial-modal glass-card" role="dialog" aria-modal="true">
+        <header class="tutorial-head">
+          <p class="eyebrow">Before you run this</p>
+          <h2>${escapeHtml(item.title)}</h2>
+        </header>
+        <p class="tutorial-what">${escapeHtml(meta.what)}</p>
+        <section class="tutorial-section">
+          <h3>What happens</h3>
+          <ol>${meta.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+        </section>
+        <section class="tutorial-section">
+          <h3>Tips</h3>
+          <ul>${meta.tips.map((tip) => `<li>${escapeHtml(tip)}</li>`).join("")}</ul>
+        </section>
+        <section class="tutorial-prompt">
+          <h3>Prompt that will be sent</h3>
+          <code>${escapeHtml(item.prompt)}</code>
+        </section>
+        <footer class="tutorial-foot">
+          <label class="tutorial-dont-show">
+            <input type="checkbox" id="tutorialDontShow" />
+            <span>Don't show this again</span>
+          </label>
+          <div class="tutorial-actions">
+            <button type="button" class="ghost-button" data-tutorial-action="cancel">Cancel</button>
+            <button type="button" class="primary-button" data-tutorial-action="run">Run task</button>
+          </div>
+        </footer>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    const close = (proceed) => {
+      const dontShow = backdrop.querySelector("#tutorialDontShow")?.checked;
+      if (dontShow) {
+        const id = item.tutorialId || item.title;
+        if (id) localStorage.setItem(tutorialKey(id), "1");
+      }
+      backdrop.remove();
+      resolve(!!proceed);
+    };
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) close(false);
+    });
+    backdrop.querySelector('[data-tutorial-action="cancel"]').addEventListener("click", () => close(false));
+    backdrop.querySelector('[data-tutorial-action="run"]').addEventListener("click", () => close(true));
+  });
 }
 
 function buildSuggestions() {
@@ -783,6 +883,28 @@ function buildSuggestions() {
   const firstAgentName = firstOnline?.name || "office-pc";
 
   const suggestions = [];
+  const hasReceiptPending = state.pendingUploads.some((upload) => upload.intent === "receipt" && upload.status === "ready");
+  if (hasReceiptPending) {
+    suggestions.push({
+      title: "Scan receipt",
+      tutorialId: "receipt.scan",
+      description: "Save the attached receipt to Finance with auto-extracted merchant, total, and category.",
+      prompt: "Save this receipt to Finance.",
+      useAttachments: true,
+      tutorial: {
+        what: "A vision LLM reads the attached image, pulls structured fields, and inserts a row in your MYR-denominated Finance ledger.",
+        steps: [
+          "Vision model extracts: merchant, total, currency, date, payment method, line items.",
+          "Category rules you've saved (\"if vendor contains Shopee, category = Shopping\") are applied first; otherwise a heuristic guess.",
+          "Threshold alerts fire if this entry pushes you over a saved spending rule.",
+        ],
+        tips: [
+          "Receipts auto-capture on Telegram too \u2014 send the photo with or without a caption.",
+          "If a total looks wrong, delete with `delete expense fe_xxxxx` in chat and re-snap.",
+        ],
+      },
+    });
+  }
   if (state.pendingUploads.length) {
     suggestions.push(
       {
@@ -1237,7 +1359,14 @@ function renderUploadTray() {
   dom.uploadTray.innerHTML = "";
   state.pendingUploads.forEach((upload) => {
     const card = document.createElement("article");
-    card.className = `upload-pill${upload.status === "uploading" ? " uploading" : ""}${upload.status === "error" ? " error" : ""}`;
+    card.className = `upload-pill${upload.status === "uploading" ? " uploading" : ""}${upload.status === "error" ? " error" : ""}${upload.intent === "receipt" ? " receipt" : ""}`;
+
+    if (upload.intent === "receipt") {
+      const badge = document.createElement("span");
+      badge.className = "upload-intent-badge";
+      badge.textContent = "Receipt";
+      card.appendChild(badge);
+    }
 
     const thumb = document.createElement("div");
     thumb.className = "upload-thumb";
@@ -1299,6 +1428,11 @@ function renderMessages() {
       bubble.replaceChildren(buildMessageContent(message));
     }
 
+    if (message.role === "assistant" && !message.pending && message.id) {
+      const feedback = renderFeedbackBar(message);
+      if (feedback) node.appendChild(feedback);
+    }
+
     const attachmentStack = node.querySelector(".attachment-stack");
     attachments.forEach((attachment) => {
       const card = document.createElement("div");
@@ -1326,6 +1460,55 @@ function renderMessages() {
 
     dom.messageList.appendChild(node);
   });
+}
+
+function feedbackCacheKey(messageId) {
+  return `fitclaw.feedback.${messageId}`;
+}
+
+function renderFeedbackBar(message) {
+  if (!message || !message.id) return null;
+  const stored = localStorage.getItem(feedbackCacheKey(message.id));
+  const bar = document.createElement("div");
+  bar.className = "message-feedback";
+  bar.dataset.messageId = String(message.id);
+  bar.innerHTML = `
+    <button type="button" class="message-feedback-button up${stored === "up" ? " is-active" : ""}" data-rating="up" title="This was helpful" aria-label="Thumbs up">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 6.5h2v6H3a1 1 0 01-1-1V7.5a1 1 0 011-1zM5 6.5l2.4-4.1c.4-.7 1.5-.5 1.6.3l.1 2.3h2.4c.7 0 1.2.6 1.1 1.3l-.7 4.6c-.1.5-.5.9-1.1.9H5v-5.3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+    </button>
+    <button type="button" class="message-feedback-button down${stored === "down" ? " is-active" : ""}" data-rating="down" title="Not useful" aria-label="Thumbs down">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7.5h2v-6H3a1 1 0 00-1 1v4a1 1 0 001 1zM5 7.5l2.4 4.1c.4.7 1.5.5 1.6-.3l.1-2.3h2.4c.7 0 1.2-.6 1.1-1.3l-.7-4.6c-.1-.5-.5-.9-1.1-.9H5v5.3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+    </button>
+    <span class="message-feedback-status">${stored ? (stored === "up" ? "Thanks for the thumbs up." : "Noted — we'll learn from this.") : ""}</span>
+  `;
+  bar.querySelectorAll(".message-feedback-button").forEach((button) => {
+    button.addEventListener("click", () => submitMessageFeedback(message, button.dataset.rating, bar));
+  });
+  return bar;
+}
+
+async function submitMessageFeedback(message, rating, bar) {
+  if (!rating || !message?.id) return;
+  const status = bar.querySelector(".message-feedback-status");
+  status.textContent = "Saving…";
+  bar.querySelectorAll(".message-feedback-button").forEach((btn) => btn.classList.remove("is-active"));
+  bar.querySelector(`.message-feedback-button.${rating}`)?.classList.add("is-active");
+  try {
+    await fetchJson("/api/v1/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: state.userId,
+        session_id: state.sessionId,
+        message_id: message.id,
+        rating,
+      }),
+    });
+    localStorage.setItem(feedbackCacheKey(message.id), rating);
+    status.textContent = rating === "up" ? "Thanks for the thumbs up." : "Noted — we'll learn from this.";
+  } catch (error) {
+    console.error("Feedback submit failed", error);
+    status.textContent = "Could not save feedback.";
+  }
 }
 
 function buildMessageContent(message) {
@@ -1510,7 +1693,7 @@ function appendLinesWithBreaks(parent, lines) {
 }
 
 function appendInlineNodes(parent, text) {
-  const tokenPattern = /(\*\*[^*]+?\*\*|`[^`]+`|https?:\/\/[^\s<]+|\/(?:transit-live|whatsapp-beta|memorycore|finance)[^\s<]*)/g;
+  const tokenPattern = /(\*\*[^*]+?\*\*|`[^`]+`|https?:\/\/[^\s<]+|\/(?:transit-live|whatsapp-beta|finance|knowledge|analytics|office)[^\s<]*)/g;
   let lastIndex = 0;
   let match;
 
@@ -1737,8 +1920,8 @@ function registerPWA() {
 }
 
 /* ─── Upload handling ─── */
-async function uploadSelectedFiles(files) {
-  const placeholders = files.map((file) => createUploadPlaceholder(file));
+async function uploadSelectedFiles(files, options = {}) {
+  const placeholders = files.map((file) => createUploadPlaceholder(file, options));
   state.pendingUploads.push(...placeholders);
   renderAll();
 
@@ -1761,11 +1944,13 @@ async function uploadSingleFile(file, localId) {
       method: "POST",
       body: formData,
     });
+    const existing = state.pendingUploads.find((item) => item.localId === localId);
     replacePendingUpload(localId, {
       ...response,
       localId,
       status: "ready",
-      preview_url: state.pendingUploads.find((item) => item.localId === localId)?.preview_url || null,
+      preview_url: existing?.preview_url || null,
+      intent: existing?.intent || null,
     });
   } catch (error) {
     replacePendingUpload(localId, {
@@ -1776,7 +1961,7 @@ async function uploadSingleFile(file, localId) {
   renderAll();
 }
 
-function createUploadPlaceholder(file) {
+function createUploadPlaceholder(file, options = {}) {
   return {
     localId: `upload-${createId()}`,
     asset_id: null,
@@ -1788,6 +1973,7 @@ function createUploadPlaceholder(file) {
     preview_url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
     status: "uploading",
     error: "",
+    intent: options.intent || null,
   };
 }
 
@@ -1922,7 +2108,7 @@ function linkifyText(value) {
   const escaped = escapeHtml(value).replace(/\n/g, "<br>");
   return escaped
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>')
-    .replace(/(^|[\s>])(\/(?:transit-live|whatsapp-beta|memorycore|finance)(?:[^\s<]*)?)/g, '$1<a href="$2">$2</a>');
+    .replace(/(^|[\s>])(\/(?:transit-live|whatsapp-beta|finance|knowledge|analytics|office)(?:[^\s<]*)?)/g, '$1<a href="$2">$2</a>');
 }
 
 function formatTime(value) {

@@ -16,11 +16,13 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from app.modules import approvals as _approvals
-from app.modules import memorycore as _memorycore
+from app.modules import audit as _audit
+from app.modules import governance as _governance
+from app.modules import knowledge as _knowledge
 from app.modules import projects as _projects
 from app.modules import router as _router
 
-_MODULES = (_memorycore, _approvals, _projects, _router)
+_MODULES = (_approvals, _audit, _governance, _knowledge, _projects, _router)
 
 
 def register_all(app: FastAPI) -> None:

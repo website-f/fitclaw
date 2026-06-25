@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Knowledge — FitClaw AI Ops</title>
+    <link rel="manifest" href="/app-manifest.webmanifest" />
+    <meta name="theme-color" content="#0b0d12" />
+    <link rel="stylesheet" href="/app-assets/chat-app.css" />
+    <link rel="stylesheet" href="/app-assets/knowledge.css" />
+  </head>
+  <body class="kb-body">
+    <div class="kb-stage">
+      <header class="kb-topbar glass-card">
+        <a href="/app" class="kb-back" aria-label="Back to chat">← Chat</a>
+        <div class="kb-title-block">
+          <p class="eyebrow">Retrieval-Augmented Generation</p>
+          <h1>Knowledge base</h1>
+          <p class="kb-subtitle">Upload SOPs, FAQs, catalogues, and pricing sheets. The chat answers from them first and cites the source.</p>
+        </div>
+        <a href="/" class="kb-home" aria-label="Landing">Home</a>
+      </header>
+
+      <main class="kb-main">
+        <section class="glass-card kb-card kb-uploader">
+          <div class="kb-section-head">
+            <h2>Add a document</h2>
+            <span class="kb-meta-tag">PDF · DOCX · TXT · MD · CSV · 25 MB max</span>
+          </div>
+          <form id="kbUploadForm" class="kb-form">
+            <label class="kb-field">
+              <span>Title (optional)</span>
+              <input id="kbTitle" type="text" placeholder="Leave blank to use filename" maxlength="200" />
+            </label>
+            <div class="kb-field-row">
+              <label class="kb-field">
+                <span>Department</span>
+                <select id="kbDepartment">
+                  <option value="">— Any —</option>
+                  <option value="sales">Sales</option>
+                  <option value="hr">HR</option>
+                  <option value="finance">Finance</option>
+                  <option value="ops">Ops</option>
+                  <option value="support">Support</option>
+                </select>
+              </label>
+              <label class="kb-field">
+                <span>Tags (comma-separated)</span>
+                <input id="kbTags" type="text" placeholder="pricing, ringgit, 2026" maxlength="160" />
+              </label>
+            </div>
+            <label class="kb-dropzone" id="kbDropzone">
+              <input id="kbFile" type="file" accept=".pdf,.docx,.txt,.md,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv" hidden />
+              <strong>Drop a file here or tap to browse</strong>
+              <small id="kbDropzoneHint">Nothing selected yet.</small>
+            </label>
+            <div class="kb-form-actions">
+              <button type="submit" class="primary-button" id="kbUploadButton">Index document</button>
+              <span class="kb-status" id="kbUploadStatus"></span>
+            </div>
+          </form>
+        </section>
+
+        <section class="glass-card kb-card kb-asker">
+          <div class="kb-section-head">
+            <h2>Ask the knowledge base</h2>
+            <span class="kb-meta-tag">Citations included</span>
+          </div>
+          <form id="kbAskForm" class="kb-ask-form">
+            <textarea id="kbQuestion" rows="3" maxlength="2000" placeholder="e.g. What is our refund policy for products bought after the 7-day window?"></textarea>
+            <div class="kb-form-actions">
+              <label class="kb-field kb-inline-field">
+                <span>Scope</span>
+                <select id="kbAskDepartment">
+                  <option value="">All departments</option>
+                  <option value="sales">Sales</option>
+                  <option value="hr">HR</option>
+                  <option value="finance">Finance</option>
+                  <option value="ops">Ops</option>
+                  <option value="support">Support</option>
+                </select>
+              </label>
+              <button type="submit" class="primary-button" id="kbAskButton">Ask</button>
+            </div>
+          </form>
+          <article class="kb-answer" id="kbAnswer" hidden></article>
+        </section>
+
+        <section class="glass-card kb-card kb-library">
+          <div class="kb-section-head">
+            <h2>Indexed documents</h2>
+            <button type="button" class="text-button" id="kbRefresh">Refresh</button>
+          </div>
+          <div class="kb-doc-list" id="kbDocList">
+            <p class="kb-empty">Loading…</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app-assets/knowledge.js" defer></script>
+  </body>
+</html>

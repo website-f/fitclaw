@@ -16,6 +16,3 @@ deploy/k8s/*secret.yaml
 # should go in `agent_daemon/release/` instead.
 agent_daemon/dist/
 agent_daemon/build-output/
-memorycore_cli/dist/
-memorycore_cli/build-output/
-memorycore_cli/*.exe

@@ -14,19 +14,16 @@ sessions.
 
 1. [Postgres + Alembic migration](#1-postgres--alembic-migration) — done ✅
 2. [Project restructure → `app/modules/` modular monolith](#2-project-restructure--appmodules-modular-monolith) — done ✅
-3. [MemoryCore v2 — usage ledger + design library (server side)](#3-memorycore-v2--usage-ledger--design-library-server-side) — done ✅
-4. [Go intro — extending `memorycore_cli` with `usage` + `design` commands](#4-go-intro--extending-memorycore_cli) — done ✅
-5. [Your first Go service from scratch — `vps_stats`](#5-your-first-go-service-from-scratch--vps_stats) — done ✅
-6. [Telegram → `vps_stats` — first cross-service call](#6-telegram--vps_stats--first-cross-service-call) — done ✅
-7. [Read-only VPS action endpoints + safe write-action design](#7-read-only-vps-action-endpoints--safe-write-action-design) — done ✅
-8. [Kubernetes on k3d — porting `vps_stats` to manifests](#8-kubernetes-on-k3d--porting-vps_stats-to-manifests) — done ✅
-9. [ML service scaffold — TensorFlow/OpenCV placeholder](#9-ml-service-scaffold--tensorflowopencv-placeholder) — done ✅
-10. [Observability — Prometheus + Grafana across the stack](#10-observability--prometheus--grafana-across-the-stack) — done ✅
-11. [Bring-up report — bugs we hit and fixed](#11-bring-up-report--bugs-we-hit-and-fixed) — done ✅
-12. [Universal agent context + token auto-capture from any medium](#12-universal-agent-context--token-auto-capture-from-any-medium) — done ✅
-13. [OpenClaw-style — /claude command + session pings + approval round-trip](#13-openclaw-style--claude-command--session-pings--approval-round-trip) — done ✅
-14. [Multi-project fix-and-deploy loop — registry + /fix + /push + /deploy](#14-multi-project-fix-and-deploy-loop--registry--fix--push--deploy) — done ✅
-15. [Smart inbound router + automation roadmap](#15-smart-inbound-router--automation-roadmap) — done ✅
+3. [Your first Go service from scratch — `vps_stats`](#3-your-first-go-service-from-scratch--vps_stats) — done ✅
+4. [Telegram → `vps_stats` — first cross-service call](#4-telegram--vps_stats--first-cross-service-call) — done ✅
+5. [Read-only VPS action endpoints + safe write-action design](#5-read-only-vps-action-endpoints--safe-write-action-design) — done ✅
+6. [Kubernetes on k3d — porting `vps_stats` to manifests](#6-kubernetes-on-k3d--porting-vps_stats-to-manifests) — done ✅
+7. [ML service scaffold — TensorFlow/OpenCV placeholder](#7-ml-service-scaffold--tensorflowopencv-placeholder) — done ✅
+8. [Observability — Prometheus + Grafana across the stack](#8-observability--prometheus--grafana-across-the-stack) — done ✅
+9. [Bring-up report — bugs we hit and fixed](#9-bring-up-report--bugs-we-hit-and-fixed) — done ✅
+10. [OpenClaw-style — /claude command + approval round-trip](#10-openclaw-style--claude-command--approval-round-trip) — done ✅
+11. [Multi-project fix-and-deploy loop — registry + /fix + /push + /deploy](#11-multi-project-fix-and-deploy-loop--registry--fix--push--deploy) — done ✅
+12. [Smart inbound router + automation roadmap](#12-smart-inbound-router--automation-roadmap) — done ✅
 
 **Appendix: [📚 Sandbox & learning resources](#-sandbox--learning-resources)** — Go, Python, FastAPI, Django, Docker, Kubernetes, ML, Postgres, and more.
 
@@ -170,7 +167,6 @@ Understanding failure modes > understanding success paths.
 ### 🏋️ Homework 1.3 — Read about these when you have 15 minutes each
 
 - **JSONB in Postgres** — https://www.postgresql.org/docs/current/datatype-json.html
-  (we'll use this for tags/preferences columns in MemoryCore v2)
 - **Connection pooling** — why PgBouncer exists:
   https://www.pgbouncer.org/usage.html (you'll want this when you have
   real traffic)
@@ -190,10 +186,8 @@ Understanding failure modes > understanding success paths.
 
 ### What's next (section 2 preview)
 
-We'll create the new `app/modules/` layout, move nothing yet, and build
-`app/modules/memorycore/` as the **reference module**. After that, every
-feature we touch gets moved into a module opportunistically. No big-bang
-refactor.
+We'll create the new `app/modules/` layout and move features into it
+opportunistically. No big-bang refactor.
 
 ---
 
@@ -204,10 +198,8 @@ refactor.
 - Created [app/contracts/](app/contracts/) — place for typed payloads shared
   between modules.
 - Created [app/modules/](app/modules/) — each subpackage is a module with a
-  single `register(app)` entry point.
-- Created [app/modules/memorycore/](app/modules/memorycore/) as the **first**
-  module following this pattern. We'll extract others opportunistically over
-  time, not in a big-bang rewrite.
+  single `register(app)` entry point. We extract features into modules
+  opportunistically over time, not in a big-bang rewrite.
 - Wired [app/main.py](app/main.py) to call `register_all_modules(app)` after
   all legacy routers are included.
 - Updated [alembic/env.py](alembic/env.py) to also `import app.modules` so
@@ -241,7 +233,7 @@ Two reasons:
    beat schedules, startup hooks, Telegram command handlers — the signature
    can evolve, and every module evolves together.
 
-Look at [app/modules/memorycore/__init__.py](app/modules/memorycore/__init__.py):
+A module's `__init__.py` looks like:
 
 ```python
 def register(app: FastAPI) -> None:
@@ -277,18 +269,16 @@ Three ways modules can talk, in increasing looseness:
 3. **HTTP over localhost.** Last resort inside a monolith — use this only
    when you're about to split a module into its own service.
 
-For now MemoryCore has no cross-module dependencies, so we haven't had to
-exercise this. When we add the next module (chat linking to usage rows by
-session_id), we'll introduce the first contract. I'll narrate that when it
-happens.
+For now most modules have no cross-module dependencies, so we haven't had
+to exercise this. When two modules need to talk, we'll introduce the first
+contract.
 
 ### Concept 4 — Why the module owns its own models
 
-[app/modules/memorycore/models.py](app/modules/memorycore/models.py) holds
-`MemoryUsage` and `DesignReference`. They live *inside the module*, not in
-the global `app/models/` directory.
+Each module's `models.py` holds its own ORM classes. They live *inside the
+module*, not in the global `app/models/` directory.
 
-Why: if one day we split MemoryCore into a separate service, the entire
+Why: if one day we split a module into a separate service, the entire
 module folder moves as one. Its models, schemas, service, and routes are all
 right there. No hunting.
 
@@ -312,7 +302,7 @@ tree app/modules app/contracts -L 2
 find app/modules app/contracts -maxdepth 2
 ```
 
-You should see the scaffolding and the populated `memorycore` module.
+You should see the modules scaffolding.
 
 Then, assuming Postgres is up from section 1:
 
@@ -363,587 +353,13 @@ This is the drill you'll repeat every time we add a module.
 
 ### What's next (section 3 preview)
 
-Section 3 explains what's actually *in* the memorycore module — the token
-ledger and design library. Section 4 (next session) will be your first Go
-lesson: extending [memorycore_cli/main.go](memorycore_cli/main.go) to call
-these endpoints.
+Section 3 will be your first Go lesson: building the `vps_stats`
+microservice from scratch.
 
 ---
 
-## 3. MemoryCore v2 — usage ledger + design library (server side)
 
-### What we built
-
-Two new SQL tables and a small API, scoped to exactly what you asked for:
-
-1. **`memory_usage`** — one row per LLM call. Tracks user, tool
-   (claude_code / codex / api), model, session, project, input/output/cache
-   tokens, cost in USD, optional note, timestamp.
-2. **`memory_design`** — one row per frontend design reference. Unique per
-   `(user_id, name)`. Holds prompt, title, description, tags (JSONB), image
-   paths (JSONB), optional source URL + project key.
-
-API endpoints (all under `/api/v1/memorycore/`):
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/usage?user_id=…` | Log a single LLM call |
-| GET | `/usage/summary?user_id=…&period=today\|week\|month` | Aggregated totals |
-| GET | `/usage/sessions/{session_id}?user_id=…` | All rows for one session |
-| PUT | `/designs/{name}?user_id=…` | Create or update a design |
-| GET | `/designs?user_id=…&q=…&tag=…` | List / search |
-| GET | `/designs/{name}?user_id=…` | Fetch one by name |
-| DELETE | `/designs/{name}?user_id=…` | Remove |
-
-Files:
-- [app/modules/memorycore/models.py](app/modules/memorycore/models.py) — ORM
-- [app/modules/memorycore/schemas.py](app/modules/memorycore/schemas.py) — Pydantic
-- [app/modules/memorycore/service.py](app/modules/memorycore/service.py) — business logic
-- [app/modules/memorycore/api.py](app/modules/memorycore/api.py) — FastAPI router
-- [app/modules/memorycore/pricing.py](app/modules/memorycore/pricing.py) — pricing table
-
-### Concept 1 — Why cost can be `NULL`
-
-[pricing.py](app/modules/memorycore/pricing.py) has a small dict of model →
-(input_rate, output_rate) per 1M tokens. Unknown models return `None`, which
-becomes SQL `NULL` in the cost column.
-
-This is on purpose: a missing price is louder than a wrong price. If you see
-`NULL` in the summary's total cost, you know to add the model to the pricing
-table. If we faked it with `0.0`, the silent-wrong bug would live forever.
-
-**Rule I want you to internalize:** when you don't know something, store
-`NULL`, not a fake sentinel. SQL has nullability for a reason; use it.
-
-### Concept 2 — Why the usage ledger is append-only
-
-Every `POST /usage` creates a new row. We never UPDATE or DELETE usage
-rows. Reasons:
-
-1. **Audit.** If cost reconciliation disagrees with an invoice later, you
-   want raw history.
-2. **Simpler code.** No update logic = no race conditions = no "what if two
-   writers update the same row" edge cases.
-3. **Cheap writes.** Inserts are fast; Postgres does ~30k inserts/sec on
-   modest hardware. You will not outrun this.
-
-Aggregations happen at read time (`/usage/summary`). Postgres is good at
-this. If it gets slow later (tens of millions of rows), we add a daily
-rollup table maintained by Celery beat. Don't optimize until you see the
-number.
-
-### Concept 3 — Why `tags` is JSONB, not a join table
-
-Two options for "a design has many tags":
-
-- **Normalized:** separate `design_tags` table with `(design_id, tag)` rows
-  and a join.
-- **Denormalized:** `tags` column as a JSON array on the `memory_design`
-  row.
-
-Normalized is textbook-correct. We chose denormalized because:
-
-1. Tags aren't first-class entities. There's no page listing "all tags" with
-   metadata. They're just labels.
-2. JSONB on Postgres is indexed (`GIN` index if needed later). Search works.
-3. One fewer table = less cognitive load for you.
-
-If tags ever become first-class (e.g., "rename the tag `dark` everywhere"),
-we migrate to a join table. Until then, YAGNI.
-
-### Concept 4 — The upsert pattern
-
-[service.py](app/modules/memorycore/service.py) `DesignService.upsert` does
-this:
-
-```python
-existing = db.execute(select(...).where(user_id=..., name=...)).scalar_one_or_none()
-if existing is None:
-    row = DesignReference(...)
-    db.add(row)
-else:
-    existing.field = new_value
-    # ...
-    row = existing
-db.commit()
-db.refresh(row)
-return row
-```
-
-This is naive — there's a race: two concurrent PUTs with the same name can
-both see `existing is None` and both INSERT. The second INSERT violates the
-unique constraint and errors out.
-
-For your single-user side project this is fine — you won't have two writers
-racing. If it ever matters, Postgres has native `INSERT … ON CONFLICT
-… DO UPDATE` (upsert), and SQLAlchemy 2.0 supports it via
-`sqlalchemy.dialects.postgresql.insert`. We'll swap to that the day two
-callers start fighting.
-
-### Concept 5 — Why `user_id` is on every row and every query
-
-The app is built for one user today, but every table has `user_id` because
-multi-user is always a later regret-free addition if you start with it.
-Adding `user_id` to a table later is a painful migration; having it from
-day one costs nothing.
-
-Every query filters `WHERE user_id = ?`. Even for your single-user setup
-this prevents nothing-sees-nothing bugs from becoming everyone-sees-everyone
-bugs on day one of multi-user.
-
-### 💡 Try it — poke the API
-
-Assuming the stack is up from section 1 and section 2 wiring is in place:
-
-```bash
-# Generate a new migration that includes memory_usage + memory_design
-docker compose run --rm api alembic revision --autogenerate -m "add_memorycore_v2_tables"
-
-# Review the generated file in alembic/versions/, then:
-docker compose run --rm api alembic upgrade head
-```
-
-Verify the tables exist:
-
-```bash
-docker compose exec postgres psql -U aiops -d aiops -c "\dt"
-# Look for memory_usage + memory_design
-docker compose exec postgres psql -U aiops -d aiops -c "\d memory_usage"
-```
-
-Log a fake usage row and read the summary:
-
-```bash
-# Log one call
-curl -X POST "http://localhost:8000/api/v1/memorycore/usage?user_id=fitclaw" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool": "claude_code",
-    "model": "claude-opus-4-7",
-    "session_id": "sess-demo",
-    "input_tokens": 1200,
-    "output_tokens": 300,
-    "note": "testing from LEARN.md"
-  }'
-
-# Summary for today
-curl "http://localhost:8000/api/v1/memorycore/usage/summary?user_id=fitclaw&period=today" | python -m json.tool
-```
-
-You should see cost calculated automatically from
-[pricing.py](app/modules/memorycore/pricing.py) — for 1200 in + 300 out on
-claude-opus-4-7 at $15/$75 per 1M, that's $0.018 + $0.0225 = **$0.0405**.
-
-Save a design reference:
-
-```bash
-curl -X PUT "http://localhost:8000/api/v1/memorycore/designs/dashboard-v2?user_id=fitclaw" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "dashboard-v2",
-    "title": "Dashboard v2",
-    "prompt": "dark glassmorphism admin dashboard with purple accents",
-    "tags": ["dashboard", "dark", "glassmorphism"],
-    "image_paths": ["/data/memorycore/designs/dashboard-v2/shot1.png"]
-  }'
-
-# Find it
-curl "http://localhost:8000/api/v1/memorycore/designs?user_id=fitclaw&q=dashboard" | python -m json.tool
-curl "http://localhost:8000/api/v1/memorycore/designs?user_id=fitclaw&tag=dark" | python -m json.tool
-```
-
-### 🏋️ Homework 3.1 — Add an unknown-model warning to the logs
-
-Goal: understand the `None`-cost case and exercise editing service code.
-
-1. In [service.py](app/modules/memorycore/service.py) `UsageService.log`,
-   after computing cost, if `cost is None` emit a log line like
-   `WARN: no pricing for model 'X' — cost not tracked`.
-2. Use `import logging` + a module-level `logger = logging.getLogger(__name__)`.
-3. Restart the api. Log a row with `"model": "made-up-model"`. Check
-   logs: `docker compose logs api --tail 50 | grep WARN`.
-4. Log a row with `"model": "claude-haiku-4-5"`. No warning.
-
-You just learned: logging, module-level loggers, how to verify behavior via
-logs instead of the database.
-
-### 🏋️ Homework 3.2 — Add `by_project` to the summary
-
-Goal: exercise the service + schema loop.
-
-1. Add `by_project: dict[str, UsageBreakdown]` to
-   [schemas.py](app/modules/memorycore/schemas.py) `UsageSummaryResponse`.
-2. Update [service.py](app/modules/memorycore/service.py) `summary()` to
-   accumulate a `by_project` dict keyed on `row.project_key or "(none)"`.
-3. Restart api. Hit `/usage/summary`. You should see `by_project` in the
-   response.
-
-You just learned: keeping schema and service in sync, and how Pydantic
-validates responses.
-
-### 🏋️ Homework 3.3 — Explore the OpenAPI docs
-
-FastAPI auto-generates interactive docs at http://localhost:8000/docs.
-Every endpoint we just built is there, clickable, with a "Try it out" button.
-
-Open it. Find the `memorycore-v2` tag section. Try the usage log endpoint
-through the UI. This is often faster than curl for exploration.
-
-### Gotchas I almost hit
-
-- **Cost can be `None`** — callers must handle it. The summary treats it as
-  0.0 for sums, which is the least-surprising behavior. If you want the
-  summary to *refuse* to sum when any cost is unknown, that's a separate
-  design choice.
-- **The unique index on `(user_id, name)` is in `__table_args__`.** If you
-  forget it, two designs can share a name per user and `get()` will raise
-  `MultipleResultsFound`.
-- **`from sqlalchemy import func, or_` is imported lazily inside
-  `list()`.** This keeps the module load cheap when nobody searches. You
-  could also import at top of file — either is fine.
-
-### What's next (section 4 preview)
-
-Section 4: **your first Go lesson.** We'll open the existing
-[memorycore_cli/main.go](memorycore_cli/main.go), read it line by line, and
-extend it with `memorycore usage today` and `memorycore design save`
-commands that talk to the server we just built. You'll write Go, I'll
-review, and LEARN.md will pick up the Go idioms as we go.
-
----
-
-## 4. Go intro — extending `memorycore_cli`
-
-### What we built
-
-Extended the existing Go CLI at [memorycore_cli/main.go](memorycore_cli/main.go)
-with two new subcommands that hit the MemoryCore v2 server we built in
-section 3.
-
-New files:
-- [memorycore_cli/usage.go](memorycore_cli/usage.go) — token-usage commands
-- [memorycore_cli/design.go](memorycore_cli/design.go) — design-library commands
-
-Edited: [memorycore_cli/main.go](memorycore_cli/main.go) — dispatch logic in
-`main()` recognizes `usage` / `design` as structured subcommands, falls
-through to natural-language mode otherwise.
-
-**What you can now run** (once the stack is up):
-
-```bash
-# Log one LLM call
-./memorycore_cli usage log --model claude-opus-4-7 --session sess-demo --in 1200 --out 300
-
-# Summaries
-./memorycore_cli usage today
-./memorycore_cli usage week
-./memorycore_cli usage month
-
-# Everything in a session
-./memorycore_cli usage session sess-demo
-
-# Save a design reference
-./memorycore_cli design save --name dashboard-v2 \
-  --title "Dashboard v2" \
-  --prompt "dark glassmorphism admin dashboard, purple accents" \
-  --tag dashboard --tag dark --tag glassmorphism \
-  --image /path/to/shot1.png
-
-# List / search designs
-./memorycore_cli design list
-./memorycore_cli design list --query dashboard
-./memorycore_cli design list --tag dark
-
-# Show one design (prompt + image paths — what Claude reads to "recall" it)
-./memorycore_cli design show dashboard-v2
-
-# Remove
-./memorycore_cli design delete dashboard-v2
-```
-
-### Concept 1 — How a Go program is laid out
-
-Your package is defined by `package main` at the top of every `.go` file in
-the folder. The compiler treats **all files in the same folder as one
-package**. This is why `usage.go` and `design.go` can call `requestJSON`
-from `main.go` without any import — they're in the same package.
-
-That's different from Python, where each file is a module and you `import`
-between them. In Go, a folder = a package = one unit of code.
-
-`main` is special: it's the only package that produces an executable, and
-it must contain a `func main()` entry point.
-
-Your project's [go.mod](memorycore_cli/go.mod) file is the equivalent of
-Python's `requirements.txt` + `pyproject.toml` combined. It defines:
-- the **module name** (used as the base for import paths)
-- the **Go version**
-- the **dependencies** (currently none — we only use the stdlib)
-
-### Concept 2 — Struct tags and how JSON works
-
-Look at this from [usage.go](memorycore_cli/usage.go):
-
-```go
-type usageLogPayload struct {
-    Tool         string `json:"tool"`
-    SessionID    string `json:"session_id,omitempty"`
-    InputTokens  int    `json:"input_tokens"`
-}
-```
-
-The backtick-quoted string after each field is a **struct tag** —
-metadata the compiler stores but doesn't interpret. `encoding/json` reads
-it to know:
-
-- The field `SessionID` serializes as JSON key `"session_id"`.
-- `omitempty` skips the field when empty (so an empty string doesn't become
-  `"session_id": ""` in the body).
-
-This is how you bridge Go's `PascalCase` (required for exported fields) and
-Python's `snake_case` (the convention of our server).
-
-**Common tag options** across stdlib + popular libs:
-
-| Tag | Meaning |
-|---|---|
-| `json:"foo"` | serialize as key `"foo"` |
-| `json:"foo,omitempty"` | skip if zero value |
-| `json:"-"` | never serialize |
-| `xml:"foo"` | for encoding/xml |
-| `yaml:"foo"` | for gopkg.in/yaml |
-| `db:"foo"` | for sqlx/pgx |
-
-### Concept 3 — Pointers, zero values, and nullable fields
-
-Go has **zero values**. A declared-but-unassigned `int` is `0`, a `string`
-is `""`, a `bool` is `false`. Helpful, but it creates a problem: how do
-you distinguish "the server said cost is zero" from "the server said cost
-is null (no pricing data)"?
-
-Answer: **pointer**. A `float64` is never nil; a `*float64` is either a
-pointer to a value or `nil`.
-
-```go
-type usageLogResponse struct {
-    CostUSD *float64 `json:"cost_usd"`
-}
-
-func formatCost(cost *float64) string {
-    if cost == nil {
-        return "(unknown)"
-    }
-    return fmt.Sprintf("$%.6f", *cost)
-}
-```
-
-The `*` in the type says "pointer to"; the `*cost` inside the format call
-says "dereference — give me the actual value." When `encoding/json` sees a
-JSON `null` and the Go field is a pointer, it sets the field to `nil`
-instead of the zero value.
-
-**Rule:** when you need to represent "missing" vs "zero," use a pointer.
-Everywhere else, values are cleaner and safer.
-
-### Concept 4 — Slices and the nil-vs-empty gotcha
-
-Go slices are backed by dynamic arrays. `append(slice, value)` grows them.
-But a declared-but-unassigned slice is **nil**, not empty:
-
-```go
-var tags []string              // tags is nil
-len(tags)                      // 0 — works fine
-tags = append(tags, "foo")     // works; append handles nil
-
-// But when you marshal to JSON:
-json.Marshal(tags)             // → "null"  (uh oh)
-
-tags = []string{}              // now it's empty-not-nil
-json.Marshal(tags)             // → "[]"
-```
-
-In [design.go](memorycore_cli/design.go) we initialize:
-
-```go
-payload := designPayload{
-    Tags:       []string{},
-    ImagePaths: []string{},
-}
-```
-
-...exactly to dodge this — Pydantic on the server is strict about `null`
-vs `[]`, and we want clean bodies.
-
-### Concept 5 — Error handling
-
-Go has no exceptions. Functions that can fail return `(result, error)`:
-
-```go
-n, err := strconv.Atoi(args[index])
-if err != nil {
-    return fmt.Errorf("--in: %w", err)
-}
-```
-
-Two rules every Go dev learns hard:
-
-1. **Always check `err` immediately.** The compiler won't warn you if you
-   ignore it (it would ruin existing code), but reviewers will.
-2. **Wrap errors with context using `%w`.** `fmt.Errorf("--in: %w", err)`
-   creates a new error that wraps the original — callers can still
-   `errors.Is()` / `errors.As()` it, but they also see what was happening
-   when it failed.
-
-This feels verbose compared to Python's `try/except`, but after a while
-you stop noticing it. The payoff: the entire error path is visible in the
-code, no hidden unwinding.
-
-### Concept 6 — Interfaces (briefly)
-
-You didn't write any interfaces in this extension, but you used one:
-`io.Reader`. The whole stdlib works against interfaces rather than
-concrete types.
-
-```go
-var reader io.Reader = bytes.NewReader(payload)
-```
-
-`bytes.NewReader` returns a `*bytes.Reader`. That type satisfies
-`io.Reader` **implicitly** — there's no `class MyReader(io.Reader)` in
-Go. If your type has the right methods, it satisfies the interface.
-Nobody has to tell the compiler.
-
-This is the best thing about Go. We'll dig in when we build `vps_stats` in
-section 5 — that service actually defines its own interfaces.
-
-### 💡 Try it — compile, run, poke
-
-Build the binary (you'll need Go installed:
-https://go.dev/doc/install):
-
-```bash
-cd memorycore_cli
-go build -o memorycore_cli .
-```
-
-Then run — it'll talk to `http://localhost:8000` by default, override with
-`--server-url` or `MEMORYCORE_SERVER_URL` env var:
-
-```bash
-./memorycore_cli usage log --model claude-opus-4-7 --session sess-demo --in 1200 --out 300
-./memorycore_cli usage today
-```
-
-The `go build .` command compiles all `.go` files in the current folder
-into one binary. The argument `.` means "this folder is the package root."
-
-### Sandbox resources — bookmark these
-
-Go has the best learning resources of any mainstream language. You do
-**not** need to buy a book or course.
-
-| Link | What it's for |
-|---|---|
-| https://go.dev/play/ | **Go Playground** — online compiler, run any snippet, share links |
-| https://go.dev/tour/welcome/1 | **A Tour of Go** — official interactive tutorial, 2–3 evenings end to end |
-| https://gobyexample.com/ | **Go by Example** — annotated examples for every concept, great reference |
-| https://go.dev/doc/effective_go | **Effective Go** — idioms and style, official |
-| https://exercism.org/tracks/go | **Exercism** — practice problems with mentor feedback, free |
-| https://learngo.gitbook.io/learn-go | **learn-go-with-tests** — TDD-style, deeper |
-| https://go.dev/doc/faq | **Official FAQ** — answers a lot of "why does Go do X" questions |
-
-Specific Playground links for concepts in this section (click to run, edit,
-share):
-
-- Struct tags and JSON: https://go.dev/play/p/g4y3rvePTzC
-- Pointers and nil: https://go.dev/play/p/3XyZ14CM71P
-- Slices and append: https://go.dev/play/p/7vljOh1sWuF
-- Error wrapping: https://go.dev/play/p/0BFKxIkfk2K
-
-(If a link 404s, the Playground garbage-collected it — just recreate the
-snippet. The concept explanations stand alone.)
-
-### 🏋️ Homework 4.1 — Tour of Go, sections 1–3
-
-Do at least the first three sections of https://go.dev/tour/welcome/1
-("Basics", "Flow control statements", "More types"). ~60 minutes. Don't
-skip — these build the muscle memory you'll need when we write
-`vps_stats` next session.
-
-### 🏋️ Homework 4.2 — Add an export subcommand
-
-Goal: write Go from scratch against code you understand.
-
-Add `memorycore usage export [--out PATH]` that writes all usage rows as
-a CSV file.
-
-Hints:
-- You'll need a new endpoint on the server side returning all rows
-  (add to [app/modules/memorycore/api.py](app/modules/memorycore/api.py)
-  and [service.py](app/modules/memorycore/service.py) — call it
-  `list_all(user_id, limit=10000)`).
-- Go stdlib has `encoding/csv` which is exactly what you need.
-- Default output path: `./memorycore-usage-YYYY-MM-DD.csv`. Use
-  `time.Now().Format("2006-01-02")` — Go's date format is weird (it's a
-  reference date, not a format string; look it up, it's a meme).
-
-Expected output:
-
-```
-$ ./memorycore_cli usage export
-Wrote 47 rows to memorycore-usage-2026-04-24.csv
-```
-
-This exercise covers: a new server endpoint + a new Go subcommand + file
-I/O + stdlib CSV. A real mini-project, ~2 hours.
-
-### 🏋️ Homework 4.3 — Read one function of the existing code and explain it to yourself
-
-Pick [`requestJSON` in main.go](memorycore_cli/main.go) (around line 353).
-Read it line by line. Answer these without looking anything up:
-
-1. What does `*http.Request` mean vs `http.Request`? Why does
-   `http.NewRequest` return a pointer?
-2. Why is there a `defer resp.Body.Close()`? What would happen without it?
-3. What does `json.NewDecoder(resp.Body).Decode(out)` do differently from
-   `json.Unmarshal(body, out)`?
-4. Why is `out` of type `any`? What's the tradeoff?
-
-Write your answers as comments at the top of your scratch file. Don't
-worry about being "right" — just forming the hypothesis is the exercise.
-We'll compare next session.
-
-### Gotchas I almost hit
-
-- **`map` iteration is random.** Go deliberately randomizes map iteration
-  order to prevent people from relying on it. That's why
-  `printBreakdownMap` does `sort.Strings(keys)` before printing —
-  otherwise the same input gives different-ordered output.
-- **Re-assigning slice elements via range.** `for _, row := range rows {
-  row.Foo = "x" }` does NOT mutate `rows` — `row` is a copy. Use
-  `for i := range rows { rows[i].Foo = "x" }` if you need to mutate.
-- **`errors.New` vs `fmt.Errorf`.** Use `errors.New("literal")` for
-  static messages. Use `fmt.Errorf("...%w", err)` when you need
-  formatting or wrapping.
-- **Multi-file packages need `go build .`, not `go build main.go`.** The
-  latter only compiles that one file and misses `usage.go`/`design.go`.
-
-### What's next (section 5 preview)
-
-Section 5: **your first Go service from scratch**.
-
-We'll build `tools/vps_stats/` — a ~300-line Go HTTP service that exposes
-`/stats` returning JSON with CPU, RAM, disk, uptime. Runs as a 4th
-microservice in your docker-compose. Your FastAPI bot calls it for the
-"what's my RAM?" Telegram feature we're heading toward.
-
-You'll learn: writing a Go HTTP server (not just a client), goroutines,
-interfaces, Docker multi-stage builds, and how to introduce a new service
-to your compose stack cleanly.
-
----
-
-## 5. Your first Go service from scratch — `vps_stats`
+## 3. Your first Go service from scratch — `vps_stats`
 
 ### What we built
 
@@ -1299,7 +715,7 @@ Small code change, but it's the moment the architecture earns its keep.
 
 ---
 
-## 6. Telegram → `vps_stats` — first cross-service call
+## 4. Telegram → `vps_stats` — first cross-service call
 
 ### What we built
 
@@ -1438,7 +854,7 @@ language layer routes other commands.
 
 ---
 
-## 7. Read-only VPS action endpoints + safe write-action design
+## 5. Read-only VPS action endpoints + safe write-action design
 
 ### What we built
 
@@ -1594,7 +1010,7 @@ start here.
 
 ---
 
-## 8. Kubernetes on k3d — porting `vps_stats` to manifests
+## 6. Kubernetes on k3d — porting `vps_stats` to manifests
 
 ### What we built
 
@@ -1809,7 +1225,7 @@ You'll do this pattern for every real service you ever deploy.
 
 ---
 
-## 9. ML service scaffold — TensorFlow/OpenCV placeholder
+## 7. ML service scaffold — TensorFlow/OpenCV placeholder
 
 ### What we built
 
@@ -1963,9 +1379,7 @@ Goal: replace the stub `/embeddings` with a real model.
    The first two embeddings should be more similar to each other than
    either is to the third. Verify with cosine similarity.
 
-You just built a real embeddings microservice. Bonus: wire this into
-MemoryCore v2 so design-library search uses semantic similarity (via
-pgvector, which you'll add later) instead of SQL LIKE.
+You just built a real embeddings microservice.
 
 ### 🏋️ Homework 9.2 — Image-classify from Telegram
 
@@ -1995,7 +1409,7 @@ wrapper + Telegram handler + ML. ~4 hours of focused work.
 
 ---
 
-## 10. Observability — Prometheus + Grafana across the stack
+## 8. Observability — Prometheus + Grafana across the stack
 
 ### What we built
 
@@ -2176,58 +1590,22 @@ end-to-end alerting pipeline. (Big-ish exercise, ~2 hours.)
 
 ---
 
-## 11. Bring-up report — bugs we hit and fixed
+## 9. Bring-up report — bugs we hit and fixed
 
 The first end-to-end `docker compose up` never comes up clean. That's
 universal. Here's what broke during the real-deal run, what each symptom
 actually meant, and the fix. **These are the bugs you'll meet again in
-every future project** — all four are textbook.
+every future project** — all textbook.
 
 ### Final state (for reference)
 
-- All 11 containers healthy: api, bot, worker, beat, flower, postgres,
+- All containers healthy: api, bot, worker, beat, flower, postgres,
   redis, ollama, vps_stats, whatsapp-bridge, n8n.
-- 13 tables in `aiops` database, including `memory_usage` + `memory_design`.
 - `alembic_version` contains `5dda5a254210` (the initial_schema revision).
-- `POST /api/v1/memorycore/usage` → 200 with `cost_usd: 0.0405` (pricing
-  math works).
-- `PUT /api/v1/memorycore/designs/<name>` → 200, retrievable by tag.
 - `curl http://localhost:8090/metrics` → Prometheus Go runtime metrics
   streaming.
 
-### Bug 1: Dockerfile didn't pick up new Go source files
-
-**Symptom:**
-```
-./main.go:91:13: undefined: runUsageCommand
-./main.go:95:13: undefined: runDesignCommand
-```
-
-**Root cause:** The project's root
-[Dockerfile](Dockerfile) has a multi-stage build that compiles
-`memorycore_cli`. It only copied the old files explicitly:
-
-```dockerfile
-COPY memorycore_cli/go.mod ./
-COPY memorycore_cli/main.go ./        # ← explicit single file
-```
-
-When we added `usage.go` and `design.go` to `memorycore_cli/`, they
-weren't copied, so `main.go` referenced functions that didn't exist in
-the build context.
-
-**Fix:** one character change:
-
-```dockerfile
-COPY memorycore_cli/*.go ./
-```
-
-**Lesson — "explicit file copies are brittle."** Copy directories or
-globs so new files in that folder come along automatically. The only
-time to explicitly list files is when you're deliberately excluding
-others (use `.dockerignore` for that instead).
-
-### Bug 2: Alembic revision file landed inside the throwaway container
+### Bug 1: Alembic revision file landed inside the throwaway container
 
 **Symptom:** Command ran without error, "Generating
 /app/alembic/versions/…/initial_schema.py … done", but
@@ -2250,7 +1628,7 @@ docker compose run --rm \
 want to keep either needs (a) a bind mount to the host, (b) a named
 volume, or (c) a follow-up `docker cp` before the container is removed.
 
-### Bug 3: Git-bash path mangling
+### Bug 2: Git-bash path mangling
 
 **Symptom:** With the bind mount above, the command silently did
 nothing relevant to the host filesystem. `docker compose run` with
@@ -2275,7 +1653,7 @@ it's almost always MSYS on Windows or a shell alias. Verify the exact
 command Docker actually received (`docker events`, or add `-v` to your
 command) before blaming the tool.
 
-### Bug 4: ENUM-types leaking across failed migration attempts
+### Bug 3: ENUM-types leaking across failed migration attempts
 
 **Symptom:**
 ```
@@ -2351,250 +1729,12 @@ will meet every single one again. Remember the shapes, not the fixes.
 
 ---
 
-## 12. Universal agent context + token auto-capture from any medium
+
+## 10. OpenClaw-style — `/claude` command + approval round-trip
 
 ### What we built
 
-A tool-agnostic system so **any** AI coding agent — Claude Code, Codex,
-Cursor, Aider, Gemini, or whatever comes next — can (a) bootstrap
-project context from one canonical file instead of re-exploring the
-tree, and (b) log its token usage to a single ledger the user queries
-from anywhere.
-
-Files:
-- **[AGENTS.md](AGENTS.md)** — single source of truth for project
-  context. ~220 lines. Read first by any agent.
-- **[CLAUDE.md](CLAUDE.md)** — 20-line pointer to AGENTS.md plus
-  Claude-specific notes. Claude Code auto-loads this filename.
-- **[.claude/settings.json](.claude/settings.json)** — Stop hook
-  registration.
-- **[.claude/hooks/log-usage.py](.claude/hooks/log-usage.py)** — parses
-  Claude Code transcript, sums usage, POSTs to ledger. Silent-fail.
-- **[scripts/codex-with-usage.sh](scripts/codex-with-usage.sh)** —
-  wrapper: run `scripts/codex-with-usage.sh <args>` instead of `codex
-  <args>` and usage is logged automatically from `~/.codex/sessions/`.
-- `/usage [today|week|month]` Telegram command — formatted spend
-  readout from any chat client pointed at your bot.
-- New helper in
-  [app/services/vps_stats_service.py](app/services/vps_stats_service.py)
-  — `UsageService` class wrapping the summary endpoint.
-
-### Concept 1 — There is no single standard file name (yet)
-
-Right now the coding-agent ecosystem is fragmented:
-
-| Agent | Context file |
-|---|---|
-| Claude Code | `CLAUDE.md` (auto-loaded) |
-| Codex CLI (OpenAI) | `AGENTS.md`, `codex.md` |
-| Cursor | `.cursorrules` |
-| Aider | `AIDER.md` |
-| Gemini | no standard yet |
-| Future agent | who knows |
-
-**`AGENTS.md` is winning as a de-facto standard.** We treat it as
-canonical. `CLAUDE.md` is a 3-line pointer to `AGENTS.md` so Claude
-auto-loads don't diverge from everyone else's context.
-
-Pattern to steal: one canonical context file, cheap pointer files for
-each tool-specific convention. When a new agent emerges, add a pointer
-and you're done.
-
-### Concept 2 — What a good AGENTS.md contains
-
-Tradeoff: too short, agents still explore; too long, you waste the
-tokens you were trying to save. Our file has:
-
-1. **Project snapshot** — 1 paragraph, plus owner + repo.
-2. **Architecture tree** — directory names + 1-line purpose each.
-3. **Stack table** — one row per layer.
-4. **Conventions** — the non-negotiable discipline points. Numbered
-   so agents can cite them.
-5. **Key commands** — copy-pastable.
-6. **Initialization prompt** — a block the user pastes verbatim to any
-   agent on a fresh session to tell it "read this first, log tokens,
-   follow conventions."
-7. **Common tasks** — a "when user says X, do Y" table.
-8. **User preferences** — how the user communicates.
-
-Things we **don't** put in AGENTS.md:
-- API surface details (the agent should read the actual code)
-- Exhaustive file listings (the tree section is enough orientation)
-- Tutorial content (that's LEARN.md)
-
-### Concept 3 — The initialization prompt pattern
-
-Inside [AGENTS.md](AGENTS.md) there's a labelled
-"Initialization prompt for agents" section. It tells the agent:
-
-1. Read AGENTS.md first.
-2. Read LEARN.md only if relevant (don't read it all).
-3. Don't redo setup steps that are already done.
-4. Log your session's usage when done.
-5. Follow the conventions in the file.
-6. Summarize understanding + ask clarifying questions before making changes.
-
-**Paste that block at the top of any new agent session.** Works with
-Claude, GPT, Gemini — anything that can read markdown. Saves a
-measurable amount of tokens on every first message because the agent
-won't grep half the repo.
-
-### Concept 4 — Hooks: server-push vs client-pull for token logging
-
-Two ways to get usage into the ledger:
-
-**Client-pull** — the agent POSTs on session end. Claude Code's Stop
-hook is exactly this pattern. [log-usage.py](.claude/hooks/log-usage.py)
-parses the transcript file at `$transcript_path`, sums every
-`message.usage` field, POSTs once.
-
-**Server-push** — no agent cooperation needed. If you own the server
-that serves the model (e.g. your own Ollama instance, or a proxy in
-front of Claude/OpenAI APIs), you log usage server-side on every
-request. Cleaner, works for agents that can't run hooks.
-
-We do client-pull today because Anthropic's API is the model serving
-layer, not us. When you eventually route through your own proxy (e.g.
-[LiteLLM](https://github.com/BerriAI/litellm) as a gateway for all
-LLM traffic), you'd switch to server-push and delete the hooks.
-
-### Concept 5 — Silent-fail hooks
-
-The hook script has three error paths that **all** silently succeed
-(exit 0):
-
-1. stdin isn't JSON → exit 0, nothing to log.
-2. Transcript path missing / unreadable → exit 0.
-3. POST to server fails (server down, timeout, network error) → exit 0.
-
-Why: if the hook returns non-zero, Claude Code surfaces an error to
-the user. Telemetry failures should **never** interrupt their work.
-Your observability is less important than their flow.
-
-This is the right default for **any** telemetry code you write —
-metrics, logging, tracing. The system being observed always takes
-precedence over the observer.
-
-### Concept 6 — Cost math in the hook
-
-Notice: the hook doesn't compute cost. It sends raw token counts. The
-server — [pricing.py](app/modules/memorycore/pricing.py) — converts to
-USD.
-
-Why: pricing changes frequently. If you computed cost client-side in
-10 different agents, you'd have to update 10 places every time
-Anthropic adjusts rates. Do math in one place — the server. Clients
-send raw facts.
-
-### 💡 Try it — end-to-end
-
-Bring up stack if not already running:
-
-```bash
-docker compose up -d
-```
-
-**1. Post manually from any HTTP client** (simulates any agent):
-
-```bash
-curl -X POST "http://localhost:8000/api/v1/memorycore/usage?user_id=fitclaw" \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"cursor","model":"claude-sonnet-4-6","session_id":"manual-test","input_tokens":2500,"output_tokens":400,"note":"from the LEARN.md try it block"}'
-```
-
-**2. Query via Telegram bot:** message your bot `/usage` (defaults to
-today), or `/usage week`, `/usage month`.
-
-**3. Query via Go CLI:**
-
-```bash
-./memorycore_cli usage today
-```
-
-**4. Query directly via curl:**
-
-```bash
-curl -s "http://localhost:8000/api/v1/memorycore/usage/summary?user_id=fitclaw&period=today" | python -m json.tool
-```
-
-**5. Verify Claude Code hook on next session.** Next time you finish a
-Claude Code session, check `./memorycore_cli usage today` (or
-`/usage`) — the session should appear automatically with the real
-transcript's token counts.
-
-### Sandbox resources
-
-- **Claude Code hooks reference** — https://docs.anthropic.com/en/docs/claude-code/hooks
-- **Codex CLI config** — https://github.com/openai/codex#configuration
-- **LiteLLM proxy** (server-push pattern) — https://docs.litellm.ai/docs/proxy/quick_start
-- **AgentOps** (SaaS alternative to this) — https://docs.agentops.ai/
-- **OpenLLMetry** (open standard for LLM tracing) — https://github.com/traceloop/openllmetry
-
-### 🏋️ Homework 12.1 — Instrument your own Ollama calls
-
-Goal: capture usage from the Telegram bot's own chat calls, so spend
-from natural-language chats is logged automatically.
-
-1. Open [app/services/llm_service.py](app/services/llm_service.py).
-2. Find the call to Ollama (`httpx.post(...)` or similar). After the
-   response, read `eval_count` + `prompt_eval_count` from the JSON —
-   Ollama returns these.
-3. POST a ledger row with `tool="api"`, `model=<the ollama model>`,
-   `input_tokens=prompt_eval_count`, `output_tokens=eval_count`,
-   `session_id=<telegram user id or chat session>`.
-4. Use `memorycore_usage.UsageService.log(...)` in-process (faster
-   than HTTP to yourself) — import the service from
-   [app/modules/memorycore/service.py](app/modules/memorycore/service.py).
-
-After this, every Telegram chat message logs cost, visible via
-`/usage` or `./memorycore_cli usage today`. The word "universal" stops
-being aspirational.
-
-### 🏋️ Homework 12.2 — Track cost per user
-
-The ledger already has `user_id`. Add a Telegram subcommand
-`/usage by-user` that returns per-user totals. Useful when you open
-the bot to a small group.
-
-### Gotchas
-
-- **`python` vs `python3` on Windows.** [.claude/settings.json](.claude/settings.json)
-  uses `python` — Python 3 on Windows installers default to this.
-  On Linux you may need `python3`. The hook itself is Python 3.
-- **Hook transcript path may not exist.** The script handles this:
-  returns silently. Don't assume Claude Code always writes a
-  transcript — quick one-shot `claude -p` calls may not.
-- **Stop hook runs even on ESC / Ctrl-C.** That's intentional — you
-  get logging for interrupted sessions. The transcript may have less
-  data than a full session, but whatever the agent actually spent is
-  captured.
-- **Codex session file format may change** (it's new). The wrapper
-  script tolerates missing fields by logging zero-tokens-with-note.
-- **Cache-read tokens are mostly free.** They're tracked separately
-  so you can see the cache-hit rate, but
-  [pricing.py](app/modules/memorycore/pricing.py) doesn't currently
-  multiply them into cost. Add that if you want fine-grained cost
-  reporting (Anthropic charges ~10% of normal input for cache reads).
-
-### What's next (not built yet)
-
-- **Per-prompt cost, not per-session.** Today we log one row per
-  session. If you want per-prompt granularity, the hook would need to
-  fire after every assistant turn (not just at Stop). Claude Code has
-  a `PostToolUse` hook that could do this.
-- **Budget alerts.** Add a scheduled Celery task that checks today's
-  spend and fires a Telegram message when it crosses a threshold.
-- **LiteLLM gateway.** Route all LLM traffic (Claude, OpenAI, Gemini,
-  Ollama) through LiteLLM, log from there → zero agent-side
-  instrumentation. Biggest long-term win, biggest refactor.
-
----
-
-## 13. OpenClaw-style — `/claude` command + session pings + approval round-trip
-
-### What we built
-
-Three tightly-related pieces that together make your project behave like
+Two tightly-related pieces that together make your project behave like
 **OpenClaw** (self-hosted personal AI agent reachable via Telegram):
 
 **Step 1 — `/claude <agent> | <path> | <prompt>`** Telegram command.
@@ -2603,13 +1743,7 @@ NL-routed agent pipeline. Agent on the PC runs `claude -p "…"` in the
 given path, transcript saved locally, result posted back. Counterpart
 to the existing `/codex` command.
 
-**Step 2 — Session-finished Telegram ping.** The existing
-[`log-usage.py`](.claude/hooks/log-usage.py) Stop hook now passes
-`?notify=true`. Server calls Telegram's `sendMessage` API after
-persisting the ledger row so you see every completed session in chat
-without polling.
-
-**Step 3 — Telegram-gated approval round-trip** (the feature you
+**Step 2 — Telegram-gated approval round-trip** (the feature you
 originally asked for). New [app/modules/approvals/](app/modules/approvals/)
 module. PreToolUse hook on Claude Code detects risky actions (rm -rf,
 systemctl, docker rm, sudo, unknown Bash, writes outside the project),
@@ -2620,19 +1754,13 @@ proceeds accordingly. Times out to "deny" after 5 minutes.
 Files created or changed:
 - [app/bot/handlers.py](app/bot/handlers.py) — `claude_command`,
   `approval_callback`, `CallbackQueryHandler` registration, `/claude`
-  + `/usage` in BotCommands.
-- [app/modules/memorycore/service.py](app/modules/memorycore/service.py) —
-  `notify_telegram_usage` helper.
-- [app/modules/memorycore/api.py](app/modules/memorycore/api.py) —
-  `?notify=true` query param on POST /usage.
+  in BotCommands.
 - [app/modules/approvals/](app/modules/approvals/) — **new module**:
   `__init__.py`, `models.py`, `schemas.py`, `service.py`, `api.py`.
 - [app/modules/__init__.py](app/modules/__init__.py) — registers
-  `approvals` alongside `memorycore`.
-- [.claude/hooks/log-usage.py](.claude/hooks/log-usage.py) — passes the
-  notify flag.
+  `approvals`.
 - [.claude/hooks/approval.py](.claude/hooks/approval.py) — **new** PreToolUse hook.
-- [.claude/settings.json](.claude/settings.json) — wires both hooks.
+- [.claude/settings.json](.claude/settings.json) — wires the hook.
 - [alembic/versions/e0f91cf2aa82_add_pending_approvals.py](alembic/versions/) —
   migration for `pending_approvals` table.
 
@@ -2726,23 +1854,6 @@ could forge decisions. Mitigation:
 - The `approval_callback` handler checks `is_authorized(from_user.id)`
   before acting — same gate every other command uses.
 
-### Concept 5 — Module-level notify vs sidecar service
-
-Notice `notify_telegram_usage` lives in
-[app/modules/memorycore/service.py](app/modules/memorycore/service.py),
-not in a separate "notifications" module. Tradeoff:
-
-- **In-module**: fewer files, but `memorycore` now knows how to talk
-  to Telegram. That's outside its single responsibility.
-- **Separate notifications module**: cleaner separation, but adds a
-  contract + a new module for two tiny features.
-
-For a side project I chose in-module. When this grows to "also email,
-also Slack, also webhook," a dedicated `app/modules/notifications/`
-with a `Notification` contract (and `memorycore` / `approvals` both
-firing `Notification` events) is the right refactor. Not worth it for
-two use sites.
-
 ### 💡 Try it — full end-to-end
 
 **1. Test approval API directly:**
@@ -2784,7 +1895,7 @@ APPROVAL_TIMEOUT_SEC=5 APPROVAL_POLL_SEC=1 \
 
 **4. `/claude` command** (requires an agent_daemon installed on a PC):
 ```
-/claude office-pc | C:\projects\myrepo | add a unit test for UsageService
+/claude office-pc | C:\projects\myrepo | add a unit test for ProjectsClient
 ```
 The bot sends this as a task to the `office-pc` agent. When the agent
 processes it, the PC runs `claude -p "…"` in the path.
@@ -2851,15 +1962,15 @@ The current "Approval needed" message is plain text. Make it:
   `claude -p "<prompt>"`. See the agent_daemon's task_executor.py for
   the shape — homework in a later session.
 - **OAuth / per-user approval routing.** Today every approval goes to
-  `DEFAULT_REPORT_CHAT_ID`. Multi-user needs per-user chat IDs in
-  `memorycore_profile`.
+  `DEFAULT_REPORT_CHAT_ID`. Multi-user needs per-user chat IDs in a
+  user-profile table.
 - **Expire auto-approve for repeat commands.** If you approve
   `docker system prune` once, you might want to auto-approve it again
   for the next 10 minutes in the same session. Cache layer homework.
 
 ---
 
-## 14. Multi-project fix-and-deploy loop — registry + /fix + /push + /deploy
+## 11. Multi-project fix-and-deploy loop — registry + /fix + /push + /deploy
 
 ### What we built (Stages A → D)
 
@@ -3013,7 +2124,7 @@ curl -X PUT "http://localhost:8000/api/v1/projects/fitclaw?user_id=fitclaw" \
   -d '{
     "slug": "fitclaw",
     "name": "Personal AI Ops Platform",
-    "keywords": ["fitclaw", "memorycore", "ai-ops"],
+    "keywords": ["fitclaw", "ai-ops"],
     "branches": ["main", "dev", "staging"],
     "agent_name": "office-pc",
     "local_path": "/home/you/projects/fitclaw",
@@ -3105,7 +2216,7 @@ review the last 10.
 
 ---
 
-## 15. Smart inbound router + automation roadmap
+## 12. Smart inbound router + automation roadmap
 
 ### What we built
 

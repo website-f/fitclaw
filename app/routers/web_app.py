@@ -20,14 +20,24 @@ def chat_app():
     return FileResponse(PWA_DIR / "chat_app.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
 
 
-@router.get("/memorycore", include_in_schema=False)
-def memorycore_app():
-    return FileResponse(PWA_DIR / "memorycore.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
-
-
 @router.get("/finance", include_in_schema=False)
 def finance_app():
     return FileResponse(PWA_DIR / "finance.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
+@router.get("/knowledge", include_in_schema=False)
+def knowledge_app():
+    return FileResponse(PWA_DIR / "knowledge.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
+@router.get("/analytics", include_in_schema=False)
+def analytics_app():
+    return FileResponse(PWA_DIR / "analytics.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
+
+
+@router.get("/office", include_in_schema=False)
+def office_app():
+    return FileResponse(PWA_DIR / "office.html", media_type="text/html", headers=NO_CACHE_HTML_HEADERS)
 
 
 @router.get("/transit-live", include_in_schema=False)

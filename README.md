@@ -71,7 +71,6 @@ Self-hosted foundation for an always-on AI brain that lives on your VPS, talks t
 - Ollama-first LLM routing with fast local fallback models before Gemini escalation
 - Malaysia weather support via the official `data.gov.my` forecast and warning feeds, with Open-Meteo fallback for broader geocoding
 - Malaysia transit support with official GTFS route planning for Rapid Rail KL and live GTFS-realtime vehicle feeds for supported bus and KTMB operators
-- MemoryCore project memory sync so your preferences and project summaries can live on the server and be pulled back onto any machine
 - SQLite persistence through SQLAlchemy for tasks, agents, memory, and reports
 - Redis-backed Celery workers, beat scheduling, and Flower monitoring
 - Basic-auth-protected agent API for registration, heartbeats, task claiming, and result callbacks
@@ -145,29 +144,6 @@ If you are deploying this from GitHub onto a fresh Ubuntu VPS, use the full guid
 If this VPS will host several apps and domains, use one shared Caddy reverse proxy for the whole server:
 
 - [`deploy/caddy-reverse-proxy.md`](deploy/caddy-reverse-proxy.md)
-
-## MemoryCore
-
-If you want portable project memory across different PCs and coding sessions, use MemoryCore:
-
-- server-stored user preference memory
-- server-stored project memory snapshots
-- local `MEMORYCORE.md` export for Codex / Claude Code sessions
-- no-Python installable bundles from `/app` for Windows and macOS terminals
-- GitHub Actions installer builds for versioned Windows setup `.exe` and macOS `.pkg` / `.dmg`
-
-Guide:
-
-- [`deploy/memorycore-guide.md`](deploy/memorycore-guide.md)
-
-That guide covers:
-
-- cloning from GitHub
-- creating `.env`
-- starting with Docker Compose
-- opening the right firewall ports
-- connecting your desktop agents
-- enabling auto-start with systemd
 
 ## WhatsApp beta
 

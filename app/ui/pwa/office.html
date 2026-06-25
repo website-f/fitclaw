@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Office — FitClaw AI Ops</title>
+    <link rel="manifest" href="/app-manifest.webmanifest" />
+    <meta name="theme-color" content="#0b0d12" />
+    <link rel="stylesheet" href="/app-assets/chat-app.css" />
+    <link rel="stylesheet" href="/app-assets/knowledge.css" />
+    <link rel="stylesheet" href="/app-assets/office.css" />
+  </head>
+  <body class="kb-body office-body">
+    <div class="kb-stage office-stage">
+      <header class="kb-topbar glass-card">
+        <a href="/app" class="kb-back">← Chat</a>
+        <div class="kb-title-block">
+          <p class="eyebrow">Live agent floor</p>
+          <h1>The Office</h1>
+          <p class="kb-subtitle">A pixel-art twin of your fleet. Each desk is an agent. Tap a worker to see what they're doing or drop a new task on their tray.</p>
+        </div>
+        <button type="button" id="officeRefresh" class="text-button">Refresh</button>
+      </header>
+
+      <section class="glass-card office-card">
+        <div class="office-legend">
+          <span class="office-legend-dot online"></span><span>Online · idle</span>
+          <span class="office-legend-dot busy"></span><span>Busy</span>
+          <span class="office-legend-dot offline"></span><span>Offline</span>
+        </div>
+        <div class="office-floor" id="officeFloor" aria-label="Pixel office"></div>
+      </section>
+
+      <section class="glass-card office-card">
+        <header class="kb-section-head">
+          <h2>Active task queue</h2>
+          <span class="kb-meta-tag" id="officeQueueCount">0 in flight</span>
+        </header>
+        <ol class="office-queue" id="officeQueue"></ol>
+      </section>
+    </div>
+
+    <!-- Task assignment modal -->
+    <div class="office-modal" id="officeTaskModal" hidden>
+      <div class="office-modal-card glass-card" role="dialog" aria-modal="true">
+        <header>
+          <p class="eyebrow">Assign a task</p>
+          <h2 id="officeTaskTitle">Agent</h2>
+        </header>
+        <label class="kb-field">
+          <span>Task title</span>
+          <input id="officeTaskTitleInput" type="text" maxlength="120" placeholder="e.g. Snapshot disk usage" />
+        </label>
+        <label class="kb-field">
+          <span>Instructions</span>
+          <textarea id="officeTaskDetail" rows="4" maxlength="2000" placeholder="What should this agent do?"></textarea>
+        </label>
+        <footer>
+          <button type="button" class="ghost-button" id="officeTaskCancel">Cancel</button>
+          <button type="button" class="primary-button" id="officeTaskSubmit">Send to agent</button>
+        </footer>
+        <p class="office-modal-status" id="officeTaskStatus"></p>
+      </div>
+    </div>
+
+    <script src="/app-assets/office.js" defer></script>
+  </body>
+</html>

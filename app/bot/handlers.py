@@ -13,7 +13,7 @@ from app.services.command_result import MessageAttachment
 from app.services.message_service import MessageService
 from app.services.runtime_config_service import RuntimeConfigService
 from app.services.upload_service import UploadService
-from app.services.vps_stats_service import ProjectsClient, RouterClient, UsageService, VpsStatsService, VpsStatsUnavailable
+from app.services.vps_stats_service import ProjectsClient, RouterClient, VpsStatsService, VpsStatsUnavailable
 
 settings = get_settings()
 
@@ -90,7 +90,6 @@ async def post_init(application: Application) -> None:
             BotCommand("stats", "Show VPS CPU / RAM / disk / uptime"),
             BotCommand("processes", "Top processes by CPU (add `mem` for memory)"),
             BotCommand("disks", "List mounted filesystems and usage"),
-            BotCommand("usage", "Token + cost usage (today | week | month)"),
             BotCommand("claude", "Run a Claude Code prompt on an agent PC"),
             BotCommand("vscode", "List open VS Code windows on the agent"),
             BotCommand("sessions", "List recent Claude Code sessions on the agent"),
@@ -114,7 +113,6 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("processes", processes_command))
     application.add_handler(CommandHandler("disks", disks_command))
-    application.add_handler(CommandHandler("usage", usage_command))
     application.add_handler(CommandHandler("claude", claude_command))
     application.add_handler(CommandHandler("vscode", vscode_command))
     application.add_handler(CommandHandler("sessions", sessions_command))
@@ -307,7 +305,7 @@ async def fix_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not raw or "|" not in raw:
         await update.message.reply_text(
             "Usage: /fix <slug> | <issue text>\n"
-            "Example: /fix fitclaw | the /usage button doesn't respond on iOS"
+            "Example: /fix fitclaw | the dashboard button doesn't respond on iOS"
         )
         return
     slug_raw, issue = [p.strip() for p in raw.split("|", 1)]
@@ -534,27 +532,6 @@ async def sessions_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
 
 
-async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    if not is_authorized(update.effective_user.id):
-        await update.message.reply_text("You are not allowed to use this bot.")
-        return
-    period = "today"
-    if context.args:
-        arg = context.args[0].lower()
-        if arg in {"today", "week", "month"}:
-            period = arg
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-    try:
-        summary = await asyncio.to_thread(UsageService.fetch_summary, period)
-    except VpsStatsUnavailable as exc:
-        await update.message.reply_text(f"Usage API unreachable: {exc}")
-        return
-    text = UsageService.format_summary_for_telegram(summary)
-    await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
-
-
 async def agents_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
@@ -597,7 +574,7 @@ async def claude_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Dispatch a Claude Code prompt to a named agent PC.
 
     Syntax: /claude <agent> | <path> | <prompt>
-    Example: /claude office-pc | C:\\projects\\repo | add a unit test for UsageService
+    Example: /claude office-pc | C:\\projects\\repo | add a unit test for ProjectsClient
 
     Reuses the existing NL agent-dispatch routing; the agent_daemon on
     the target PC interprets `run this prompt inside claude code on <agent>`
@@ -613,7 +590,7 @@ async def claude_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not raw or "|" not in raw:
         await update.message.reply_text(
             "Usage: /claude <agent> | <path> | <prompt>\n"
-            "Example: /claude office-pc | C:\\projects\\repo | add a unit test for UsageService",
+            "Example: /claude office-pc | C:\\projects\\repo | add a unit test for ProjectsClient",
         )
         return
 
@@ -621,7 +598,7 @@ async def claude_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if len(parts) != 3 or not parts[0] or not parts[2]:
         await update.message.reply_text(
             "Usage: /claude <agent> | <path> | <prompt>\n"
-            "Example: /claude office-pc | C:\\projects\\repo | add a unit test for UsageService",
+            "Example: /claude office-pc | C:\\projects\\repo | add a unit test for ProjectsClient",
         )
         return
 
@@ -806,10 +783,6 @@ async def _route_deploy(update, context, params: dict) -> bool:
 
 async def _route_query(update, context, params: dict) -> bool:
     target = (params.get("target") or "").strip().lower()
-    if target in {"usage", "tokens", "cost", "spend"}:
-        context.args = []
-        await usage_command(update, context)
-        return True
     if target in {"stats", "ram", "memory", "cpu"}:
         await stats_command(update, context)
         return True

@@ -1,0 +1,268 @@
+.kb-body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.18), transparent 45%),
+    radial-gradient(circle at 100% 0%, rgba(167, 139, 250, 0.18), transparent 45%),
+    var(--bg, #0b0d12);
+  color: var(--text, #e6e8ee);
+}
+
+.kb-stage {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.4rem 1.1rem 4rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.kb-topbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 20px;
+}
+
+.kb-topbar .kb-back,
+.kb-topbar .kb-home {
+  color: var(--muted-strong, #a4b1cd);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+}
+
+.kb-title-block h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+.kb-title-block .eyebrow {
+  color: var(--accent, #38bdf8);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin: 0 0 0.2rem;
+}
+.kb-subtitle {
+  color: var(--muted-strong, #a4b1cd);
+  font-size: 0.9rem;
+  margin: 0.35rem 0 0;
+  max-width: 56ch;
+}
+
+.kb-main {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.kb-card {
+  padding: 1.15rem 1.25rem;
+  border-radius: 20px;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.kb-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.kb-section-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.kb-meta-tag {
+  color: var(--muted, #7a8aa8);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.kb-form {
+  display: grid;
+  gap: 0.75rem;
+}
+.kb-field {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+.kb-field span {
+  color: var(--muted, #7a8aa8);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.kb-field input,
+.kb-field select,
+.kb-ask-form textarea {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  color: inherit;
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+}
+.kb-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+@media (max-width: 540px) {
+  .kb-field-row { grid-template-columns: 1fr; }
+}
+
+.kb-dropzone {
+  display: grid;
+  gap: 0.35rem;
+  place-items: center;
+  text-align: center;
+  border: 1.5px dashed rgba(56, 189, 248, 0.4);
+  border-radius: 16px;
+  padding: 1.2rem 1rem;
+  cursor: pointer;
+  background: rgba(56, 189, 248, 0.06);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.kb-dropzone:hover { background: rgba(56, 189, 248, 0.1); }
+.kb-dropzone.is-dragging {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.85);
+}
+.kb-dropzone small { color: var(--muted, #7a8aa8); font-size: 0.78rem; }
+
+.kb-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+.kb-inline-field {
+  flex: 0 0 auto;
+  min-width: 12rem;
+}
+.kb-status {
+  font-size: 0.8rem;
+  color: var(--muted-strong, #a4b1cd);
+}
+.kb-status[data-kind="ok"] { color: #34d399; }
+.kb-status[data-kind="error"] { color: #fb7185; }
+.kb-status[data-kind="pending"] { color: #38bdf8; }
+
+.kb-ask-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 5rem;
+}
+
+.kb-answer {
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 0.7rem;
+}
+.kb-answer-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.kb-answer-head h3 { margin: 0; font-size: 0.95rem; }
+.kb-answer-meta { color: var(--muted, #7a8aa8); font-size: 0.72rem; }
+.kb-answer-body { margin: 0; line-height: 1.55; font-size: 0.92rem; }
+.kb-cite {
+  font-size: 0.7rem;
+  background: rgba(56, 189, 248, 0.18);
+  border-radius: 6px;
+  padding: 0.1rem 0.3rem;
+  color: #bae6fd;
+  margin: 0 0.15rem;
+}
+.kb-citations {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.kb-citations code { color: #bae6fd; background: rgba(56, 189, 248, 0.14); padding: 0.05rem 0.3rem; border-radius: 6px; }
+
+.kb-context-block {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+}
+.kb-context-block summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.kb-context-block summary small { color: var(--muted, #7a8aa8); }
+.kb-context-block p { font-size: 0.82rem; color: var(--muted-strong, #a4b1cd); margin: 0.4rem 0 0; line-height: 1.5; }
+
+.kb-doc-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.kb-doc {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+}
+.kb-doc header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.kb-doc-kind {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  color: var(--accent, #38bdf8);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+.kb-doc-source { color: var(--muted-strong, #a4b1cd); font-size: 0.78rem; margin: 0; }
+.kb-doc-meta { color: var(--muted, #7a8aa8); font-size: 0.78rem; margin: 0; }
+.kb-doc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.kb-pill {
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted-strong, #a4b1cd);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.kb-pill-dept {
+  background: rgba(167, 139, 250, 0.18);
+  color: #c4b5fd;
+  border-color: rgba(167, 139, 250, 0.3);
+  text-transform: capitalize;
+}
+.kb-doc-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+.kb-doc-actions .danger { color: #fb7185; }
+.kb-empty { color: var(--muted, #7a8aa8); font-size: 0.85rem; margin: 0; }
+.kb-error,
+.kb-error-row {
+  color: #fb7185;
+  font-size: 0.82rem;
+  margin: 0;
+}
+.kb-thinking { color: var(--muted-strong, #a4b1cd); font-style: italic; }

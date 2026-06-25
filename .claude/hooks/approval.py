@@ -14,8 +14,8 @@ Called by Claude Code before every tool invocation. For actions deemed
 For non-risky actions we exit 0 immediately (no server round-trip).
 
 Configuration via env vars:
-  MEMORYCORE_SERVER_URL   base URL to the cloud API (default http://localhost:8000)
-  MEMORYCORE_USER_ID      (default fitclaw)
+  FITCLAW_SERVER_URL      base URL to the cloud API (default http://localhost:8000)
+  FITCLAW_USER_ID         (default fitclaw)
   APPROVAL_TIMEOUT_SEC    seconds to wait for a human (default 300)
   APPROVAL_POLL_SEC       polling interval (default 3)
   APPROVAL_ALLOWED_TOOLS  comma-separated tool names to auto-approve
@@ -35,8 +35,8 @@ import time
 import urllib.error
 import urllib.request
 
-SERVER_URL = os.environ.get("MEMORYCORE_SERVER_URL", "http://localhost:8000").rstrip("/")
-USER_ID = os.environ.get("MEMORYCORE_USER_ID", "fitclaw")
+SERVER_URL = os.environ.get("FITCLAW_SERVER_URL", "http://localhost:8000").rstrip("/")
+USER_ID = os.environ.get("FITCLAW_USER_ID", "fitclaw")
 TIMEOUT_SECONDS = int(os.environ.get("APPROVAL_TIMEOUT_SEC", "300"))
 POLL_SECONDS = int(os.environ.get("APPROVAL_POLL_SEC", "3"))
 ALLOWED_TOOLS = set(
