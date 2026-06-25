@@ -57,7 +57,7 @@ function stopPolling() {
 async function refresh() {
   try {
     const [agents, tasks] = await Promise.all([
-      fetchJson("/api/v1/agents"),
+      fetchJson("/api/v1/control/agents"),
       fetchJson("/api/v1/tasks?limit=25"),
     ]);
     state.agents = Array.isArray(agents) ? agents : [];
@@ -86,7 +86,7 @@ function renderFloor() {
     node.dataset.agent = agent.name;
 
     const currentTask = state.tasks.find(
-      (task) => task.agent_name === agent.name && (task.status === "running" || task.status === "in_progress")
+      (task) => task.assigned_agent_name === agent.name && task.status === "in_progress"
     );
 
     node.innerHTML = `
@@ -111,21 +111,23 @@ function renderFloor() {
 
 function renderQueue() {
   const active = state.tasks
-    .filter((task) => ["queued", "running", "in_progress", "completed", "failed"].includes(task.status))
+    .filter((task) => ["pending", "in_progress", "completed", "failed"].includes(task.status))
     .slice(0, 12);
-  dom.queueCount.textContent = `${active.filter((t) => t.status === "running" || t.status === "in_progress").length} in flight`;
+  dom.queueCount.textContent = `${active.filter((t) => t.status === "in_progress").length} in flight`;
   if (!active.length) {
     dom.queue.innerHTML = `<li class="kb-empty">No tasks recorded yet.</li>`;
     return;
   }
   dom.queue.innerHTML = active
     .map((task) => {
-      const status = (task.status || "queued").toLowerCase();
-      const owner = task.agent_name || "unassigned";
+      const status = (task.status || "pending").toLowerCase();
+      const owner = task.assigned_agent_name || "unassigned";
       const updated = task.updated_at || task.created_at || null;
+      const stateClass = status === "in_progress" ? "running" : (status === "pending" ? "queued" : status);
+      const stateLabel = status === "in_progress" ? "running" : status;
       return `
         <li>
-          <span class="office-queue-state ${status === "in_progress" ? "running" : status}">${escapeHtml(status === "in_progress" ? "running" : status)}</span>
+          <span class="office-queue-state ${stateClass}">${escapeHtml(stateLabel)}</span>
           <div>
             <div class="office-queue-title">${escapeHtml(task.title || task.task_id || "Untitled task")}</div>
             <div class="office-queue-meta">${escapeHtml(owner)}${updated ? ` · ${escapeHtml(formatDate(updated))}` : ""}</div>
@@ -169,9 +171,10 @@ async function submitTask() {
       method: "POST",
       body: JSON.stringify({
         title,
-        instructions: detail,
-        agent_name: state.selectedAgent.name,
-        platform_user_id: state.userId,
+        description: detail || title,
+        assigned_agent_name: state.selectedAgent.name,
+        source: "office",
+        created_by_user_id: state.userId,
       }),
     });
     dom.taskStatus.textContent = `Task sent to ${state.selectedAgent.name}.`;
