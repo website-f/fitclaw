@@ -4,7 +4,6 @@ import threading
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
@@ -57,9 +56,12 @@ app.include_router(clear_data.router)
 
 register_all_modules(app)
 
-# Expose /metrics for Prometheus. Records per-route request count, latency,
-# and in-progress gauges — standard FastAPI observability in one line.
-Instrumentator().instrument(app).expose(app, include_in_schema=False, should_gzip=True)
+# Prometheus instrumentation disabled — the installed
+# prometheus-fastapi-instrumentator can't walk FastAPI's `_IncludedRouter`
+# objects (created by the module include_router calls above) and crashes
+# the middleware on every request. Re-enable once the library is upgraded
+# to a version that handles _IncludedRouter, or replace with a direct
+# Prometheus exposition.
 
 
 @app.on_event("startup")
